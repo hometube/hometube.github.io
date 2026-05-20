@@ -364,7 +364,6 @@ export const useMusicStore = defineStore('music', () => {
     if (initialized.value) return
     initialized.value = true
     audio.value = new Audio()
-    audio.value.autoplay = true
     dbg('init: audio element created')
 
     window.addEventListener('beforeunload', () => { dbg('beforeunload'); saveState() })
@@ -449,23 +448,13 @@ export const useMusicStore = defineStore('music', () => {
       dbg('init: Media Session NOT available')
     }
 
-    const handleEndedHidden = async (idx) => {
+    const handleEndedHidden = (idx) => {
       currentIndex.value = idx
-      const nextSong = displaySongs.value[idx]
-      if (!nextSong) return
-      dbg('audio: ended -> hidden, preloading', nextSong.title)
-      updateMediaSession(nextSong)
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
-      try {
-        const url = await API.getMusicUrl(nextSong)
-        if (url && audio.value) {
-          audio.value.src = url
-          audio.value.load()
-        }
-      } catch {}
+      if (!displaySongs.value[idx]) return
       playing.value = false
       localStorage.setItem('pendingNextIdx', String(idx))
       saveState()
+      dbg('audio: ended -> hidden, pending next song', displaySongs.value[idx]?.title)
     }
 
     audio.value.addEventListener('ended', () => {
