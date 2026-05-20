@@ -17,14 +17,26 @@ export const useMusicStore = defineStore('music', () => {
   const duration = ref(0)
   const initialized = ref(false)
   const playbackError = ref(null)
-  const debug = ref([])
+  const DEBUG_KEY = '__musicDebugLog'
   const MAX_DEBUG = 200
+  const debug = ref([])
   const dbg = (msg, data) => {
     const entry = { t: Date.now(), m: msg, d: data }
     debug.value.push(entry)
     if (debug.value.length > MAX_DEBUG) debug.value.splice(0, debug.value.length - MAX_DEBUG)
+    try { localStorage.setItem(DEBUG_KEY, JSON.stringify(debug.value)) } catch {}
     console.log(`[MusicDBG] ${msg}`, data ?? '')
   }
+  const loadDebug = () => {
+    try {
+      const saved = localStorage.getItem(DEBUG_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) debug.value = parsed.slice(-MAX_DEBUG)
+      }
+    } catch {}
+  }
+  loadDebug()
 
   const updateMediaSession = (song) => {
     if (!('mediaSession' in navigator)) return
@@ -507,7 +519,10 @@ export const useMusicStore = defineStore('music', () => {
     window.__musicDebug = () => ({ log: debug.value, playing: playing.value, paused: audio.value?.paused,
       currentTime: currentTime.value, duration: duration.value, currentIndex: currentIndex.value,
       wakeLockHeld: !!wakeLock, audioContextState: audioContext?.state })
-    window.__musicDebugClear = () => { debug.value = [] }
+    window.__musicDebugClear = () => {
+      debug.value = []
+      try { localStorage.removeItem(DEBUG_KEY) } catch {}
+    }
     dbg('init complete: debug helpers available via window.__musicDebug()')
   }
 
@@ -732,7 +747,10 @@ export const useMusicStore = defineStore('music', () => {
     return title.replace(/\s*\[[^\]]+\]\s*$/, '')
   }
 
-  const clearDebug = () => { debug.value = [] }
+  const clearDebug = () => {
+    debug.value = []
+    try { localStorage.removeItem(DEBUG_KEY) } catch {}
+  }
 
   return {
     debug,
