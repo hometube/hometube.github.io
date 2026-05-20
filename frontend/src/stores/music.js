@@ -38,8 +38,71 @@ export const useMusicStore = defineStore('music', () => {
   }
   loadDebug()
 
-  const updateMediaSession = (song) => {
+  const setMediaAction = (action, handler) => {
+    try { navigator.mediaSession?.setActionHandler(action, handler) } catch {}
+  }
+
+  let supportsPositionState = false
+
+  const registerMediaActions = () => {
     if (!('mediaSession' in navigator)) return
+    setMediaAction('play', () => {
+      dbg('mediaSession: play action')
+      if (!playing.value) {
+        togglePlay()
+      } else if (audio.value?.paused) {
+        dbg('mediaSession: play — system paused, force-resuming')
+        resumeAudioContext()
+        acquireWakeLock()
+        audio.value.play().catch((err) => {
+          dbg('mediaSession: play — force resume failed', err?.message)
+        })
+      }
+    })
+    setMediaAction('pause', () => {
+      dbg('mediaSession: pause action')
+      if (playing.value) togglePlay()
+    })
+    setMediaAction('nexttrack', () => {
+      dbg('mediaSession: nexttrack action')
+      next()
+    })
+    setMediaAction('previoustrack', () => {
+      dbg('mediaSession: previoustrack action')
+      prev()
+    })
+    setMediaAction('seekto', (details) => {
+      dbg('mediaSession: seekto', details.seekTime)
+      if (details.seekTime && audio.value) {
+        audio.value.currentTime = details.seekTime
+      }
+    })
+    setMediaAction('seekforward', () => {
+      dbg('mediaSession: seekforward')
+      if (audio.value) audio.value.currentTime = Math.min(audio.value.currentTime + 10, audio.value.duration || Infinity)
+    })
+    setMediaAction('seekbackward', () => {
+      dbg('mediaSession: seekbackward')
+      if (audio.value) audio.value.currentTime = Math.max(audio.value.currentTime - 10, 0)
+    })
+  }
+
+  const clearMediaSession = () => {
+    if (!('mediaSession' in navigator)) return
+    navigator.mediaSession.playbackState = 'none'
+    navigator.mediaSession.metadata = null
+    const actions = ['play', 'pause', 'nexttrack', 'previoustrack', 'seekbackward', 'seekforward', 'seekto']
+    for (const a of actions) setMediaAction(a, null)
+    if (supportsPositionState) {
+      try { navigator.mediaSession.setPositionState() } catch {}
+    }
+  }
+
+  const setupMediaSession = (song) => {
+    if (!('mediaSession' in navigator)) return
+    updatePositionState()
+    navigator.mediaSession.playbackState = 'playing'
+    registerMediaActions()
     navigator.mediaSession.metadata = new MediaMetadata({
       title: song.title || 'Unknown',
       artist: song.artist || 'Unknown',
@@ -51,12 +114,15 @@ export const useMusicStore = defineStore('music', () => {
   }
 
   const updatePositionState = () => {
-    if ('mediaSession' in navigator && duration.value > 0) {
-      navigator.mediaSession.setPositionState({
-        duration: duration.value,
-        playbackRate: 1,
-        position: currentTime.value
-      })
+    if (!('mediaSession' in navigator) || !supportsPositionState) return
+    if (duration.value > 0 && Number.isFinite(duration.value)) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: duration.value,
+          playbackRate: 1,
+          position: currentTime.value
+        })
+      } catch {}
     }
   }
 
@@ -303,7 +369,7 @@ export const useMusicStore = defineStore('music', () => {
         currentTime.value = state.currentTime || 0
         duration.value = state.duration || 0
 
-        updateMediaSession(song)
+        setupMediaSession(song)
         if ('mediaSession' in navigator) {
           navigator.mediaSession.playbackState = state.playing ? 'playing' : 'paused'
         }
@@ -374,10 +440,10 @@ export const useMusicStore = defineStore('music', () => {
       if (document.visibilityState === 'visible') {
         resumeAudioContext()
 
-        // Restore media session metadata (Android may have cleared it)
+        // Restore media session (Android may have cleared it)
         const song = currentSong.value
         if (song && 'mediaSession' in navigator) {
-          updateMediaSession(song)
+          setupMediaSession(song)
           navigator.mediaSession.playbackState = playing.value ? 'playing' : 'paused'
         }
 
@@ -396,46 +462,8 @@ export const useMusicStore = defineStore('music', () => {
     })
 
     if ('mediaSession' in navigator) {
-      dbg('init: setting up Media Session handlers')
-      navigator.mediaSession.setActionHandler('play', () => {
-        dbg('mediaSession: play action')
-        if (!playing.value) {
-          togglePlay()
-        } else if (audio.value?.paused) {
-          dbg('mediaSession: play — system paused, force-resuming')
-          resumeAudioContext()
-          acquireWakeLock()
-          audio.value.play().catch((err) => {
-            dbg('mediaSession: play — force resume failed', err?.message)
-          })
-        }
-      })
-      navigator.mediaSession.setActionHandler('pause', () => {
-        dbg('mediaSession: pause action')
-        if (playing.value) togglePlay()
-      })
-      navigator.mediaSession.setActionHandler('nexttrack', () => {
-        dbg('mediaSession: nexttrack action')
-        next()
-      })
-      navigator.mediaSession.setActionHandler('previoustrack', () => {
-        dbg('mediaSession: previoustrack action')
-        prev()
-      })
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        dbg('mediaSession: seekto', details.seekTime)
-        if (details.seekTime && audio.value) {
-          audio.value.currentTime = details.seekTime
-        }
-      })
-      navigator.mediaSession.setActionHandler('seekforward', () => {
-        dbg('mediaSession: seekforward')
-        if (audio.value) audio.value.currentTime = Math.min(audio.value.currentTime + 10, audio.value.duration || Infinity)
-      })
-      navigator.mediaSession.setActionHandler('seekbackward', () => {
-        dbg('mediaSession: seekbackward')
-        if (audio.value) audio.value.currentTime = Math.max(audio.value.currentTime - 10, 0)
-      })
+      dbg('init: setting up Media Session')
+      supportsPositionState = !!navigator.mediaSession.setPositionState
     } else {
       dbg('init: Media Session NOT available')
     }
@@ -446,8 +474,7 @@ export const useMusicStore = defineStore('music', () => {
       if (!nextSong) return
       dbg('audio: ended -> hidden, playing next', nextSong.title)
       playing.value = true
-      updateMediaSession(nextSong)
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+      setupMediaSession(nextSong)
       try {
         const url = await API.getMusicUrl(nextSong)
         if (url && audio.value) {
@@ -489,6 +516,12 @@ export const useMusicStore = defineStore('music', () => {
       currentTime.value = 0
       duration.value = 0
       playbackError.value = err?.message || 'Failed to load song'
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'none'
+        if (supportsPositionState) {
+          try { navigator.mediaSession.setPositionState() } catch {}
+        }
+      }
     })
     audio.value.addEventListener('play', () => {
       dbg('audio: play event')
@@ -592,12 +625,9 @@ export const useMusicStore = defineStore('music', () => {
     if (!song) { dbg('playSong: no song at index'); return }
     playing.value = true
 
-    // Set Media Session metadata BEFORE changing audio src so the lock screen
+    // Set up Media Session BEFORE changing audio src so the lock screen
     // immediately shows the new song and the session survives the src transition
-    updateMediaSession(song)
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = 'playing'
-    }
+    setupMediaSession(song)
 
     acquireWakeLock()
 
@@ -728,6 +758,7 @@ export const useMusicStore = defineStore('music', () => {
 
   const stop = () => {
     dbg('stop')
+    clearMediaSession()
     if (audio.value) {
       audio.value.pause()
       audio.value.src = ''
