@@ -383,9 +383,21 @@ export const useMusicStore = defineStore('music', () => {
           playSong(idx)
           return
         }
+
+        const song = currentSong.value
+        if (song && 'mediaSession' in navigator) {
+          updateMediaSession(song)
+          navigator.mediaSession.playbackState = playing.value ? 'playing' : 'paused'
+        }
+
         if (playing.value) {
           dbg('visibility: visible, was playing — re-acquiring wakelock')
           acquireWakeLock()
+          // Android may have reset the audio element; resume playback if needed
+          if (audio.value && audio.value.paused && currentIndex.value >= 0) {
+            dbg('visibility: visible, audio was paused by system — resuming')
+            audio.value.play().catch(() => {})
+          }
         }
       } else {
         saveState()
