@@ -63,14 +63,22 @@ export const useMusicStore = defineStore('music', () => {
       dbg('mediaSession: pause action')
       if (playing.value) togglePlay()
     })
-    setMediaAction('nexttrack', () => {
-      dbg('mediaSession: nexttrack action')
-      next()
-    })
-    setMediaAction('previoustrack', () => {
-      dbg('mediaSession: previoustrack action')
-      prev()
-    })
+    if (findNextIndex(true) !== -1) {
+      setMediaAction('nexttrack', () => {
+        dbg('mediaSession: nexttrack action')
+        next()
+      })
+    } else {
+      setMediaAction('nexttrack', null)
+    }
+    if (findNextIndex(false) !== -1) {
+      setMediaAction('previoustrack', () => {
+        dbg('mediaSession: previoustrack action')
+        prev()
+      })
+    } else {
+      setMediaAction('previoustrack', null)
+    }
     setMediaAction('seekto', (details) => {
       dbg('mediaSession: seekto', details.seekTime)
       if (details.seekTime && audio.value) {
@@ -100,8 +108,6 @@ export const useMusicStore = defineStore('music', () => {
 
   const setupMediaSession = (song) => {
     if (!('mediaSession' in navigator)) return
-    updatePositionState()
-    navigator.mediaSession.playbackState = 'playing'
     registerMediaActions()
     navigator.mediaSession.metadata = new MediaMetadata({
       title: song.title || 'Unknown',
@@ -474,7 +480,6 @@ export const useMusicStore = defineStore('music', () => {
       if (!nextSong) return
       dbg('audio: ended -> hidden, playing next', nextSong.title)
       playing.value = true
-      setupMediaSession(nextSong)
       try {
         const url = await API.getMusicUrl(nextSong)
         if (url && audio.value) {
@@ -485,6 +490,7 @@ export const useMusicStore = defineStore('music', () => {
           })
         }
       } catch {}
+      setupMediaSession(nextSong)
       saveState()
     }
 
@@ -529,6 +535,9 @@ export const useMusicStore = defineStore('music', () => {
     audio.value.addEventListener('play', () => {
       dbg('audio: play event')
       playbackError.value = null
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing'
+      }
     })
     audio.value.addEventListener('pause', () => {
       dbg('audio: pause event', { wasPlaying: playing.value })
