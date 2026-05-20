@@ -373,16 +373,8 @@ export const useMusicStore = defineStore('music', () => {
       dbg('visibilitychange', document.visibilityState)
       if (document.visibilityState === 'visible') {
         resumeAudioContext()
-        // If there's a pending next song (ended while hidden), advance now
-        const pending = localStorage.getItem('pendingNextIdx')
-        if (pending && displaySongs.value.length > 0) {
-          const idx = parseInt(pending)
-          localStorage.removeItem('pendingNextIdx')
-          dbg('visibility: visible, advancing to pending next song', idx)
-          playSong(idx)
-          return
-        }
 
+        // Restore media session metadata (Android may have cleared it)
         const song = currentSong.value
         if (song && 'mediaSession' in navigator) {
           updateMediaSession(song)
@@ -448,13 +440,22 @@ export const useMusicStore = defineStore('music', () => {
       dbg('init: Media Session NOT available')
     }
 
-    const handleEndedHidden = (idx) => {
+    const handleEndedHidden = async (idx) => {
       currentIndex.value = idx
-      if (!displaySongs.value[idx]) return
-      playing.value = false
-      localStorage.setItem('pendingNextIdx', String(idx))
+      const nextSong = displaySongs.value[idx]
+      if (!nextSong) return
+      dbg('audio: ended -> hidden, playing next', nextSong.title)
+      playing.value = true
+      updateMediaSession(nextSong)
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+      try {
+        const url = await API.getMusicUrl(nextSong)
+        if (url && audio.value) {
+          audio.value.src = url
+          audio.value.load()
+        }
+      } catch {}
       saveState()
-      dbg('audio: ended -> hidden, pending next song', displaySongs.value[idx]?.title)
     }
 
     audio.value.addEventListener('ended', () => {
