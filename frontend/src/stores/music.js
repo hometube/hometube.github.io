@@ -358,6 +358,15 @@ export const useMusicStore = defineStore('music', () => {
       dbg('visibilitychange', document.visibilityState)
       if (document.visibilityState === 'visible') {
         resumeAudioContext()
+        // If there's a pending next song (ended while hidden), advance now
+        const pending = localStorage.getItem('pendingNextIdx')
+        if (pending && displaySongs.value.length > 0) {
+          const idx = parseInt(pending)
+          localStorage.removeItem('pendingNextIdx')
+          dbg('visibility: visible, advancing to pending next song', idx)
+          playSong(idx)
+          return
+        }
         if (playing.value) {
           dbg('visibility: visible, was playing — re-acquiring wakelock')
           acquireWakeLock()
@@ -412,19 +421,42 @@ export const useMusicStore = defineStore('music', () => {
       dbg('init: Media Session NOT available')
     }
 
+    const handleEndedHidden = async (idx) => {
+      currentIndex.value = idx
+      const nextSong = displaySongs.value[idx]
+      if (!nextSong) return
+      dbg('audio: ended -> hidden, preloading', nextSong.title)
+      updateMediaSession(nextSong)
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+      try {
+        const url = await API.getMusicUrl(nextSong)
+        if (url && audio.value) {
+          audio.value.src = url
+          audio.value.load()
+        }
+      } catch {}
+      playing.value = false
+      localStorage.setItem('pendingNextIdx', String(idx))
+      saveState()
+    }
+
     audio.value.addEventListener('ended', () => {
       dbg('audio: ended')
       resumeAudioContext()
       const idx = findNextIndex(true)
-      if (idx >= 0) {
-        dbg('audio: ended -> playing next', idx)
-        playSong(idx)
-      } else {
+      if (idx < 0) {
         dbg('audio: ended -> queue empty')
         playing.value = false
         releaseWakeLock()
         saveState()
+        return
       }
+      if (document.visibilityState === 'hidden') {
+        handleEndedHidden(idx)
+        return
+      }
+      dbg('audio: ended -> playing next', idx)
+      playSong(idx)
     })
     audio.value.addEventListener('loadedmetadata', () => {
       dbg('audio: loadedmetadata', { duration: audio.value.duration })
@@ -538,6 +570,14 @@ export const useMusicStore = defineStore('music', () => {
     const song = displaySongs.value[index]
     if (!song) { dbg('playSong: no song at index'); return }
     playing.value = true
+
+    // Set Media Session metadata BEFORE changing audio src so the lock screen
+    // immediately shows the new song and the session survives the src transition
+    updateMediaSession(song)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing'
+    }
+
     acquireWakeLock()
 
     if (audio.value && reloadAudio) {
@@ -562,10 +602,9 @@ export const useMusicStore = defineStore('music', () => {
       dbg('playSong: play() rejected', { message: err?.message, name: err?.name })
       playing.value = false
       releaseWakeLock()
+      saveState()
       return
     })
-
-    updateMediaSession(song)
 
     if (!song.downloaded) {
       try {
