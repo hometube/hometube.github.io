@@ -480,6 +480,9 @@ export const useMusicStore = defineStore('music', () => {
         if (url && audio.value) {
           audio.value.src = url
           audio.value.load()
+          await audio.value.play().catch((err) => {
+            dbg('handleEndedHidden: play() rejected', err?.message)
+          })
         }
       } catch {}
       saveState()
@@ -532,6 +535,9 @@ export const useMusicStore = defineStore('music', () => {
       if (playing.value) {
         dbg('audio: system pause detected (likely screen lock), updating state')
         playing.value = false
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused'
+        }
         saveState()
       }
     })
