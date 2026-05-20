@@ -303,6 +303,11 @@ export const useMusicStore = defineStore('music', () => {
         currentTime.value = state.currentTime || 0
         duration.value = state.duration || 0
 
+        updateMediaSession(song)
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = state.playing ? 'playing' : 'paused'
+        }
+
         if (state.playing) {
           dbg('restoreState: resuming playback')
           audio.value.play().catch((err) => {
@@ -312,7 +317,6 @@ export const useMusicStore = defineStore('music', () => {
           })
           playing.value = true
           acquireWakeLock()
-          updateMediaSession(song)
         }
       }
 
