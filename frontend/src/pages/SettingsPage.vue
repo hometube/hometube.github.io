@@ -79,6 +79,31 @@ const dbgAudioState = computed(() => {
   return { playing: musicStore.playing, paused: a ? a.paused : 'N/A', wakeLock: 'wakeLock' in navigator }
 })
 
+const exportDebug = () => {
+  const lines = debugLog.value.map(e => {
+    const time = fmtTime(e.t)
+    const data = e.d ? ` ${JSON.stringify(e.d)}` : ''
+    return `[${time}] ${e.m}${data}`
+  })
+  const text = lines.join('\n')
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('export-debug-btn')
+    if (btn) {
+      const orig = btn.textContent
+      btn.textContent = 'Copied!'
+      setTimeout(() => { btn.textContent = orig }, 1500)
+    }
+  }).catch(() => {
+    // fallback: create a blob and download
+    const blob = new Blob([text], { type: 'text/plain' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `music-debug-${Date.now()}.txt`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  })
+}
+
 const colorClass = (msg) => {
   if (/error|fail|rejected/.test(msg)) return 'text-red-400'
   if (/acquired|play/.test(msg)) return 'text-green-400'
@@ -251,9 +276,11 @@ const resetApp = () => {
           <FontAwesomeIcon :icon="['fas', showDebug ? 'chevron-up' : 'bug']" class="text-gray-400" />
         </button>
         <div v-if="showDebug" class="border-t border-gray-700">
-          <div class="p-2 border-b border-gray-700">
+          <div class="p-2 border-b border-gray-700 flex gap-2">
             <button @click="musicStore.clearDebug()"
               class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs">Clear</button>
+            <button id="export-debug-btn" @click="exportDebug"
+              class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs">Export</button>
           </div>
           <div class="max-h-64 overflow-y-auto p-2 space-y-0.5 font-mono text-[10px] leading-tight">
             <div v-for="(e, i) in debugLog" :key="i"
