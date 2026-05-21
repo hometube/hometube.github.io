@@ -426,6 +426,125 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
 
+  // === MSE Stream Management ===
+  let mediaSource = null
+  let sourceBuffer = null
+  let msObjectUrl = null
+  let trackRanges = []
+  let mseActive = false
+  const mseSupported = typeof MediaSource !== 'undefined'
+
+  const cleanupMSE = () => {
+    mseActive = false
+    trackRanges = []
+    if (msObjectUrl) {
+      URL.revokeObjectURL(msObjectUrl)
+      msObjectUrl = null
+    }
+    if (mediaSource && mediaSource.readyState !== 'closed') {
+      try { mediaSource.endOfStream() } catch {}
+    }
+    mediaSource = null
+    sourceBuffer = null
+  }
+
+  const mseInit = async (startIndex) => {
+    if (!mseSupported || !audio.value) return false
+    const song = displaySongs.value[startIndex]
+    if (!song) return false
+
+    const url = await API.getMusicUrl(song)
+    if (!url) return false
+
+    let response
+    try { response = await fetch(url) } catch { return false }
+    if (!response.ok) return false
+
+    const contentType = response.headers.get('content-type') || 'audio/mpeg'
+    if (!MediaSource.isTypeSupported(contentType)) return false
+
+    const data = await response.arrayBuffer()
+    cleanupMSE()
+    trackRanges = []
+
+    mediaSource = new MediaSource()
+    msObjectUrl = URL.createObjectURL(mediaSource)
+
+    return new Promise(resolve => {
+      mediaSource.addEventListener('sourceopen', () => {
+        try {
+          sourceBuffer = mediaSource.addSourceBuffer(contentType)
+        } catch (e) {
+          dbg('mse: addSourceBuffer failed', e?.message)
+          cleanupMSE(); resolve(false); return
+        }
+
+        sourceBuffer.addEventListener('updateend', () => {
+          const last = trackRanges[trackRanges.length - 1]
+          if (last) last.endTime = mediaSource.duration || 0
+          mseAppendNext()
+        })
+
+        const before = mediaSource.duration || 0
+        trackRanges.push({ trackIndex: startIndex, startTime: before, endTime: before })
+        sourceBuffer.appendBuffer(data)
+        audio.value.src = msObjectUrl
+        mseActive = true
+        resolve(true)
+      }, { once: true })
+
+      mediaSource.addEventListener('error', () => {
+        dbg('mse: mediaSource error')
+        cleanupMSE(); resolve(false)
+      }, { once: true })
+    })
+  }
+
+  const mseAppendTrack = async (trackIndex) => {
+    if (!sourceBuffer || sourceBuffer.updating || !mseActive) return
+    const song = displaySongs.value[trackIndex]
+    if (!song) return
+    const url = await API.getMusicUrl(song)
+    if (!url) return
+    try {
+      const response = await fetch(url)
+      if (!response.ok) return
+      const data = await response.arrayBuffer()
+      if (sourceBuffer.updating) return
+      const before = mediaSource.duration || 0
+      trackRanges.push({ trackIndex, startTime: before, endTime: before })
+      sourceBuffer.appendBuffer(data)
+    } catch (e) {
+      dbg('mse: append failed', e?.message)
+    }
+  }
+
+  const mseAppendNext = () => {
+    if (!mseActive) return
+    const buffered = new Set(trackRanges.map(r => r.trackIndex))
+    const nextIdx = findNextIndex(true)
+    if (nextIdx >= 0 && !buffered.has(nextIdx)) {
+      mseAppendTrack(nextIdx)
+    }
+  }
+
+  const mseGetTrackAtTime = (time) => {
+    for (let i = trackRanges.length - 1; i >= 0; i--) {
+      const r = trackRanges[i]
+      if (r.endTime > 0 && time >= r.startTime && time < r.endTime) return r.trackIndex
+    }
+    return -1
+  }
+
+  const mseSeekToTrack = (trackIndex) => {
+    const range = trackRanges.find(r => r.trackIndex === trackIndex)
+    if (range && audio.value) {
+      audio.value.currentTime = range.startTime
+      return true
+    }
+    return false
+  }
+
   const init = () => {
     if (initialized.value) return
     initialized.value = true
@@ -485,6 +604,22 @@ export const useMusicStore = defineStore('music', () => {
 
     audio.value.addEventListener('ended', async () => {
       dbg('audio: ended')
+      if (mseActive && sourceBuffer) {
+        if (sourceBuffer.updating) {
+          await new Promise(r => { sourceBuffer.addEventListener('updateend', r, { once: true }) })
+        }
+        const nextIdx = findNextIndex(true)
+        if (nextIdx >= 0) {
+          dbg('ended: extending MSE stream')
+          await mseAppendTrack(nextIdx)
+          if (sourceBuffer && !sourceBuffer.updating && trackRanges.length >= 2) {
+            const prevEnd = trackRanges[trackRanges.length - 2].endTime
+            audio.value.currentTime = prevEnd
+            audio.value.play().catch(() => {})
+            return
+          }
+        }
+      }
       const idx = findNextIndex(true)
       if (idx < 0) {
         dbg('audio: ended -> queue empty')
@@ -550,6 +685,16 @@ export const useMusicStore = defineStore('music', () => {
     audio.value.addEventListener('timeupdate', () => {
       currentTime.value = audio.value.currentTime
       updatePositionState()
+      if (mseActive && trackRanges.length > 1) {
+        const ti = mseGetTrackAtTime(audio.value.currentTime)
+        if (ti >= 0 && ti !== currentIndex.value) {
+          dbg('timeupdate: MSE track boundary crossed', { from: currentIndex.value, to: ti })
+          currentIndex.value = ti
+          setupMediaSession(displaySongs.value[ti])
+          duration.value = audio.value.duration || 0
+          saveState()
+        }
+      }
     })
     audio.value.addEventListener('playing', () => {
       dbg('audio: playing event', { transitioningTrack })
@@ -560,7 +705,8 @@ export const useMusicStore = defineStore('music', () => {
 
     window.__musicDebug = () => ({ log: debug.value, playing: playing.value, paused: audio.value?.paused,
       currentTime: currentTime.value, duration: duration.value, currentIndex: currentIndex.value,
-      wakeLockHeld: !!wakeLock, audioContextState: audioContext?.state })
+      wakeLockHeld: !!wakeLock, audioContextState: audioContext?.state,
+      mseActive, trackRanges: trackRanges.length })
     window.__musicDebugClear = () => {
       debug.value = []
       try { localStorage.removeItem(DEBUG_KEY) } catch {}
@@ -631,7 +777,42 @@ export const useMusicStore = defineStore('music', () => {
     acquireWakeLock()
 
     if (audio.value && reloadAudio) {
+      // Try seeking within existing MSE stream
+      if (mseActive && mseSeekToTrack(index)) {
+        dbg('playSong: seeking within MSE stream', { index })
+        setupMediaSession(song)
+        resumeAudioContext()
+        audio.value.play().catch((err) => {
+          dbg('playSong: play() rejected after MSE seek', { message: err?.message, name: err?.name })
+          playing.value = false
+          releaseWakeLock()
+          saveState()
+        })
+        return
+      }
+
+      // Reset for new playback session
       currentTime.value = 0
+      cleanupMSE()
+
+      // Try MSE for continuous stream
+      const mseOk = await mseInit(index)
+      if (mseOk) {
+        dbg('playSong: using MSE stream', { index })
+        setupMediaSession(song)
+        resumeAudioContext()
+        audio.value.play().catch((err) => {
+          dbg('playSong: MSE play() rejected', { message: err?.message, name: err?.name })
+          mseActive = false
+          playing.value = false
+          releaseWakeLock()
+          saveState()
+        })
+        return
+      }
+
+      // Fallback to direct src
+      dbg('playSong: MSE not available, falling back to direct src')
       const url = await API.getMusicUrl(song)
       if (!url) {
         transitioningTrack = false
@@ -644,7 +825,7 @@ export const useMusicStore = defineStore('music', () => {
         dbg('playSong: no URL', { songId: song.id, title: song.title, reason })
         return
       }
-      dbg('playSong: setting src', url.slice(0, 80))
+      dbg('playSong: setting src (direct)', url.slice(0, 80))
       await new Promise(r => setTimeout(r, 0))
       transitioningTrack = true
       audio.value.src = url
@@ -762,6 +943,7 @@ export const useMusicStore = defineStore('music', () => {
   const stop = () => {
     dbg('stop')
     clearMediaSession()
+    cleanupMSE()
     if (audio.value) {
       audio.value.pause()
       audio.value.src = ''
