@@ -399,6 +399,7 @@ export const useMusicStore = defineStore('music', () => {
   let wakeLock = null
 
   const releaseWakeLock = () => {
+    if (isAndroid) return
     if (wakeLock) {
       dbg('wakelock releasing')
       try { wakeLock.release() } catch (e) { dbg('wakelock release error', e?.message) }
@@ -407,6 +408,7 @@ export const useMusicStore = defineStore('music', () => {
   }
 
   const acquireWakeLock = async () => {
+    if (isAndroid) return
     if ('wakeLock' in navigator) {
       if (wakeLock) { dbg('wakelock already held'); return }
       try {
@@ -415,10 +417,6 @@ export const useMusicStore = defineStore('music', () => {
         wakeLock.addEventListener('release', () => {
           dbg('wakelock released by system')
           wakeLock = null
-          if (playing.value) {
-            dbg('wakelock re-acquiring (was playing)')
-            acquireWakeLock()
-          }
         })
       } catch (e) {
         dbg('wakelock acquire failed', e?.message || e?.name)
@@ -435,6 +433,9 @@ export const useMusicStore = defineStore('music', () => {
     audio.value.preload = 'auto'
     audio.value.autoplay = false
     audio.value.crossOrigin = 'anonymous'
+    audio.value.id = 'global-player'
+    audio.value.style.display = 'none'
+    document.body.appendChild(audio.value)
 
     if (useAudioContext) {
       try {
@@ -644,6 +645,7 @@ export const useMusicStore = defineStore('music', () => {
         return
       }
       dbg('playSong: setting src', url.slice(0, 80))
+      await new Promise(r => setTimeout(r, 0))
       transitioningTrack = true
       audio.value.src = url
     }
