@@ -100,6 +100,12 @@ export const LocalDB = {
 
   async getFileByTitle(title) {
     const db = await getDb()
+    const allFiles = await this.getFilesByType('music')
+    const lower = title.toLowerCase()
+    for (const f of allFiles) {
+      if (f.filename && f.filename.toLowerCase().includes(lower)) return f
+    }
+    return null
   },
 
   async getFilesByType(type) {

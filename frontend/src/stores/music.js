@@ -38,10 +38,11 @@ export const useMusicStore = defineStore('music', () => {
   }
   loadDebug()
 
-  let nextUrl = null
-  let nextIndex = -1
-  let transitioning = false
-  const TRANSITION_EARLY_SEC = 3
+  let audioContext = null
+  let analyser = null
+  let dataArray = null
+  const isAndroid = /Android/i.test(navigator.userAgent)
+  const useAudioContext = !isAndroid
 
   const setMediaAction = (action, handler) => {
     try { navigator.mediaSession?.setActionHandler(action, handler) } catch {}
@@ -113,7 +114,6 @@ export const useMusicStore = defineStore('music', () => {
 
   const setupMediaSession = (song) => {
     if (!('mediaSession' in navigator)) return
-    registerMediaActions()
     navigator.mediaSession.metadata = new MediaMetadata({
       title: song.title || 'Unknown',
       artist: song.artist || 'Unknown',
@@ -135,15 +135,6 @@ export const useMusicStore = defineStore('music', () => {
         })
       } catch {}
     }
-  }
-
-  const preloadNext = async () => {
-    const idx = findNextIndex(true)
-    if (idx < 0) { nextUrl = null; nextIndex = -1; return }
-    nextIndex = idx
-    try {
-      nextUrl = await API.getMusicUrl(displaySongs.value[idx])
-    } catch { nextUrl = null }
   }
 
   const isOffline = computed(() => {
@@ -234,10 +225,6 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
 
-  let audioContext = null
-  let analyser = null
-  let dataArray = null
-
   // BPM detection
   const bpm = ref(0)
   let lastBeatTime = 0
@@ -288,6 +275,7 @@ export const useMusicStore = defineStore('music', () => {
   })
 
   const getAnalyser = () => {
+    if (!useAudioContext || !audioContext) return { analyser: null, dataArray: null, audioContext: null }
     resumeAudioContext()
     return { analyser, dataArray, audioContext }
   }
@@ -442,18 +430,25 @@ export const useMusicStore = defineStore('music', () => {
     audio.value.preload = 'auto'
     audio.value.autoplay = false
     audio.value.crossOrigin = 'anonymous'
-    try {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)()
-      analyser = audioContext.createAnalyser()
-      analyser.fftSize = 256
-      dataArray = new Uint8Array(analyser.frequencyBinCount)
-      const source = audioContext.createMediaElementSource(audio.value)
-      source.connect(analyser)
-      analyser.connect(audioContext.destination)
-    } catch (e) {
-      dbg('init: audio analysis setup failed', e?.message)
+
+    if (useAudioContext) {
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        analyser = audioContext.createAnalyser()
+        analyser.fftSize = 256
+        dataArray = new Uint8Array(analyser.frequencyBinCount)
+        const source = audioContext.createMediaElementSource(audio.value)
+        source.connect(analyser)
+        analyser.connect(audioContext.destination)
+      } catch (e) {
+        dbg('init: audio analysis setup failed', e?.message)
+      }
+    } else {
+      dbg('init: AudioContext disabled on Android — native playback only')
     }
     dbg('init: audio element created')
+
+    registerMediaActions()
 
     window.addEventListener('beforeunload', () => { dbg('beforeunload'); saveState() })
     window.addEventListener('pagehide', () => { dbg('pagehide'); saveState() })
@@ -463,17 +458,8 @@ export const useMusicStore = defineStore('music', () => {
       if (document.visibilityState === 'visible') {
         resumeAudioContext()
 
-        // Restore media session (Android may have cleared it)
-        const song = currentSong.value
-        if (song && 'mediaSession' in navigator) {
-          setupMediaSession(song)
-          navigator.mediaSession.playbackState = playing.value ? 'playing' : 'paused'
-        }
-
         if (playing.value) {
-          dbg('visibility: visible, was playing — re-acquiring wakelock')
           acquireWakeLock()
-          // Android may have reset the audio element; resume playback if needed
           if (audio.value && audio.value.paused && currentIndex.value >= 0) {
             dbg('visibility: visible, audio was paused by system — resuming')
             audio.value.play().catch(() => {})
@@ -492,8 +478,7 @@ export const useMusicStore = defineStore('music', () => {
     }
 
     audio.value.addEventListener('ended', () => {
-      if (transitioning) { transitioning = false; dbg('ended: suppressed (pre-end transition)'); return }
-      dbg('audio: ended (unexpected — pre-transition missed)')
+      dbg('audio: ended')
       const idx = findNextIndex(true)
       if (idx < 0) {
         dbg('audio: ended -> queue empty')
@@ -554,44 +539,9 @@ export const useMusicStore = defineStore('music', () => {
     audio.value.addEventListener('stalled', () => { dbg('audio: stalled') })
     audio.value.addEventListener('waiting', () => { dbg('audio: waiting') })
     audio.value.addEventListener('canplay', () => { dbg('audio: canplay') })
-    audio.value.addEventListener('timeupdate', async () => {
+    audio.value.addEventListener('timeupdate', () => {
       currentTime.value = audio.value.currentTime
       updatePositionState()
-
-      if (transitioning) return
-
-      const remaining = audio.value.duration - audio.value.currentTime
-
-      if (
-        Number.isFinite(remaining) &&
-        remaining <= TRANSITION_EARLY_SEC
-      ) {
-        const idx = findNextIndex(true)
-        if (idx < 0) return
-
-        transitioning = true
-        dbg('timeupdate: early transition', { remaining, nextIndex: idx })
-
-        try {
-          const nextSong = displaySongs.value[idx]
-          currentIndex.value = idx
-          setupMediaSession(nextSong)
-
-          const url = nextIndex === idx && nextUrl
-            ? nextUrl
-            : await API.getMusicUrl(nextSong)
-
-          if (!url) { transitioning = false; return }
-
-          audio.value.src = url
-          await audio.value.play()
-          preloadNext()
-          saveState()
-        } catch (err) {
-          dbg('timeupdate: transition failed', err?.message)
-          transitioning = false
-        }
-      }
     })
     audio.value.addEventListener('playing', () => { dbg('audio: playing event') })
     audio.value.addEventListener('suspend', () => { dbg('audio: suspend') })
@@ -670,7 +620,6 @@ export const useMusicStore = defineStore('music', () => {
 
     if (audio.value && reloadAudio) {
       currentTime.value = 0
-      nextUrl = null; nextIndex = -1
       const url = await API.getMusicUrl(song)
       if (!url) {
         playing.value = false
@@ -694,8 +643,6 @@ export const useMusicStore = defineStore('music', () => {
       saveState()
       return
     })
-
-    preloadNext()
 
     if (!song.downloaded) {
       try {

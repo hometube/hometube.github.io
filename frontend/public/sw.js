@@ -76,6 +76,121 @@ async function restoreCacheRules() {
   }
 }
 
+function openLocalDB() {
+  return new Promise((resolve, reject) => {
+    const request = self.indexedDB.open('hometube-local', 2)
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+function idbGet(db, storeName, id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly')
+    const store = tx.objectStore(storeName)
+    const request = store.get(id)
+    request.onsuccess = () => resolve(request.result || null)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+function createRangeResponse(blob, request) {
+  const mimeType = blob.type || 'audio/mpeg'
+  const size = blob.size
+  const rangeHeader = request.headers.get('range')
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
+    if (match) {
+      const start = parseInt(match[1])
+      const end = match[2] ? parseInt(match[2]) : size - 1
+      const sliced = blob.slice(start, end + 1)
+      return new Response(sliced, {
+        status: 206,
+        headers: {
+          'Content-Range': `bytes ${start}-${end}/${size}`,
+          'Content-Type': mimeType,
+          'Content-Length': String(sliced.size),
+          'Accept-Ranges': 'bytes'
+        }
+      })
+    }
+  }
+
+  return new Response(blob, {
+    headers: {
+      'Content-Type': mimeType,
+      'Content-Length': String(size),
+      'Accept-Ranges': 'bytes'
+    }
+  })
+}
+
+async function handleLocalMediaRequest(url, request) {
+  const musicMatch = url.pathname.match(/\/api\/local\/music\/(\d+)\/file$/)
+  if (musicMatch) {
+    return serveLocalMusic(parseInt(musicMatch[1]), request)
+  }
+
+  const videoMatch = url.pathname.match(/\/api\/local\/video\/(\d+)\/file$/)
+  if (videoMatch) {
+    return serveLocalVideo(parseInt(videoMatch[1]), request)
+  }
+
+  return new Response('Not found', { status: 404 })
+}
+
+async function serveLocalMusic(musicId, request) {
+  try {
+    const db = await openLocalDB()
+    const musicRecord = await idbGet(db, 'music', musicId)
+    if (!musicRecord) return new Response('Music not found', { status: 404 })
+
+    let fileKey = null
+    if (musicRecord.filename) {
+      fileKey = `music_${musicRecord.filename}`
+    } else if (musicRecord.video_id) {
+      const extensions = ['mp3', 'webm', 'm4a', 'ogg', 'flac', 'wav']
+      for (const ext of extensions) {
+        const key = `music_${musicRecord.video_id}.${ext}`
+        const fileRecord = await idbGet(db, 'files', key)
+        if (fileRecord) { fileKey = key; break }
+      }
+    }
+
+    if (!fileKey) return new Response('File not found', { status: 404 })
+
+    const fileRecord = await idbGet(db, 'files', fileKey)
+    if (!fileRecord?.blob) return new Response('File not found', { status: 404 })
+
+    return createRangeResponse(fileRecord.blob, request)
+  } catch (e) {
+    console.error('[SW] Error serving local music:', e)
+    return new Response('Internal error', { status: 500 })
+  }
+}
+
+async function serveLocalVideo(videoId, request) {
+  try {
+    const db = await openLocalDB()
+    const videoRecord = await idbGet(db, 'videos', videoId)
+    if (!videoRecord) return new Response('Video not found', { status: 404 })
+
+    const vid = videoRecord.video_id ? String(videoRecord.video_id) : String(videoRecord.id)
+
+    let fileRecord = await idbGet(db, 'files', `video_${vid}.mp4`)
+    if (!fileRecord) {
+      fileRecord = await idbGet(db, 'files', `video_${vid}.webm`)
+    }
+    if (!fileRecord?.blob) return new Response('File not found', { status: 404 })
+
+    return createRangeResponse(fileRecord.blob, request)
+  } catch (e) {
+    console.error('[SW] Error serving local video:', e)
+    return new Response('Internal error', { status: 500 })
+  }
+}
+
 self.addEventListener('install', () => {
   console.log('[SW] Installing...')
   self.skipWaiting()
@@ -123,9 +238,15 @@ self.addEventListener('message', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+
+  if (url.pathname.startsWith('/api/local/')) {
+    event.respondWith(handleLocalMediaRequest(url, event.request))
+    return
+  }
+
   restoreCacheRules()
 
-  const url = new URL(event.request.url)  
   if (url.pathname.startsWith('/api/')) {
     console.log('[SW] Intercepted API request:', url.pathname + url.search)
     

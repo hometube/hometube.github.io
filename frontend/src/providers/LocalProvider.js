@@ -253,56 +253,13 @@ export class LocalProvider extends DataProvider {
   }
 
   async getVideoUrl(video) {
-    const vid = video.video_id ? String(video.video_id) : String(video.id)
-    const fileRecord = await LocalDB.getFile(`video_${vid}.mp4`)
-    if (fileRecord?.blob) {
-      return this._trackBlobUrl(URL.createObjectURL(fileRecord.blob))
-    }
-    const webmRecord = await LocalDB.getFile(`video_${vid}.webm`)
-    if (webmRecord?.blob) {
-      return this._trackBlobUrl(URL.createObjectURL(webmRecord.blob))
-    }
-    return null
+    if (!video.id) return null
+    return `/api/local/video/${video.id}/file`
   }
 
   async getMusicUrl(song) {
-    if (song.filename) {
-      const key = `music_${song.filename}`
-      const fileRecord = await LocalDB.getFile(key)
-      if (fileRecord?.blob) {
-        return this._trackBlobUrl(URL.createObjectURL(fileRecord.blob))
-      }
-      console.warn('[LocalProvider] getMusicUrl: filename exists but file not found', {
-        songId: song.id, title: song.title, filename: song.filename, key,
-        fileRecord: fileRecord ? 'found (no blob)' : 'not found in files store'
-      })
-    }
-    if (song.video_id) {
-      for (const ext of ['mp3', 'webm', 'm4a', 'ogg', 'flac', 'wav']) {
-        const key = `music_${song.video_id}.${ext}`
-        const fileRecord = await LocalDB.getFile(key)
-        if (fileRecord?.blob) {
-          return this._trackBlobUrl(URL.createObjectURL(fileRecord.blob))
-        }
-      }
-    }
-    if (song.title) {
-      const fileRecord = await LocalDB.getFileByTitle(song.title)
-      if (fileRecord?.blob) {
-        return this._trackBlobUrl(URL.createObjectURL(fileRecord.blob))
-      }
-    }
-    console.warn('[LocalProvider] getMusicUrl: returning null — no matching file blob', {
-      songId: song.id,
-      title: song.title,
-      artist: song.artist,
-      hasFilename: !!song.filename,
-      hasVideoId: !!song.video_id,
-      filename: song.filename,
-      video_id: song.video_id,
-      downloaded: song.downloaded
-    })
-    return null
+    if (!song.id) return null
+    return `/api/local/music/${song.id}/file`
   }
 
   async checkCache(paths) {
