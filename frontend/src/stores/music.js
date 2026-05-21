@@ -43,6 +43,13 @@ export const useMusicStore = defineStore('music', () => {
   let dataArray = null
   const isAndroid = /Android/i.test(navigator.userAgent)
   const useAudioContext = !isAndroid
+  let transitioningTrack = false
+
+  const setMsState = (state) => {
+    if (!('mediaSession' in navigator)) return
+    dbg(`MS playbackState -> ${state}`)
+    navigator.mediaSession.playbackState = state
+  }
 
   const setMediaAction = (action, handler) => {
     try { navigator.mediaSession?.setActionHandler(action, handler) } catch {}
@@ -103,7 +110,7 @@ export const useMusicStore = defineStore('music', () => {
 
   const clearMediaSession = () => {
     if (!('mediaSession' in navigator)) return
-    navigator.mediaSession.playbackState = 'none'
+    setMsState('none')
     navigator.mediaSession.metadata = null
     const actions = ['play', 'pause', 'nexttrack', 'previoustrack', 'seekbackward', 'seekforward', 'seekto']
     for (const a of actions) setMediaAction(a, null)
@@ -367,9 +374,7 @@ export const useMusicStore = defineStore('music', () => {
         duration.value = state.duration || 0
 
         setupMediaSession(song)
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.playbackState = state.playing ? 'playing' : 'paused'
-        }
+        setMsState(state.playing ? 'playing' : 'paused')
 
         if (state.playing) {
           dbg('restoreState: resuming playback')
@@ -477,7 +482,7 @@ export const useMusicStore = defineStore('music', () => {
       dbg('init: Media Session NOT available')
     }
 
-    audio.value.addEventListener('ended', () => {
+    audio.value.addEventListener('ended', async () => {
       dbg('audio: ended')
       const idx = findNextIndex(true)
       if (idx < 0) {
@@ -487,6 +492,8 @@ export const useMusicStore = defineStore('music', () => {
         saveState()
         return
       }
+      dbg('ended: transitioning to next track')
+      await new Promise(r => setTimeout(r, 300))
       playSong(idx)
     })
     audio.value.addEventListener('loadedmetadata', () => {
@@ -500,27 +507,29 @@ export const useMusicStore = defineStore('music', () => {
     })
     audio.value.addEventListener('error', () => {
       const err = audio.value.error
-      dbg('audio: error', { code: err?.code, message: err?.message, src: audio.value.src?.slice(0, 80) })
+      dbg('audio: error', { code: err?.code, message: err?.message, src: audio.value.src?.slice(0, 80), transitioningTrack })
+      transitioningTrack = false
       playing.value = false
       currentTime.value = 0
       duration.value = 0
       playbackError.value = err?.message || 'Failed to load song'
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'none'
-        if (supportsPositionState) {
-          try { navigator.mediaSession.setPositionState() } catch {}
-        }
+      setMsState('none')
+      if (supportsPositionState) {
+        try { navigator.mediaSession.setPositionState() } catch {}
       }
     })
     audio.value.addEventListener('play', () => {
-      dbg('audio: play event')
+      dbg('audio: play event', { transitioningTrack })
+      transitioningTrack = false
       playbackError.value = null
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'playing'
-      }
+      setMsState('playing')
     })
     audio.value.addEventListener('pause', () => {
-      dbg('audio: pause event', { wasPlaying: playing.value })
+      dbg('audio: pause event', { wasPlaying: playing.value, transitioningTrack })
+      if (transitioningTrack) {
+        dbg('pause: suppressed during track transition')
+        return
+      }
       if (playing.value) {
         clearTimeout(pauseTimer)
         const el = audio.value
@@ -528,9 +537,7 @@ export const useMusicStore = defineStore('music', () => {
           if (el.paused) {
             dbg('audio: system pause confirmed, updating state')
             playing.value = false
-            if ('mediaSession' in navigator) {
-              navigator.mediaSession.playbackState = 'paused'
-            }
+            setMsState('paused')
             saveState()
           }
         }, 300)
@@ -543,7 +550,11 @@ export const useMusicStore = defineStore('music', () => {
       currentTime.value = audio.value.currentTime
       updatePositionState()
     })
-    audio.value.addEventListener('playing', () => { dbg('audio: playing event') })
+    audio.value.addEventListener('playing', () => {
+      dbg('audio: playing event', { transitioningTrack })
+      transitioningTrack = false
+      setMsState('playing')
+    })
     audio.value.addEventListener('suspend', () => { dbg('audio: suspend') })
 
     window.__musicDebug = () => ({ log: debug.value, playing: playing.value, paused: audio.value?.paused,
@@ -622,6 +633,7 @@ export const useMusicStore = defineStore('music', () => {
       currentTime.value = 0
       const url = await API.getMusicUrl(song)
       if (!url) {
+        transitioningTrack = false
         playing.value = false
         duration.value = 0
         const reason = !song.filename && !song.video_id
@@ -632,11 +644,13 @@ export const useMusicStore = defineStore('music', () => {
         return
       }
       dbg('playSong: setting src', url.slice(0, 80))
+      transitioningTrack = true
       audio.value.src = url
     }
     setupMediaSession(song)
     resumeAudioContext()
     audio.value.play().catch((err) => {
+      transitioningTrack = false
       dbg('playSong: play() rejected', { message: err?.message, name: err?.name })
       playing.value = false
       releaseWakeLock()
