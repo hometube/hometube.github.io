@@ -38,6 +38,10 @@ export const useMusicStore = defineStore('music', () => {
   }
   loadDebug()
 
+  let nextUrl = null
+  let nextIndex = -1
+  let transitioning = false
+
   const setMediaAction = (action, handler) => {
     try { navigator.mediaSession?.setActionHandler(action, handler) } catch {}
   }
@@ -130,6 +134,13 @@ export const useMusicStore = defineStore('music', () => {
         })
       } catch {}
     }
+  }
+
+  const preloadNext = async () => {
+    const idx = findNextIndex(true)
+    if (idx < 0) { nextUrl = null; nextIndex = -1; return }
+    nextIndex = idx
+    try { nextUrl = await API.getMusicUrl(displaySongs.value[idx]) } catch { nextUrl = null }
   }
 
   const isOffline = computed(() => {
@@ -274,16 +285,6 @@ export const useMusicStore = defineStore('music', () => {
   })
 
   const getAnalyser = () => {
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)()
-      analyser = audioContext.createAnalyser()
-      analyser.fftSize = 256
-      dataArray = new Uint8Array(analyser.frequencyBinCount)
-      const osc = audioContext.createOscillator()
-      osc.frequency.value = 220
-      osc.connect(analyser)
-      osc.start()
-    }
     resumeAudioContext()
     return { analyser, dataArray, audioContext }
   }
@@ -370,7 +371,6 @@ export const useMusicStore = defineStore('music', () => {
           return false
         }
         audio.value.src = url
-        audio.value.load()
         audio.value.currentTime = state.currentTime || 0
         currentTime.value = state.currentTime || 0
         duration.value = state.duration || 0
@@ -436,6 +436,20 @@ export const useMusicStore = defineStore('music', () => {
     if (initialized.value) return
     initialized.value = true
     audio.value = new Audio()
+    audio.value.preload = 'auto'
+    audio.value.autoplay = false
+    audio.value.crossOrigin = 'anonymous'
+    try {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      analyser = audioContext.createAnalyser()
+      analyser.fftSize = 256
+      dataArray = new Uint8Array(analyser.frequencyBinCount)
+      const source = audioContext.createMediaElementSource(audio.value)
+      source.connect(analyser)
+      analyser.connect(audioContext.destination)
+    } catch (e) {
+      dbg('init: audio analysis setup failed', e?.message)
+    }
     dbg('init: audio element created')
 
     window.addEventListener('beforeunload', () => { dbg('beforeunload'); saveState() })
@@ -481,20 +495,23 @@ export const useMusicStore = defineStore('music', () => {
       dbg('audio: ended -> hidden, playing next', nextSong.title)
       playing.value = true
       try {
-        const url = await API.getMusicUrl(nextSong)
-        if (url && audio.value) {
-          audio.value.src = url
-          audio.value.load()
+        const url = nextIndex === idx ? nextUrl : null
+        nextUrl = null; nextIndex = -1
+        const src = url || await API.getMusicUrl(nextSong)
+        if (src && audio.value) {
+          audio.value.src = src
           await audio.value.play().catch((err) => {
             dbg('handleEndedHidden: play() rejected', err?.message)
           })
         }
       } catch {}
       setupMediaSession(nextSong)
+      preloadNext()
       saveState()
     }
 
     audio.value.addEventListener('ended', () => {
+      if (transitioning) { transitioning = false; dbg('ended: suppressed (pre-end transition)'); return }
       dbg('audio: ended')
       resumeAudioContext()
       const idx = findNextIndex(true)
@@ -539,15 +556,21 @@ export const useMusicStore = defineStore('music', () => {
         navigator.mediaSession.playbackState = 'playing'
       }
     })
+    let pauseTimer = null
     audio.value.addEventListener('pause', () => {
       dbg('audio: pause event', { wasPlaying: playing.value })
       if (playing.value) {
-        dbg('audio: system pause detected (likely screen lock), updating state')
-        playing.value = false
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.playbackState = 'paused'
-        }
-        saveState()
+        clearTimeout(pauseTimer)
+        pauseTimer = setTimeout(() => {
+          if (audio.value?.paused) {
+            dbg('audio: system pause confirmed, updating state')
+            playing.value = false
+            if ('mediaSession' in navigator) {
+              navigator.mediaSession.playbackState = 'paused'
+            }
+            saveState()
+          }
+        }, 300)
       }
     })
     audio.value.addEventListener('stalled', () => {
@@ -562,6 +585,17 @@ export const useMusicStore = defineStore('music', () => {
     audio.value.addEventListener('timeupdate', () => {
       currentTime.value = audio.value.currentTime
       updatePositionState()
+
+      if (
+        !transitioning &&
+        audio.value.duration > 0 &&
+        audio.value.duration - audio.value.currentTime < 0.75 &&
+        findNextIndex(true) >= 0
+      ) {
+        transitioning = true
+        dbg('timeupdate: pre-end transition', { remaining: audio.value.duration - audio.value.currentTime })
+        next()
+      }
     })
     audio.value.addEventListener('playing', () => {
       dbg('audio: playing event')
@@ -661,7 +695,6 @@ export const useMusicStore = defineStore('music', () => {
       }
       dbg('playSong: setting src', url.slice(0, 80))
       audio.value.src = url
-      audio.value.load()
     }
     resumeAudioContext()
     audio.value.play().catch((err) => {
@@ -671,6 +704,8 @@ export const useMusicStore = defineStore('music', () => {
       saveState()
       return
     })
+
+    preloadNext()
 
     if (!song.downloaded) {
       try {
