@@ -432,11 +432,13 @@ export const useMusicStore = defineStore('music', () => {
   let msObjectUrl = null
   let trackRanges = []
   let mseActive = false
+  let mseContentType = null
   const mseSupported = typeof MediaSource !== 'undefined'
 
   const cleanupMSE = () => {
     mseActive = false
     trackRanges = []
+    mseContentType = null
     if (msObjectUrl) {
       URL.revokeObjectURL(msObjectUrl)
       msObjectUrl = null
@@ -448,12 +450,13 @@ export const useMusicStore = defineStore('music', () => {
     sourceBuffer = null
   }
 
-  const mseInit = async (startIndex) => {
-    if (!mseSupported || !audio.value) return false
-    const song = displaySongs.value[startIndex]
-    if (!song) return false
+  const mseGetTrackIndex = (songId) => {
+    return displaySongs.value.findIndex(s => s.id === songId)
+  }
 
-    const url = await API.getMusicUrl(song)
+  const mseInit = async (startSong) => {
+    if (!mseSupported || !audio.value || !startSong) return false
+    const url = await API.getMusicUrl(startSong)
     if (!url) return false
 
     let response
@@ -465,7 +468,7 @@ export const useMusicStore = defineStore('music', () => {
 
     const data = await response.arrayBuffer()
     cleanupMSE()
-    trackRanges = []
+    mseContentType = contentType
 
     mediaSource = new MediaSource()
     msObjectUrl = URL.createObjectURL(mediaSource)
@@ -486,7 +489,7 @@ export const useMusicStore = defineStore('music', () => {
         })
 
         const before = mediaSource.duration || 0
-        trackRanges.push({ trackIndex: startIndex, startTime: before, endTime: before })
+        trackRanges.push({ songId: startSong.id, startTime: before, endTime: Infinity })
         sourceBuffer.appendBuffer(data)
         audio.value.src = msObjectUrl
         mseActive = true
@@ -500,10 +503,8 @@ export const useMusicStore = defineStore('music', () => {
     })
   }
 
-  const mseAppendTrack = async (trackIndex) => {
-    if (!sourceBuffer || sourceBuffer.updating || !mseActive) return
-    const song = displaySongs.value[trackIndex]
-    if (!song) return
+  const mseAppendTrack = async (song) => {
+    if (!sourceBuffer || sourceBuffer.updating || !mseActive || !song) return
     const url = await API.getMusicUrl(song)
     if (!url) return
     try {
@@ -512,7 +513,7 @@ export const useMusicStore = defineStore('music', () => {
       const data = await response.arrayBuffer()
       if (sourceBuffer.updating) return
       const before = mediaSource.duration || 0
-      trackRanges.push({ trackIndex, startTime: before, endTime: before })
+      trackRanges.push({ songId: song.id, startTime: before, endTime: Infinity })
       sourceBuffer.appendBuffer(data)
     } catch (e) {
       dbg('mse: append failed', e?.message)
@@ -520,24 +521,45 @@ export const useMusicStore = defineStore('music', () => {
   }
 
   const mseAppendNext = () => {
-    if (!mseActive) return
-    const buffered = new Set(trackRanges.map(r => r.trackIndex))
-    const nextIdx = findNextIndex(true)
-    if (nextIdx >= 0 && !buffered.has(nextIdx)) {
-      mseAppendTrack(nextIdx)
+    if (!mseActive || !displaySongs.value.length) return
+    const bufferedIds = new Set(trackRanges.map(r => r.songId))
+    const cur = currentSong.value
+    if (!cur) return
+    const curIdx = displaySongs.value.findIndex(s => s.id === cur.id)
+    if (curIdx < 0) return
+    const start = curIdx + 1
+    for (let i = start; i < displaySongs.value.length; i++) {
+      const s = displaySongs.value[i]
+      if (!bufferedIds.has(s.id)) {
+        mseAppendTrack(s)
+        return
+      }
+    }
+    if (repeat.value) {
+      for (let i = 0; i < curIdx; i++) {
+        const s = displaySongs.value[i]
+        if (!bufferedIds.has(s.id)) {
+          mseAppendTrack(s)
+          return
+        }
+      }
     }
   }
 
   const mseGetTrackAtTime = (time) => {
     for (let i = trackRanges.length - 1; i >= 0; i--) {
       const r = trackRanges[i]
-      if (r.endTime > 0 && time >= r.startTime && time < r.endTime) return r.trackIndex
+      if (time >= r.startTime) {
+        if (r.endTime === Infinity || time < r.endTime) {
+          return mseGetTrackIndex(r.songId)
+        }
+      }
     }
     return -1
   }
 
-  const mseSeekToTrack = (trackIndex) => {
-    const range = trackRanges.find(r => r.trackIndex === trackIndex)
+  const mseSeekToTrack = (songId) => {
+    const range = trackRanges.find(r => r.songId === songId)
     if (range && audio.value) {
       audio.value.currentTime = range.startTime
       return true
@@ -610,27 +632,29 @@ export const useMusicStore = defineStore('music', () => {
         }
         const nextIdx = findNextIndex(true)
         if (nextIdx >= 0) {
+          const nextSong = displaySongs.value[nextIdx]
           dbg('ended: extending MSE stream')
-          await mseAppendTrack(nextIdx)
+          await mseAppendTrack(nextSong)
           if (sourceBuffer && !sourceBuffer.updating && trackRanges.length >= 2) {
-            const prevEnd = trackRanges[trackRanges.length - 2].endTime
-            audio.value.currentTime = prevEnd
+            const prev = trackRanges[trackRanges.length - 2]
+            const resumeTime = prev.endTime === Infinity ? prev.startTime : prev.endTime
+            audio.value.currentTime = Math.max(0, resumeTime - 0.1)
             audio.value.play().catch(() => {})
             return
           }
         }
       }
-      const idx = findNextIndex(true)
-      if (idx < 0) {
+      const fallbackIdx = findNextIndex(true)
+      if (fallbackIdx < 0) {
         dbg('audio: ended -> queue empty')
         playing.value = false
         releaseWakeLock()
         saveState()
         return
       }
-      dbg('ended: transitioning to next track')
+      dbg('ended: transitioning to next track via playSong')
       await new Promise(r => setTimeout(r, 300))
-      playSong(idx)
+      playSong(fallbackIdx)
     })
     audio.value.addEventListener('loadedmetadata', () => {
       dbg('audio: loadedmetadata', { duration: audio.value.duration })
@@ -778,8 +802,8 @@ export const useMusicStore = defineStore('music', () => {
 
     if (audio.value && reloadAudio) {
       // Try seeking within existing MSE stream
-      if (mseActive && mseSeekToTrack(index)) {
-        dbg('playSong: seeking within MSE stream', { index })
+      if (mseActive && mseSeekToTrack(song.id)) {
+        dbg('playSong: seeking within MSE stream', { index, songId: song.id })
         setupMediaSession(song)
         resumeAudioContext()
         audio.value.play().catch((err) => {
@@ -796,9 +820,9 @@ export const useMusicStore = defineStore('music', () => {
       cleanupMSE()
 
       // Try MSE for continuous stream
-      const mseOk = await mseInit(index)
+      const mseOk = await mseInit(song)
       if (mseOk) {
-        dbg('playSong: using MSE stream', { index })
+        dbg('playSong: using MSE stream', { index, songId: song.id })
         setupMediaSession(song)
         resumeAudioContext()
         audio.value.play().catch((err) => {
