@@ -43,6 +43,21 @@ hometube/
 │   │   └── style.css
 │   ├── package.json
 │   └── vite.config.js      # Vite + PWA config
+├── mobile/                          # React Native companion app (Expo SDK 56)
+│   ├── app/                         # Expo Router file-based routing
+│   │   ├── _layout.tsx              # Root layout with providers
+│   │   ├── welcome/                 # Onboarding (mode choice, user selection)
+│   │   └── (tabs)/                  # Tab navigator
+│   │       ├── videos/              # Video feed, add, channel, player
+│   │       ├── music/               # Music home, playlist, now-playing
+│   │       └── settings/            # Settings, export, import
+│   ├── src/
+│   │   ├── providers/               # DataProvider, ServerProvider, LocalProvider
+│   │   ├── stores/                  # Zustand stores (user, music, video)
+│   │   ├── db/localDb.ts           # SQLite wrapper (replaces IndexedDB)
+│   │   ├── services/               # TrackPlayer background audio service
+│   │   └── api.ts                  # Provider proxy (same pattern as frontend/)
+│   └── AGENTS.md                   # Full mobile project documentation
 └── data/
     ├── db.sqlite            # SQLite database
     └── downloads/           # Downloaded media files
@@ -77,7 +92,7 @@ ht playlists                  # List playlists for active user
 ht videos                     # List videos for active user
 ```
 
-### Frontend
+### Frontend (Vue PWA)
 ```bash
 cd frontend
 npm install
@@ -85,16 +100,28 @@ npm run dev        # Dev server
 npm run build      # Production build
 ```
 
+### Mobile (React Native / Expo)
+```bash
+cd mobile
+npm install
+npm start          # Start Expo dev server
+npm run android    # Launch on Android
+npm run ios        # Launch on iOS
+npx tsc --noEmit   # TypeScript type check
+```
+
 ## Code Conventions
 
 - **Backend**: Python with FastAPI, SQLAlchemy ORM, SQLite
-- **Frontend**: Vue 3 Composition API, Tailwind CSS for styling
-- **Icons**: Font Awesome via @fortawesome/vue-fontawesome
-- **Video Player**: Plyr.js with custom controls (speed, audio mode, fullscreen)
-- **API**: REST endpoints defined in `backend/main.py`; frontend calls go through an API proxy (`api.js`) that delegates to the active provider
+- **Frontend (PWA)**: Vue 3 Composition API, Tailwind CSS for styling
+- **Mobile App**: React Native with Expo SDK 56, TypeScript, expo-router
+- **Icons**: Font Awesome via @fortawesome/vue-fontawesome (PWA) / @expo/vector-icons (Mobile)
+- **Video Player**: Plyr.js (PWA) / expo-video (Mobile)
+- **Audio Player**: HTML5 + MSE + Wake Lock (PWA) / react-native-track-player (Mobile)
+- **API**: REST endpoints defined in `backend/main.py`; both frontends call through an API proxy (`api.js`) that delegates to the active provider
 - **Downloads**: Handled via yt-dlp in `backend/services/ytdlp.py`
-- **Provider Pattern**: `DataProvider.js` defines an abstract interface. `ServerProvider.js` makes HTTP calls to the Python backend. `LocalProvider.js` uses IndexedDB for fully offline operation.
-- **Mode Switching**: The frontend stores `localMode` in localStorage. `providers/index.js` detects the mode and builds the correct provider. All pages use the API proxy and never reference providers directly.
+- **Provider Pattern**: `DataProvider` defines an abstract interface. `ServerProvider` makes HTTP calls to the Python backend. `LocalProvider` uses IndexedDB (PWA) or SQLite (Mobile) for fully offline operation.
+- **Mode Switching**: Stores `localMode` flag. `providers/index.js/ts` detects the mode and builds the correct provider. All pages use the API proxy and never reference providers directly.
 - **`.ht` files**: Zip archives containing `metadata.json` (serialized DB tables) and subdirectories `videos/` and `music/` with media files. The bridge between server mode and local mode.
 
 ## API Endpoints
@@ -164,7 +191,7 @@ The frontend can operate in two modes:
 
 - **Server Mode** (default): Connects to the Python FastAPI backend via HTTP. Uses `ServerProvider` which makes REST calls to the backend URL stored in `localStorage` (`backendUrl`). Supports ServiceWorker caching for offline-capable music/playlist access.
 
-- **Local Mode**: Runs entirely in the browser using IndexedDB. Uses `LocalProvider` which reads/writes to the `hometube-local` IndexedDB database (stores: users, channels, subscriptions, videos, music, playlists, settings, files, meta). Media files are stored as blobs in the `files` store.
+- **Local Mode**: Runs entirely offline. PWA uses IndexedDB (`hometube-local`), mobile app uses SQLite (`hometube-local.db`). Both use the same provider pattern with stores for: users, channels, subscriptions, videos, music, playlists, settings, files, meta. Media files stored as blobs (IndexedDB/PWA) or filesystem files (SQLite/mobile).
 
 Users choose the mode on the `SetupBackend.vue` page on first launch. Mode can be toggled later in `SettingsPage.vue`. Data from `.ht` files can be imported in either mode.
 
@@ -192,5 +219,6 @@ Import targets:
 - `POST /api/import` endpoint (server mode API)
 - `python cli.py import <file.ht>` (terminal CLI, writes to SQLite DB)
 - Frontend import in local mode (populates IndexedDB)
+- Mobile app import in local mode (populates SQLite)
 
 - No test framework is currently configured

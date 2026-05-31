@@ -1,0 +1,52 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "^3.1.0",
+    "babel-plugin-module-resolver": "^5.0.3",
+    "expo": "~56.0.5",
+    "expo-constants": "^56.0.16",
+    "expo-document-picker": "^56.0.4",
+    "expo-file-system": "^56.0.7",
+    "expo-linking": "^56.0.12",
+    "expo-router": "^56.2.7",
+    "expo-secure-store": "^56.0.4",
+    "expo-sharing": "^56.0.14",
+    "expo-splash-screen": "^56.0.10",
+    "expo-sqlite": "^56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "expo-video": "^56.1.2",
+    "fflate": "^0.8.3",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-gesture-handler": "^2.31.2",
+    "react-native-reanimated": "^4.4.0",
+    "react-native-safe-area-context": "^5.8.0",
+    "react-native-screens": "^4.25.2",
+    "react-native-track-player": "^5.0.0-alpha0",
+    "react-native-worklets": "^0.9.1",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "babel-preset-expo": "^56.0.14",
+    "patch-package": "^8.0.1",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "postinstall": "patch-package",
+    "prebuild": "expo prebuild",
+    "build:ios": "expo run:ios",
+    "build:android": "expo run:android",
+    "build:ios:release": "expo build:ios",
+    "build:android:release": "expo build:android",
+    "typecheck": "tsc --noEmit"
+  },
+  "private": true
+}
