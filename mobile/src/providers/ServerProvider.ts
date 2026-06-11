@@ -63,7 +63,10 @@ export class ServerProvider extends DataProvider {
   }
 
   private _apiUrl(path: string): string {
-    const base = this._backendUrl || "/api";
+    let base = this._backendUrl || "/api";
+    if (base !== "/api" && !base.endsWith("/api")) {
+      base = `${base.replace(/\/+$/, "")}/api`;
+    }
     return `${base.replace(/\/+$/, "")}/${path.replace(/^\//, "")}`;
   }
 

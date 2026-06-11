@@ -146,16 +146,17 @@ async def lifespan(app: FastAPI):
     try:
         get_jwt_secret(db)
 
-        # Load or create persistent ngrok token
-        global current_ngrok_token
-        token_setting = db.query(models.Setting).filter(models.Setting.key == "ngrok_token").first()
-        if token_setting:
-            current_ngrok_token = token_setting.value
-        else:
-            current_ngrok_token = secrets.token_urlsafe(32)
-            token_setting = models.Setting(key="ngrok_token", value=current_ngrok_token)
-            db.add(token_setting)
-            db.commit()
+        # Load or create persistent ngrok token (only in dev mode)
+        if len(sys.argv) > 1 and sys.argv[1] == "--dev":
+            global current_ngrok_token
+            token_setting = db.query(models.Setting).filter(models.Setting.key == "ngrok_token").first()
+            if token_setting:
+                current_ngrok_token = token_setting.value
+            else:
+                current_ngrok_token = secrets.token_urlsafe(32)
+                token_setting = models.Setting(key="ngrok_token", value=current_ngrok_token)
+                db.add(token_setting)
+                db.commit()
     finally:
         db.close()
 

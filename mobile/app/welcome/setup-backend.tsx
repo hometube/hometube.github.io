@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { router } from "expo-router";
-import { API, setLocalMode, setServerMode } from "@/api";
+import * as SecureStore from "expo-secure-store";
+import { API, getProvider, setLocalMode, setServerMode } from "@/api";
 
 export default function SetupBackend() {
   const [url, setUrl] = useState("");
@@ -14,10 +15,24 @@ export default function SetupBackend() {
     }
     setLoading(true);
     try {
-      const cleanUrl = url.replace(/\/+$/, "");
+      const parsed = new URL(url);
+      const tempToken = parsed.searchParams.get("token");
+      const cleanUrl = url.split("?")[0].replace(/\/+$/, "");
+      await SecureStore.setItemAsync("backendUrl", cleanUrl);
       await setServerMode();
-      const store = await import("expo-secure-store");
-      await store.default.setItemAsync("backendUrl", cleanUrl);
+      const provider = await getProvider();
+      const ok = await provider.ping();
+      if (!ok) {
+        Alert.alert("Connection Failed", "Could not reach the server. Check the URL and try again.");
+        return;
+      }
+      if (tempToken) {
+        try {
+          await API.exchangeToken(tempToken);
+        } catch (e) {
+          console.log("Token exchange failed (non-fatal):", e);
+        }
+      }
       router.replace("/welcome/setup-user");
     } catch (err: any) {
       Alert.alert("Error", err.message);
