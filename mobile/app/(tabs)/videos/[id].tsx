@@ -13,6 +13,7 @@ export default function VideoPlayer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(true);
+  const [videoUrl, setVideoUrl] = useState("");
 
   useEffect(() => {
     loadVideo();
@@ -24,6 +25,7 @@ export default function VideoPlayer() {
       const found = (videos as Video[]).find((v) => v.id === Number(id));
       if (found) {
         setVideo(found);
+        setVideoUrl(await API.getVideoUrl(found));
       } else {
         setError("Video not found");
       }
@@ -34,7 +36,6 @@ export default function VideoPlayer() {
     }
   };
 
-  const videoUrl = video ? API.getVideoUrl(video) : "";
   const player = useVideoPlayer(videoUrl, (p) => {
     p.play();
   });

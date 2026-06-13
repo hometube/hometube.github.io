@@ -1,11 +1,9 @@
-import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Image,
-  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import TrackPlayer, {
@@ -33,16 +31,6 @@ export default function NowPlaying() {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
-  const handleSeekBack = () => {
-    const newPos = Math.max(0, position - 10);
-    TrackPlayer.seekTo(newPos);
-  };
-
-  const handleSeekForward = () => {
-    const newPos = Math.min(duration, position + 10);
-    TrackPlayer.seekTo(newPos);
   };
 
   return (
@@ -81,7 +69,7 @@ export default function NowPlaying() {
       </View>
 
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.secondaryBtn} onPress={handleSeekBack}>
+        <TouchableOpacity onPress={previous} style={styles.controlBtn}>
           <Ionicons name="play-skip-back" size={22} color="#fff" />
         </TouchableOpacity>
 
@@ -97,26 +85,16 @@ export default function NowPlaying() {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryBtn} onPress={handleSeekForward}>
+        <TouchableOpacity onPress={next} style={styles.controlBtn}>
           <Ionicons name="play-skip-forward" size={22} color="#fff" />
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.secondaryControls}>
         <TouchableOpacity onPress={toggleShuffle} style={styles.toggleBtn}>
           <Ionicons
             name="shuffle"
             size={20}
             color={shuffle === "on" ? "#e94560" : "#666"}
           />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.toggleBtn} onPress={previous}>
-          <Ionicons name="play-skip-back" size={20} color="#fff" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.toggleBtn} onPress={next}>
-          <Ionicons name="play-skip-forward" size={20} color="#fff" />
         </TouchableOpacity>
 
         <TouchableOpacity onPress={toggleRepeat} style={styles.toggleBtn}>
@@ -201,8 +179,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 40,
-    marginBottom: 40,
+    gap: 24,
   },
   mainBtn: {
     width: 72,
@@ -212,14 +189,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  secondaryBtn: {
+  controlBtn: {
     padding: 12,
   },
   disabled: { opacity: 0.5 },
-  secondaryControls: {
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    alignItems: "center",
-  },
   toggleBtn: { padding: 12 },
 });

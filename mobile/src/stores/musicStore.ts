@@ -2,13 +2,8 @@ import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
 import TrackPlayer, {
   State,
-  Event,
   Track,
   RepeatMode,
-  usePlaybackState,
-  useProgress,
-  useActiveTrack,
-  useTrackPlayerEvents,
 } from "react-native-track-player";
 import { API } from "../api";
 import type { Music, Playlist, PlaylistSong } from "../types";
@@ -24,6 +19,8 @@ interface MusicState {
   shuffle: ShuffleMode;
   repeat: boolean;
   isLoading: boolean;
+  isDownloading: boolean;
+  downloadProgress: string;
   error: string | null;
 
   loadMusic: (userId: number) => Promise<void>;
@@ -37,6 +34,8 @@ interface MusicState {
   toggleRepeat: () => Promise<void>;
   seekTo: (position: number) => Promise<void>;
   addToPlaylist: (playlistId: number, songIndex: number) => Promise<void>;
+  _ensureSongsDownloaded: (songs: Music[]) => Promise<void>;
+  _cacheSongsBackground: (songs: Music[]) => Promise<void>;
 }
 
 let _shuffledIndices: number[] = [];
@@ -76,6 +75,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   shuffle: "off",
   repeat: false,
   isLoading: false,
+  isDownloading: false,
+  downloadProgress: "",
   error: null,
 
   loadMusic: async (userId) => {
@@ -102,21 +103,52 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     }
   },
 
+  _ensureSongsDownloaded: async (songs: Music[]) => {
+    const undownloaded = songs.filter((s) => !s.downloaded);
+    if (undownloaded.length === 0) return;
+
+    set({ isDownloading: true, downloadProgress: "" });
+
+    for (let i = 0; i < undownloaded.length; i++) {
+      const song = undownloaded[i];
+      set({ downloadProgress: `Downloading ${i + 1}/${undownloaded.length}: ${song.title || song.url}` });
+      try {
+        await API.post(`/music/${song.id}/download`, {});
+      } catch (err: any) {
+        console.log(`Download error for song ${song.id}: ${err.message}`);
+      }
+    }
+
+    set({ isDownloading: false, downloadProgress: "" });
+  },
+
+  _cacheSongsBackground: async (songs: Music[]) => {
+    for (const song of songs) {
+      try {
+        await API.cache(`/music/${song.id}/file`, { ttl: 0, refetch: false });
+      } catch {}
+    }
+  },
+
   playPlaylist: async (playlist, songs, startIndex = 0) => {
     const state = get();
+
+    await get()._ensureSongsDownloaded(songs);
+
     const indices = _getQueueIndices(songs, state.shuffle, startIndex);
 
-    const tracks: Track[] = indices.map((idx) => {
+    const tracks: Track[] = [];
+    for (const idx of indices) {
       const song = songs[idx];
-      const url = API.getMusicUrl(song);
-      return {
+      const url = await API.getMusicUrl(song);
+      tracks.push({
         id: String(song.id),
         url,
         title: song.title,
         artist: song.artist || "Unknown",
         artwork: song.album_art || undefined,
-      };
-    });
+      });
+    }
 
     await TrackPlayer.reset();
     await TrackPlayer.add(tracks);
@@ -127,23 +159,29 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       currentIndex: startIndex,
       isPlaying: true,
     });
+
+    get()._cacheSongsBackground(songs);
   },
 
   playAll: async (songs, startIndex = 0) => {
     const state = get();
+
+    await get()._ensureSongsDownloaded(songs);
+
     const indices = _getQueueIndices(songs, state.shuffle, startIndex);
 
-    const tracks: Track[] = indices.map((idx) => {
+    const tracks: Track[] = [];
+    for (const idx of indices) {
       const song = songs[idx];
-      const url = API.getMusicUrl(song);
-      return {
+      const url = await API.getMusicUrl(song);
+      tracks.push({
         id: String(song.id),
         url,
         title: song.title,
         artist: song.artist || "Unknown",
         artwork: song.album_art || undefined,
-      };
-    });
+      });
+    }
 
     await TrackPlayer.reset();
     await TrackPlayer.add(tracks);
@@ -154,6 +192,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       currentIndex: startIndex,
       isPlaying: true,
     });
+
+    get()._cacheSongsBackground(songs);
   },
 
   togglePlayPause: async () => {

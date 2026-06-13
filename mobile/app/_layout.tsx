@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useUserStore } from "../src/stores/userStore";
 import { localDb } from "../src/db/localDb";
 import TrackPlayer from "react-native-track-player";
+import HamburgerMenu from "../src/components/HamburgerMenu";
 
 export default function RootLayout() {
   const { loadUser, loadBackendUrl } = useUserStore();
@@ -36,6 +37,7 @@ export default function RootLayout() {
         <Stack.Screen name="welcome" />
         <Stack.Screen name="(tabs)" />
       </Stack>
+      <HamburgerMenu />
     </GestureHandlerRootView>
   );
 }

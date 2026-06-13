@@ -33,6 +33,11 @@ export class ServerProvider extends DataProvider {
   private _jwt: string = "";
   private _ngrokToken: string = "";
   private _blobUrls: string[] = [];
+  private _cachedMusicUrls: Map<number, string> = new Map();
+
+  private get _cacheDir(): string {
+    return `${FileSystem.documentDirectory}hometube_cache/`;
+  }
 
   async init(): Promise<void> {
     this._backendUrl =
@@ -40,6 +45,25 @@ export class ServerProvider extends DataProvider {
     this._jwt = (await SecureStore.getItemAsync(KEYS.JWT_TOKEN)) || "";
     this._ngrokToken =
       (await SecureStore.getItemAsync(KEYS.NGROK_TOKEN)) || "";
+    await this._restoreCache();
+  }
+
+  private async _restoreCache(): Promise<void> {
+    try {
+      const dir = this._cacheDir;
+      const dirInfo = await FileSystem.getInfoAsync(dir);
+      if (!dirInfo.exists) return;
+      const files = await FileSystem.readDirectoryAsync(dir);
+      for (const file of files) {
+        const match = file.match(/^music_(\d+)\./);
+        if (match) {
+          const songId = parseInt(match[1], 10);
+          this._cachedMusicUrls.set(songId, `${dir}${file}`);
+        }
+      }
+    } catch (e) {
+      console.log("Cache restore error:", e);
+    }
   }
 
   setBackendUrl(url: string): void {
@@ -135,16 +159,16 @@ export class ServerProvider extends DataProvider {
   }
 
   getVideoUrl(video: Video): string {
-    const base = this._backendUrl || "/api";
     if (video.filename) {
-      return `${base}/files/videos/${video.filename}`;
+      return this._apiUrl(`files/videos/${video.filename}`);
     }
-    return `${base}/files/videos/${video.video_id}.mp4`;
+    return this._apiUrl(`files/videos/${video.video_id}.mp4`);
   }
 
   getMusicUrl(song: Music): string {
-    const base = this._backendUrl || "/api";
-    return `${base}/music/${song.id}/file`;
+    const cached = this._cachedMusicUrls.get(song.id);
+    if (cached) return cached;
+    return this._apiUrl(`music/${song.id}/file`);
   }
 
   releaseUrl(url: string): void {
@@ -156,7 +180,41 @@ export class ServerProvider extends DataProvider {
   }
 
   async cache(path: string, options?: Partial<CacheRule>): Promise<any> {
-    return null;
+    const parsed = this.parsePath(path);
+    if (parsed.store !== "music") return null;
+
+    const songId = parseInt(parsed.id!, 10);
+    if (isNaN(songId)) return null;
+
+    if (this._cachedMusicUrls.has(songId)) {
+      return { cached: true, path: this._cachedMusicUrls.get(songId) };
+    }
+
+    try {
+      const url = this._apiUrl(`music/${songId}/file`);
+      const dir = this._cacheDir;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+
+      const downloadResumable = FileSystem.createDownloadResumable(
+        url,
+        `${dir}music_${songId}.tmp`,
+        { headers: { ...this._authHeaders } }
+      );
+      const result = await downloadResumable.downloadAsync();
+      if (!result) return null;
+
+      const finalPath = `${dir}music_${songId}.cache`;
+      await FileSystem.moveAsync({
+        from: result.uri,
+        to: finalPath,
+      });
+
+      this._cachedMusicUrls.set(songId, finalPath);
+      return { cached: true, path: finalPath };
+    } catch (e) {
+      console.log(`Cache download failed for music ${songId}:`, e);
+      return null;
+    }
   }
 
   async checkCache(paths: string[]): Promise<SwCacheStatus> {
