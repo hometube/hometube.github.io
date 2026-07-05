@@ -36,15 +36,18 @@ mobile/
 │   ├── stores/
 │   │   ├── userStore.ts          # User state (Zustand)
 │   │   ├── musicStore.ts         # Music playback (react-native-track-player)
-│   │   └── videoStore.ts         # Video state
+│   │   ├── videoStore.ts         # Video state
+│   │   └── uiStore.ts           # UI state (menu, navigation)
 │   ├── db/
 │   │   └── localDb.ts           # SQLite wrapper (9 tables mirroring IndexedDB stores)
 │   ├── services/
 │   │   ├── trackPlayerService.ts # Background audio service
 │   │   └── playerSetup.ts       # TrackPlayer registration
 │   ├── components/
+│   │   ├── HamburgerMenu.tsx    # Slide-out navigation menu
 │   │   ├── LoadingSpinner.tsx
-│   │   └── EmptyState.tsx
+│   │   ├── EmptyState.tsx
+│   │   └── index.ts            # Component re-exports
 │   ├── api.ts                   # Provider proxy (same pattern as frontend)
 │   └── types.ts                 # Shared TypeScript interfaces
 ├── app.json                     # Expo config (plugins, permissions, splash)

@@ -7,6 +7,7 @@ A self-hosted YouTube media downloader with a mobile-friendly web interface. Dow
 - **Video Downloads** - Paste YouTube URLs to download MP4 files with selectable quality (1080p/720p/480p/best)
 - **Music Downloads** - Extract audio from videos/playlists, preserve original format (mp3, webm, m4a, ogg, flac, wav), organize into playlists
 - **Import Existing Music** - Import songs from existing folders with automatic metadata extraction
+- **Mobile Companion App** - React Native / Expo app for iOS and Android with full offline support
 - **Channel Subscriptions** - Subscribe to channels and auto-detect new videos with keyword/length/quality filters
 - **Video Player** - In-app player with speed control (0.5x-2x), audio mode (screen-off listening), fullscreen
 - **Smart Feed** - Video feed sorted by recency, filter by "My Feed" / "All Videos" / "Unwatched"
@@ -24,8 +25,10 @@ A self-hosted YouTube media downloader with a mobile-friendly web interface. Dow
 ## Tech Stack
 
 - **Backend**: Python, FastAPI, SQLAlchemy, SQLite
-- **Frontend**: Vue 3, Vite, Tailwind CSS, Plyr.js
-- **Icons**: Font Awesome
+- **Frontend (PWA)**: Vue 3, Vite, Tailwind CSS, Plyr.js, Pinia
+- **Mobile App**: React Native, Expo SDK 56, TypeScript, expo-router, Zustand
+- **Icons**: Font Awesome (PWA) / @expo/vector-icons (Mobile)
+- **Audio**: HTML5 + MSE + Wake Lock (PWA) / react-native-track-player (Mobile)
 - **Downloads**: yt-dlp
 
 ## Setup
@@ -203,31 +206,42 @@ Supports: MP3, FLAC, WAV, M4A, AAC, OGG. Extracts title, artist, and album from 
 
 ```
 hometube/
+├── install.sh                # One-shot install: venv, deps, frontend build, ht command
+├── .github/workflows/
+│   └── deploy.yml            # GitHub Actions deploy workflow
 ├── backend/
-│   ├── main.py              # FastAPI app with REST endpoints
-│   ├── models.py            # DB models (User, Video, Music, Channel, Subscription, Playlist)
-│   ├── database.py          # SQLite configuration
-│   ├── cli.py               # CLI: install, init, login, download, export/import, songs, playlists, videos
-│   ├── cli.sh               # Helper script: manages venv and installs ht command
-│   ├── import_music.py      # Import existing music files
-│   ├── requirements.txt     # Python dependencies
+│   ├── main.py               # FastAPI app with REST endpoints
+│   ├── models.py             # DB models (User, Video, Music, Channel, Subscription, Playlist)
+│   ├── database.py           # SQLite configuration
+│   ├── cli.py                # CLI: install, init, login, download, export/import, songs, playlists, videos
+│   ├── cli.sh                # Helper script: manages venv and installs ht command
+│   ├── run-dev.sh            # Dev runner with ngrok tunnel
+│   ├── import_music.py       # Import existing music files
+│   ├── requirements.txt      # Python dependencies
 │   └── services/
-│       ├── ytdlp.py         # yt-dlp wrapper for downloads
-│       └── scheduler.py     # Background subscription checker + auto-delete
+│       ├── ytdlp.py          # yt-dlp wrapper for downloads
+│       └── scheduler.py      # Background subscription checker + auto-delete
 ├── frontend/
 │   ├── src/
-│   │   ├── App.vue         # Main Vue app with slide-out nav menu
-│   │   ├── api.js          # API proxy – delegates to active provider
-│   │   ├── localDb.js      # IndexedDB wrapper (local mode storage)
+│   │   ├── App.vue           # Main Vue app with slide-out nav menu
+│   │   ├── api.js            # API proxy – delegates to active provider
+│   │   ├── localDb.js        # IndexedDB wrapper (local mode storage)
 │   │   ├── providers/
 │   │   │   ├── DataProvider.js    # Abstract provider interface
 │   │   │   ├── ServerProvider.js  # HTTP provider for server mode
 │   │   │   ├── LocalProvider.js   # IndexedDB provider for local mode
 │   │   │   └── index.js          # Provider factory (detect, build, switch)
+│   │   ├── components/
+│   │   │   ├── GlobalMusicPlayer.vue  # Persistent mini-player across the app
+│   │   │   ├── WaveformVisual.vue     # Audio waveform visualization
+│   │   │   ├── BackendMenu.vue        # Backend URL configuration modal
+│   │   │   ├── PlaylistMenu.vue       # Playlist context menu
+│   │   │   └── SongMenu.vue           # Song context menu
 │   │   ├── pages/
-│   │   │   ├── UserPage.vue
+│   │   │   ├── UserPage.vue           # User selection/creation
+│   │   │   ├── SetupUser.vue          # User setup wizard
 │   │   │   ├── SetupBackend.vue       # Initial mode selection
-│   │   │   ├── VideoHome.vue          # Video feed + player
+│   │   │   ├── VideoHome.vue          # Video feed + player (Plyr.js)
 │   │   │   ├── AddVideo.vue           # Add video by URL
 │   │   │   ├── AddChannel.vue         # Channel browser + subscribe
 │   │   │   ├── MusicHome.vue          # Playlists + songs
@@ -235,12 +249,26 @@ hometube/
 │   │   │   ├── PlaylistView.vue       # Music player with queue
 │   │   │   ├── ExportPage.vue         # Export .ht files
 │   │   │   ├── ImportPage.vue         # Import .ht files
-│   │   │   └── SettingsPage.vue       # Mode toggle, settings
-│   │   ├── stores/
-│   │   ├── composables/
+│   │   │   ├── SettingsPage.vue       # Mode toggle, settings
+│   │   │   ├── DebugPage.vue          # Debug/info page
+│   │   │   └── AboutPage.vue          # App info and version
+│   │   ├── stores/                    # Pinia stores (music, video, user, errors)
 │   │   └── style.css
 │   ├── package.json
-│   └── vite.config.js      # Vite + PWA config
+│   └── vite.config.js       # Vite + PWA config
+├── mobile/                   # React Native companion app (Expo SDK 56)
+│   ├── app/                  # Expo Router file-based routing
+│   ├── src/
+│   │   ├── providers/        # DataProvider, ServerProvider, LocalProvider
+│   │   ├── stores/           # Zustand stores (user, music, video, ui)
+│   │   ├── db/localDb.ts     # SQLite wrapper
+│   │   ├── services/         # TrackPlayer background audio
+│   │   ├── components/       # Shared UI components
+│   │   ├── api.ts            # Provider proxy
+│   │   └── types.ts          # TypeScript interfaces
+│   ├── app.json              # Expo config
+│   ├── babel.config.js
+│   └── tsconfig.json
 └── data/
     ├── db.sqlite            # SQLite database
     └── downloads/           # Downloaded media files

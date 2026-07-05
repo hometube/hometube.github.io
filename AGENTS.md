@@ -6,28 +6,40 @@ Instructions for AI agents working on the HomeTube project.
 
 ```
 hometube/
+├── install.sh                # One-shot install: venv, deps, frontend build, ht command
+├── .github/workflows/
+│   └── deploy.yml            # GitHub Actions deploy workflow
 ├── backend/
-│   ├── main.py              # FastAPI app with REST endpoints
-│   ├── models.py            # DB models (User, Video, Music, Channel, Subscription, Playlist)
-│   ├── database.py          # SQLite configuration
-│   ├── cli.py               # CLI: install, init, login, download, export/import, songs, playlists, videos
-│   ├── import_music.py      # Import local music files (supports mp3, webm, flac, wav, m4a, ogg)
-│   ├── requirements.txt     # Python dependencies
+│   ├── main.py               # FastAPI app with REST endpoints
+│   ├── models.py             # DB models (User, Video, Music, Channel, Subscription, Playlist)
+│   ├── database.py           # SQLite configuration
+│   ├── cli.py                # CLI: install, init, login, download, export/import, songs, playlists, videos
+│   ├── cli.sh                # Helper script: manages venv and installs ht command
+│   ├── run-dev.sh            # Dev runner with ngrok tunnel
+│   ├── import_music.py       # Import local music files (supports mp3, webm, flac, wav, m4a, ogg)
+│   ├── requirements.txt      # Python dependencies
 │   └── services/
-│       ├── ytdlp.py         # yt-dlp wrapper for downloads (preserves audio format)
-│       └── scheduler.py     # Background subscription checker + auto-delete
+│       ├── ytdlp.py          # yt-dlp wrapper for downloads (preserves audio format)
+│       └── scheduler.py      # Background subscription checker + auto-delete
 ├── frontend/
 │   ├── src/
-│   │   ├── App.vue         # Main Vue app with slide-out nav menu
-│   │   ├── api.js          # API proxy – delegates to active provider (server or local)
-│   │   ├── localDb.js      # IndexedDB wrapper (hometube-local DB with 8 object stores)
+│   │   ├── App.vue           # Main Vue app with slide-out nav menu
+│   │   ├── api.js            # API proxy – delegates to active provider (server or local)
+│   │   ├── localDb.js        # IndexedDB wrapper (hometube-local DB with 8 object stores)
 │   │   ├── providers/
 │   │   │   ├── DataProvider.js    # Abstract provider interface
 │   │   │   ├── ServerProvider.js  # HTTP provider – talks to FastAPI backend
 │   │   │   ├── LocalProvider.js   # IndexedDB provider – offline mode
 │   │   │   └── index.js          # Provider factory (detect mode, build, switch)
+│   │   ├── components/
+│   │   │   ├── GlobalMusicPlayer.vue  # Persistent mini-player across the app
+│   │   │   ├── WaveformVisual.vue     # Audio waveform visualization
+│   │   │   ├── BackendMenu.vue        # Backend URL configuration modal
+│   │   │   ├── PlaylistMenu.vue       # Playlist context menu
+│   │   │   └── SongMenu.vue           # Song context menu
 │   │   ├── pages/
 │   │   │   ├── UserPage.vue           # User selection/creation
+│   │   │   ├── SetupUser.vue          # User setup wizard
 │   │   │   ├── SetupBackend.vue       # Initial setup: choose server or local mode
 │   │   │   ├── VideoHome.vue          # Video feed, filters, in-app player (Plyr.js)
 │   │   │   ├── AddVideo.vue           # Add video by URL with quality selection
@@ -37,27 +49,50 @@ hometube/
 │   │   │   ├── PlaylistView.vue       # Full music player: album art, play/shuffle, controls
 │   │   │   ├── ExportPage.vue         # Export data as .ht file
 │   │   │   ├── ImportPage.vue         # Import .ht file into local mode
-│   │   │   └── SettingsPage.vue       # Settings with server/local mode toggle
-│   │   ├── stores/           # Pinia stores (music, etc.)
-│   │   ├── composables/      # Vue composables
+│   │   │   ├── SettingsPage.vue       # Settings with server/local mode toggle
+│   │   │   ├── DebugPage.vue          # Debug/info page
+│   │   │   └── AboutPage.vue          # App info and version
+│   │   ├── stores/
+│   │   │   ├── music.js       # Pinia store (music state, playback queue)
+│   │   │   ├── video.js       # Pinia store (video state)
+│   │   │   ├── user.js        # Pinia store (user state)
+│   │   │   └── errors.js      # Pinia store (error tracking)
 │   │   └── style.css
 │   ├── package.json
-│   └── vite.config.js      # Vite + PWA config
-├── mobile/                          # React Native companion app (Expo SDK 56)
-│   ├── app/                         # Expo Router file-based routing
-│   │   ├── _layout.tsx              # Root layout with providers
-│   │   ├── welcome/                 # Onboarding (mode choice, user selection)
-│   │   └── (tabs)/                  # Tab navigator
+│   └── vite.config.js         # Vite + PWA config
+├── mobile/                    # React Native companion app (Expo SDK 56)
+│   ├── app/                   # Expo Router file-based routing
+│   │   ├── _layout.tsx        # Root layout with providers
+│   │   ├── index.tsx          # Entry → redirect to welcome or tabs
+│   │   ├── welcome/
+│   │   │   ├── setup-backend.tsx    # Server/local mode choice
+│   │   │   └── setup-user.tsx       # User selection/creation
+│   │   └── (tabs)/
+│   │       ├── _layout.tsx          # Bottom tab navigator
 │   │       ├── videos/              # Video feed, add, channel, player
-│   │       ├── music/               # Music home, playlist, now-playing
+│   │       ├── music/               # Music home, add, playlist, now-playing
 │   │       └── settings/            # Settings, export, import
 │   ├── src/
 │   │   ├── providers/               # DataProvider, ServerProvider, LocalProvider
-│   │   ├── stores/                  # Zustand stores (user, music, video)
-│   │   ├── db/localDb.ts           # SQLite wrapper (replaces IndexedDB)
-│   │   ├── services/               # TrackPlayer background audio service
-│   │   └── api.ts                  # Provider proxy (same pattern as frontend/)
-│   └── AGENTS.md                   # Full mobile project documentation
+│   │   ├── stores/
+│   │   │   ├── userStore.ts         # User state (Zustand)
+│   │   │   ├── musicStore.ts        # Music playback (react-native-track-player)
+│   │   │   ├── videoStore.ts        # Video state
+│   │   │   └── uiStore.ts          # UI state (menu, navigation)
+│   │   ├── db/localDb.ts           # SQLite wrapper (9 tables mirroring IndexedDB stores)
+│   │   ├── services/
+│   │   │   ├── trackPlayerService.ts # Background audio service
+│   │   │   └── playerSetup.ts       # TrackPlayer registration
+│   │   ├── components/
+│   │   │   ├── HamburgerMenu.tsx    # Slide-out navigation menu
+│   │   │   ├── LoadingSpinner.tsx
+│   │   │   ├── EmptyState.tsx
+│   │   │   └── index.ts            # Component re-exports
+│   │   ├── api.ts                  # Provider proxy (same pattern as frontend/)
+│   │   └── types.ts               # Shared TypeScript interfaces
+│   ├── app.json                   # Expo config (plugins, permissions, splash)
+│   ├── babel.config.js            # Babel config with module-resolver for @/ alias
+│   └── tsconfig.json              # TypeScript config with path aliases
 └── data/
     ├── db.sqlite            # SQLite database
     └── downloads/           # Downloaded media files
@@ -126,13 +161,25 @@ npx tsc --noEmit   # TypeScript type check
 
 ## API Endpoints
 
+### General
+- `GET /api/status` - Health check / server status
+- `GET /api/downloads` - List download status for active user
+- `GET /api/users` - List all users
+- `POST /api/users` - Create user (body: name, image)
+
+### Auth
+- `POST /api/auth/exchange` - Exchange token for backend auth
+
 ### Videos
 - `GET /api/videos?user_id=&filter=` - List videos (filter: all/my-feed/unwatched)
 - `POST /api/videos/add` - Add video (body: url, user_id, quality)
+- `GET /api/videos/info?url=` - Get available formats for URL
+- `GET /api/videos/{id}/qualities` - Get available qualities for a video
 - `POST /api/videos/{id}/watch` - Mark as watched
 - `POST /api/videos/{id}/keep` - Toggle keep flag
 - `POST /api/videos/{id}/download` - Download video
-- `GET /api/videos/info?url=` - Get available formats for URL
+- `PUT /api/videos/{id}` - Update video metadata
+- `DELETE /api/videos/{id}` - Delete video
 
 ### Music
 - `GET /api/music?user_id=` - List music
@@ -140,6 +187,8 @@ npx tsc --noEmit   # TypeScript type check
 - `GET /api/music/info?url=` - Get music info
 - `POST /api/music/{id}/download` - Download music (returns filename)
 - `GET /api/music/{id}/file` - Serve music file with correct MIME type
+- `PUT /api/music/{id}` - Update music metadata
+- `DELETE /api/music/{id}` - Delete music
 
 ### Serving Files
 - `GET /api/files/videos/{filename}` - Serve video files (video/mp4)
@@ -148,14 +197,16 @@ npx tsc --noEmit   # TypeScript type check
 ### Playlists
 - `GET /api/playlists?user_id=` - List playlists
 - `POST /api/playlists` - Create playlist
+- `PUT /api/playlists/{id}` - Update playlist
 - `POST /api/playlists/{id}/add` - Add song to playlist
-- `DELETE /api/playlists/{id}/remove/{song_id}` - Remove song
+- `DELETE /api/playlists/{id}/remove/{song_id}` - Remove song from playlist
 - `DELETE /api/playlists/{id}` - Delete playlist
 
 ### Channels
 - `POST /api/channels/add` - Add channel
 - `GET /api/channels/{id}/videos` - Get channel videos
 - `POST /api/channels/{id}/subscribe` - Subscribe with criteria
+- `DELETE /api/subscriptions/{id}` - Unsubscribe
 
 ### Export / Import
 - `POST /api/export` - Export database as .ht file (body: type, user_id, date_from, date_to, video_ids, music_ids)

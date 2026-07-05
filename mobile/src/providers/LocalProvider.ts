@@ -1,7 +1,8 @@
 import { DataProvider } from "./DataProvider";
 import { localDb } from "../db/localDb";
 import * as FileSystem from "expo-file-system/legacy";
-import { unzip, zip } from "fflate";
+import { zip } from "fflate";
+import { unzip } from "react-native-zip-archive";
 import type {
   User,
   Video,
@@ -488,21 +489,18 @@ export class LocalProvider extends DataProvider {
   }
 
   async importData(file: { uri: string; name?: string }): Promise<{ ok: boolean; summary: string }> {
-    const base64Data = await FileSystem.readAsStringAsync(file.uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    const zipData = base64ToArray(base64Data);
+    const tempDir = `${FileSystem.cacheDirectory}hometube_import_temp/`;
 
-    const unzipped = await new Promise<Record<string, Uint8Array>>(
-      (resolve, reject) => {
-        unzip(zipData, (err, data) => {
-          if (err) reject(err);
-          else resolve(data);
-        });
-      }
+    await FileSystem.deleteAsync(tempDir, { idempotent: true });
+    await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
+
+    const srcUri = file.uri.startsWith("file://") ? file.uri.replace("file://", "") : file.uri;
+    await unzip(srcUri, tempDir.replace("file://", ""));
+
+    const metaRaw = await FileSystem.readAsStringAsync(
+      `${tempDir}metadata.json`,
+      { encoding: FileSystem.EncodingType.UTF8 },
     );
-
-    const metaRaw = new TextDecoder().decode(unzipped["metadata.json"]);
     const metadata: HtMetadata = JSON.parse(metaRaw);
 
     const idMap: Record<string, Record<number, number>> = {
@@ -513,6 +511,8 @@ export class LocalProvider extends DataProvider {
       music: {},
       playlists: {},
     };
+
+    const destDir = `${FileSystem.documentDirectory}hometube_files/`;
 
     await localDb.clearAll();
 
@@ -548,18 +548,15 @@ export class LocalProvider extends DataProvider {
           : null,
         added_by: idMap.users[video.added_by] || video.added_by,
       });
-      const fileKey = `video_${video.video_id}`;
-      const zipFile = unzipped[`videos/${video.video_id}.mp4`];
-      if (zipFile) {
-        const b64 = arrayToBase64(zipFile);
-        const filePath = `${FileSystem.documentDirectory}hometube_files/${video.video_id}.mp4`;
-        await FileSystem.writeAsStringAsync(filePath, b64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+      const srcPath = `${tempDir}videos/${video.video_id}.mp4`;
+      const srcInfo = await FileSystem.getInfoAsync(srcPath);
+      if (srcInfo.exists) {
+        const destPath = `${destDir}${video.video_id}.mp4`;
+        await FileSystem.moveAsync({ from: srcPath, to: destPath });
         await localDb.store("files", {
-          id: fileKey,
+          id: `video_${video.video_id}`,
           type: "video",
-          file_path: filePath,
+          file_path: destPath,
           title: video.title,
         });
       }
@@ -574,24 +571,27 @@ export class LocalProvider extends DataProvider {
         added_by: idMap.users[song.added_by] || song.added_by,
       });
       const fileName = song.filename || `${song.id}`;
-      const fileKey = `music_${fileName}`;
-      let zipFile = unzipped[`music/${fileName}`];
-      if (!zipFile) {
-        const altKey = Object.keys(unzipped).find(
-          (k) => k.startsWith("music/") && k.includes(`${song.video_id}`)
-        );
-        if (altKey) zipFile = unzipped[altKey];
+      let srcPath = `${tempDir}music/${fileName}`;
+      let srcInfo = await FileSystem.getInfoAsync(srcPath);
+      if (!srcInfo.exists) {
+        const musicDir = `${tempDir}music/`;
+        const musicDirInfo = await FileSystem.getInfoAsync(musicDir);
+        if (musicDirInfo.exists) {
+          const entries = await FileSystem.readDirectoryAsync(musicDir);
+          const match = entries.find((e) => e.includes(`${song.video_id}`));
+          if (match) {
+            srcPath = musicDir + match;
+            srcInfo = await FileSystem.getInfoAsync(srcPath);
+          }
+        }
       }
-      if (zipFile) {
-        const b64 = arrayToBase64(zipFile);
-        const filePath = `${FileSystem.documentDirectory}hometube_files/${fileName}`;
-        await FileSystem.writeAsStringAsync(filePath, b64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+      if (srcInfo.exists) {
+        const destPath = `${destDir}${fileName}`;
+        await FileSystem.moveAsync({ from: srcPath, to: destPath });
         await localDb.store("files", {
-          id: fileKey,
+          id: `music_${fileName}`,
           type: "music",
-          file_path: filePath,
+          file_path: destPath,
           title: song.title,
         });
       }
@@ -613,6 +613,8 @@ export class LocalProvider extends DataProvider {
       await localDb.store("settings", setting);
     }
 
+    await FileSystem.deleteAsync(tempDir, { idempotent: true });
+
     return {
       ok: true,
       summary: `Imported ${metadata.users.length} users, ${metadata.videos.length} videos, ${metadata.music.length} songs, ${metadata.playlists.length} playlists`,
@@ -632,11 +634,4 @@ function arrayToBase64(arr: Uint8Array): string {
   return btoa(binary);
 }
 
-function base64ToArray(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const arr = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    arr[i] = binary.charCodeAt(i);
-  }
-  return arr;
-}
+
