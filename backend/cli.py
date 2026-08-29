@@ -11,9 +11,13 @@ Usage:
   ht export --playlist <id_or_name>  Export a specific playlist
   ht import <file.ht>        Import .ht archive
   ht import --music <folder>  Import music files from local folder
-  ht songs                List music for active user
+ht songs                List music for active user
   ht playlists            List playlists for active user
   ht videos               List videos for active user
+  ht serve                Start the HomeTube server
+  ht build                Build the Android app (release by default)
+  ht deploy               Install the built app onto a connected device
+  ht fixart               Backfill missing album art for downloaded music
 """
 
 import argparse
@@ -142,6 +146,17 @@ def _resolve_video(db, user_id, id_or_name):
 # Commands
 # ---------------------------------------------------------------------------
 
+def check_js_runtime():
+    """Warn if no supported JavaScript runtime is installed for YouTube downloads."""
+    if any(shutil.which(r) for r in ("deno", "node", "quickjs", "bun")):
+        return True
+    print("Warning: No JavaScript runtime found. Newer yt-dlp requires one (e.g. Deno)", file=sys.stderr)
+    print("  for YouTube downloads. Install one on macOS with:", file=sys.stderr)
+    print("    brew install deno", file=sys.stderr)
+    print("  See https://github.com/yt-dlp/yt-dlp/wiki/EJS for alternatives.", file=sys.stderr)
+    return False
+
+
 def check_ytdlp():
     """Check if yt-dlp is installed and warn if not."""
     if not shutil.which("yt-dlp"):
@@ -151,6 +166,7 @@ def check_ytdlp():
         print("  pip install yt-dlp           # pip")
         print()
         return False
+    check_js_runtime()
     return True
 
 
@@ -332,7 +348,7 @@ def cmd_download(args):
                         continue
                     title = clean_title(entry.get("title", "Unknown"))
                     artist = entry.get("artist") or entry.get("channel") or entry.get("uploader")
-                    album_art = entry.get("thumbnail") or info.get("thumbnail")
+                    album_art = ytdlp.pick_album_art(entry) or ytdlp.pick_album_art(info)
                     entry_url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id')}"
                     existing = db.query(Music).filter(Music.video_id == entry["id"]).first()
                     if existing:
@@ -382,7 +398,7 @@ def cmd_download(args):
                 if existing:
                     print(f"Music already exists: {title}")
                 else:
-                    music = Music(video_id=info.get("id"), url=info.get("webpage_url") or args.url, title=title, artist=artist, album_art=info.get("thumbnail"), added_by=user.id)
+                    music = Music(video_id=info.get("id"), url=info.get("webpage_url") or args.url, title=title, artist=artist, album_art=ytdlp.pick_album_art(info), added_by=user.id)
                     db.add(music)
                     db.flush()
                     filename = ytdlp.download_music(args.url, music.id)
@@ -404,6 +420,45 @@ def cmd_download(args):
                         print(f"Added to playlist: {playlist.name}")
     finally:
         db.close()
+
+
+def update_ytdlp():
+    """Update yt-dlp using the package manager it was installed with."""
+    if not shutil.which("yt-dlp"):
+        print("yt-dlp not found; skipped its update.")
+        return
+
+    if shutil.which("brew"):
+        try:
+            result = subprocess.run(
+                ["brew", "list", "yt-dlp"], capture_output=True
+            )
+            if result.returncode == 0:
+                print("Updating yt-dlp via Homebrew...")
+                result = subprocess.run(["brew", "upgrade", "yt-dlp"])
+                if result.returncode != 0:
+                    print("Error: brew upgrade yt-dlp failed", file=sys.stderr)
+                return
+        except FileNotFoundError:
+            pass
+
+    pip_result = subprocess.run(
+        [sys.executable, "-m", "pip", "show", "yt-dlp"],
+        capture_output=True,
+    )
+    if pip_result.returncode == 0:
+        print("Updating yt-dlp via pip...")
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-U", "yt-dlp[default]"],
+        )
+        if result.returncode != 0:
+            print("Error: pip install yt-dlp failed", file=sys.stderr)
+        return
+
+    print("Updating yt-dlp...")
+    result = subprocess.run(["yt-dlp", "-U"])
+    if result.returncode != 0:
+        print("Error: yt-dlp self-update failed", file=sys.stderr)
 
 
 def cmd_update(args):
@@ -428,6 +483,9 @@ def cmd_update(args):
         if result.returncode != 0:
             print("Error: pip install failed", file=sys.stderr)
             sys.exit(1)
+
+    update_ytdlp()
+    check_js_runtime()
 
     print("Update complete.")
 
@@ -1012,6 +1070,179 @@ def cmd_playlist_update_rename(args):
         db.close()
 
 
+def cmd_serve(args):
+    """Start the HomeTube server."""
+    import uvicorn
+
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    if os.getcwd() != backend_dir:
+        os.chdir(backend_dir)
+
+    print(f"Starting HomeTube server on http://{args.host}:{args.port}")
+    uvicorn.run("main:app", host=args.host, port=args.port, log_level=args.log_level)
+
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _apk_path(variant):
+    return os.path.join(
+        REPO_ROOT, "mobile", "android", "app", "build", "outputs", "apk",
+        variant, f"app-{variant}.apk",
+    )
+
+
+def cmd_build(args):
+    """Build the Android app (release by default)."""
+    mobile_dir = os.path.join(REPO_ROOT, "mobile")
+    if not os.path.isdir(mobile_dir):
+        print(f"Error: mobile directory not found: {mobile_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    android_dir = os.path.join(mobile_dir, "android")
+    if not os.path.isdir(android_dir):
+        print("Generating Android project via expo prebuild...")
+        result = subprocess.run(
+            ["npx", "expo", "prebuild", "--platform", "android"],
+            cwd=mobile_dir,
+        )
+        if result.returncode != 0:
+            print("Error: expo prebuild failed", file=sys.stderr)
+            sys.exit(1)
+
+    variant = "debug" if args.debug else "release"
+    task = f"assemble{variant.capitalize()}"
+    print(f"Building Android app ({variant} variant)...")
+    result = subprocess.run(["./gradlew", task], cwd=android_dir)
+    if result.returncode != 0:
+        print("Error: build failed", file=sys.stderr)
+        sys.exit(1)
+
+    apk = _apk_path(variant)
+    print(f"Build complete: {apk}")
+    print("Install it onto a connected device with: ht deploy")
+
+
+def _find_adb():
+    adb = shutil.which("adb")
+    if adb:
+        return adb
+    for cand in (
+        os.path.join(os.environ.get("ANDROID_HOME", ""), "platform-tools", "adb"),
+        os.path.expanduser("~/Library/Android/sdk/platform-tools/adb"),
+        os.path.expanduser("~/Android/Sdk/platform-tools/adb"),
+    ):
+        if cand and os.path.isfile(cand):
+            return cand
+    return None
+
+
+def _connected_devices(adb):
+    out = subprocess.run([adb, "devices"], capture_output=True, text=True).stdout
+    devices = []
+    for line in out.strip().splitlines()[1:]:
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == "device":
+            devices.append(parts[0])
+    return devices
+
+
+def cmd_deploy(args):
+    """Install the built app onto a connected device via adb."""
+    variant = "debug" if args.debug else "release"
+    apk = _apk_path(variant)
+    if not os.path.isfile(apk):
+        print(f"APK not found: {apk}", file=sys.stderr)
+        print("Build it first with: ht build", file=sys.stderr)
+        sys.exit(1)
+
+    adb = _find_adb()
+    if not adb:
+        print("Error: adb not found. Install Android Studio / platform-tools.", file=sys.stderr)
+        sys.exit(1)
+
+    devices = _connected_devices(adb)
+    if not devices:
+        print("No device connected. Enable USB debugging and connect your phone.", file=sys.stderr)
+        sys.exit(1)
+
+    target = args.device
+    if target and target not in devices:
+        print(f"Device not found: {target}", file=sys.stderr)
+        print(f"Connected devices: {', '.join(devices) or '(none)'}", file=sys.stderr)
+        sys.exit(1)
+    if not target and len(devices) > 1:
+        print(f"Multiple devices connected: {', '.join(devices)}", file=sys.stderr)
+        print("Pick one with: ht deploy --device <serial>", file=sys.stderr)
+        sys.exit(1)
+
+    cmd = [adb, "install", "-r", apk]
+    if target:
+        cmd = [adb, "-s", target, "install", "-r", apk]
+    else:
+        cmd = [adb, "-s", devices[0], "install", "-r", apk]
+
+    print(f"Installing {apk} onto {target or devices[0]}...")
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        print("Error: install failed", file=sys.stderr)
+        sys.exit(1)
+    print("Installed successfully.")
+
+
+def cmd_fixart(args):
+    """Backfill missing album art for downloaded music."""
+    db = get_db()
+    if args.data_dir:
+        data_dir = os.path.abspath(args.data_dir)
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from database import Base
+        import models
+        engine = create_engine(f"sqlite:///{os.path.join(data_dir, 'db.sqlite')}", connect_args={"check_same_thread": False})
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+    try:
+        from sqlalchemy import or_
+        from concurrent.futures import ThreadPoolExecutor
+        from models import Music
+        from services import ytdlp
+
+        missing = db.query(Music).filter(
+            or_(Music.album_art.is_(None), Music.album_art == "")
+        ).all()
+        if not missing:
+            print("No music is missing album art.")
+            return
+
+        print(f"Fetching album art for {len(missing)} tracks...", flush=True)
+
+        def fetch(m):
+            if not m.url:
+                return m.id, None
+            try:
+                info = ytdlp.get_music_info(m.url)
+                return m.id, ytdlp.pick_album_art(info) if info else None
+            except Exception:
+                return m.id, None
+
+        fixed = 0
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for mid, art in ex.map(fetch, missing):
+                if art:
+                    row = db.query(Music).filter(Music.id == mid).first()
+                    if row:
+                        row.album_art = art
+                        db.commit()
+                        fixed += 1
+                else:
+                    print(f"  Skipped (no art found): id={mid}", flush=True)
+        print(f"Updated {fixed} tracks.", flush=True)
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -1093,6 +1324,23 @@ def main():
 
     sub.add_parser("update", help="Pull latest from git and install dependencies")
 
+    serve_p = sub.add_parser("serve", help="Start the HomeTube server")
+    serve_p.add_argument("--host", default="0.0.0.0", help="Host to bind (default: 0.0.0.0)")
+    serve_p.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+    serve_p.add_argument("--log-level", choices=["debug", "info", "warning", "error", "critical"], default="info", help="Log level (default: info)")
+
+    build_p = sub.add_parser("build", help="Build the Android app")
+    build_p.add_argument("--debug", action="store_true", help="Build debug variant (default: release)")
+    build_p.set_defaults(func=cmd_build)
+
+    deploy_p = sub.add_parser("deploy", help="Install the built app onto a connected device")
+    deploy_p.add_argument("--debug", action="store_true", help="Install the debug APK (default: release)")
+    deploy_p.add_argument("--device", help="Device serial to install onto (see: adb devices)")
+    deploy_p.set_defaults(func=cmd_deploy)
+
+    fixart_p = sub.add_parser("fixart", help="Backfill missing album art for downloaded music")
+    fixart_p.add_argument("--data-dir", help="Path to a data directory containing db.sqlite (default: configured data dir)")
+
     args = parser.parse_args()
 
     # Handle --no-download override
@@ -1116,6 +1364,8 @@ def main():
             "export": cmd_export,
             "import": cmd_import,
             "update": cmd_update,
+            "serve": cmd_serve,
+            "fixart": cmd_fixart,
         }
         cmds[args.command](args)
 

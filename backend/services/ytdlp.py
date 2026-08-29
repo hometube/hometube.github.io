@@ -1,9 +1,14 @@
 import subprocess, json, os, re
+from paths import downloads_dir
 
-DL_DIR = os.environ.get("DL_DIR", "data/downloads")
+DL_DIR = downloads_dir()
+
+# YouTube has been blocking the android_vr client (HTTP 403). Exclude it so
+# yt-dlp uses the JS-capable web/web_safari clients instead.
+YTDLP_YT_ARGS = ["--extractor-args", "youtube:player_client=default,-android_vr"]
 
 def run_ytdlp(args, capture=True, timeout=120):
-    cmd = ["yt-dlp", "--no-warnings"] + args
+    cmd = ["yt-dlp", "--no-warnings"] + YTDLP_YT_ARGS + args
     result = subprocess.run(cmd, capture_output=capture, text=True, timeout=timeout)
     return result.stdout if capture else result
 
@@ -56,10 +61,29 @@ def get_music_info(url):
     except:
         return None
 
+def _is_jpg(url):
+    return url.split("?", 1)[0].lower().endswith((".jpg", ".jpeg"))
+
+def pick_album_art(info):
+    """Best album art URL from a track info dict.
+
+    yt-dlp's top-level `thumbnail` is usually the highest-preference entry,
+    which today is a .webp URL -- and WebP art fails to render in several
+    image loaders (mobile lock-screen/notification artwork, native Image
+    components). Prefer the highest-preference .jpg thumbnail instead.
+    """
+    thumbs = info.get("thumbnails") or []
+    jpgs = [t.get("url") for t in thumbs
+            if isinstance(t, dict) and _is_jpg(t.get("url") or "")]
+    if jpgs:
+        # thumbnails are ordered by preference ascending; last is best
+        return jpgs[-1]
+    return info.get("thumbnail")
+
 def download_video(url, video_id, quality="best"):
     os.makedirs(f"{DL_DIR}/videos", exist_ok=True)
     fmt = quality if quality != "best" else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-    cmd = ["yt-dlp", "-f", fmt, "-o", f"{DL_DIR}/videos/%(id)s.%(ext)s", url]
+    cmd = ["yt-dlp"] + YTDLP_YT_ARGS + ["-f", fmt, "-o", f"{DL_DIR}/videos/%(id)s.%(ext)s", url]
     subprocess.run(cmd)
     return True
 
@@ -67,7 +91,17 @@ def download_music(url, music_id):
     os.makedirs(f"{DL_DIR}/music", exist_ok=True)
     out = run_ytdlp(["--get-filename", "-o", f"%(id)s.%(ext)s", url])
     expected_name = out.strip()
-    cmd = ["yt-dlp", "-x", "-o", f"{DL_DIR}/music/%(id)s.%(ext)s", url]
+    # -x --audio-format mp3: opus/webm can't hold embedded cover art, and
+    # .opus serves badly as audio/mpeg. mp3 is embeddable and plays everywhere.
+    cmd = ["yt-dlp"] + YTDLP_YT_ARGS + [
+        "-x",
+        "--audio-format", "mp3",
+        "--audio-quality", "0",
+        "--embed-thumbnail",
+        "--convert-thumbnails", "jpg",
+        "-o", f"{DL_DIR}/music/%(id)s.%(ext)s",
+        url,
+    ]
     subprocess.run(cmd)
     import glob
     matches = glob.glob(f"{DL_DIR}/music/{expected_name.split('.')[0]}.*")

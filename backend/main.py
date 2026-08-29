@@ -21,6 +21,10 @@ from datetime import datetime, timedelta
 from database import engine, get_db, Base
 import models
 from services import ytdlp, scheduler
+from paths import downloads_dir
+
+VIDEOS_DIR = os.path.join(downloads_dir(), "videos")
+MUSIC_DIR = os.path.join(downloads_dir(), "music")
 
 
 # Global variable to store the current ngrok token for display
@@ -126,6 +130,7 @@ class MusicUpdate(BaseModel):
 class PlaylistUpdate(BaseModel):
     name: Optional[str] = None
     user_id: Optional[int] = None
+    songs: Optional[list] = None
 
 class ExportRequest(BaseModel):
     type: str = "all"
@@ -484,7 +489,7 @@ def delete_video(vid_id: int, token_valid: bool = Depends(verify_token), db: Ses
     if not vid:
         raise HTTPException(404)
     if vid.downloaded and vid.video_id:
-        fname = f"data/downloads/videos/{vid.video_id}.mp4"
+        fname = os.path.join(VIDEOS_DIR, f"{vid.video_id}.mp4")
         if os.path.exists(fname):
             os.remove(fname)
     db.delete(vid)
@@ -539,6 +544,8 @@ def update_playlist(playlist_id: int, data: PlaylistUpdate, token_valid: bool = 
         if not user:
             raise HTTPException(400, "User not found")
         playlist.user_id = data.user_id
+    if data.songs is not None:
+        playlist.songs = data.songs
     db.commit()
     return playlist
 
@@ -573,7 +580,7 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
                 continue
             title = clean_title(entry.get("title", "Unknown"))
             artist = entry.get("artist") or entry.get("channel") or entry.get("uploader")
-            album_art = entry.get("thumbnail") or info.get("thumbnail")
+            album_art = ytdlp.pick_album_art(entry) or ytdlp.pick_album_art(info)
             video_id = entry.get("id")
             entry_url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={video_id}"
 
@@ -613,7 +620,7 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
         return {"ok": True, "count": len(music_ids), "is_playlist": True, "playlist_id": playlist.id}
 
     title = clean_title(info.get("title"))
-    music = models.Music(video_id=info.get("id"), url=data.url, title=title, artist=info.get("artist"), album_art=info.get("thumbnail"), is_playlist=False, added_by=data.user_id)
+    music = models.Music(video_id=info.get("id"), url=data.url, title=title, artist=info.get("artist"), album_art=ytdlp.pick_album_art(info), is_playlist=False, added_by=data.user_id)
     db.add(music)
     db.commit()
     db.refresh(music)
@@ -657,7 +664,7 @@ def serve_music_by_id(music_id: int, token_valid: bool = Depends(verify_token), 
     print(f"[DEBUG] Serving music {music_id}: filename={music.filename}, video_id={music.video_id}, url={music.url}, title={music.title}")
 
     # Auto-download if not already downloaded
-    if not music.downloaded or not music.filename or not os.path.exists(f"data/downloads/music/{music.filename}"):
+    if not music.downloaded or not music.filename or not os.path.exists(os.path.join(MUSIC_DIR, music.filename or "")):
         print(f"[DEBUG] Music not downloaded, triggering download...")
         filename = ytdlp.download_music(music.url, music.id)
         if filename:
@@ -667,11 +674,11 @@ def serve_music_by_id(music_id: int, token_valid: bool = Depends(verify_token), 
 
     # Use stored filename if available
     if music.filename:
-        path = f"data/downloads/music/{music.filename}"
+        path = os.path.join(MUSIC_DIR, music.filename)
         if os.path.exists(path):
             print(f"[DEBUG] Using stored filename: {path}")
             ext = music.filename.split(".")[-1].lower()
-            media_types = {"mp3": "audio/mpeg", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
+            media_types = {"mp3": "audio/mpeg", "opus": "audio/opus", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
             media_type = media_types.get(ext, "audio/mpeg")
             response = FileResponse(path, media_type=media_type, filename=music.filename)
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -684,14 +691,14 @@ def serve_music_by_id(music_id: int, token_valid: bool = Depends(verify_token), 
     # Try to extract filename from URL (for imported files with file:// prefix)
     if music.url and music.url.startswith('file://'):
         filename = music.url[7:]  # Remove 'file://' prefix
-        path = f"data/downloads/music/{filename}"
+        path = os.path.join(MUSIC_DIR, filename)
         if os.path.exists(path):
             print(f"[DEBUG] Using filename from URL: {path}")
             # Save filename to database for future use
             music.filename = filename
             db.commit()
             ext = filename.split(".")[-1].lower()
-            media_types = {"mp3": "audio/mpeg", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
+            media_types = {"mp3": "audio/mpeg", "opus": "audio/opus", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
             media_type = media_types.get(ext, "audio/mpeg")
             response = FileResponse(path, media_type=media_type, filename=filename)
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -719,7 +726,7 @@ def serve_music_by_id(music_id: int, token_valid: bool = Depends(verify_token), 
         video_id = str(music.id)
 
     print(f"[DEBUG] Searching for video_id: {video_id}")
-    matches = glob.glob(f"data/downloads/music/*{video_id}*")
+    matches = glob.glob(os.path.join(MUSIC_DIR, f"*{video_id}*"))
     print(f"[DEBUG] Glob matches: {matches}")
     if not matches:
         raise HTTPException(404)
@@ -731,7 +738,7 @@ def serve_music_by_id(music_id: int, token_valid: bool = Depends(verify_token), 
     db.commit()
 
     ext = filename.split(".")[-1].lower()
-    media_types = {"mp3": "audio/mpeg", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
+    media_types = {"mp3": "audio/mpeg", "opus": "audio/opus", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
     media_type = media_types.get(ext, "audio/mpeg")
     response = FileResponse(path, media_type=media_type, filename=filename)
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -753,7 +760,7 @@ def delete_music(music_id: int, token_valid: bool = Depends(verify_token), db: S
 
     # Delete file from disk
     if music.filename:
-        path = f"data/downloads/music/{music.filename}"
+        path = os.path.join(MUSIC_DIR, music.filename)
         if os.path.exists(path):
             os.remove(path)
 
@@ -845,14 +852,14 @@ def export_data(data: ExportRequest, token_valid: bool = Depends(verify_token), 
         for v in metadata["videos"]:
             if v.get("downloaded") and v.get("video_id"):
                 fname = f"{v['video_id']}.mp4"
-                fpath = f"data/downloads/videos/{fname}"
+                fpath = os.path.join(VIDEOS_DIR, fname)
                 if os.path.isfile(fpath):
                     zf.write(fpath, f"videos/{fname}")
 
         for m in metadata["music"]:
             fname = m.get("filename")
             if fname:
-                fpath = f"data/downloads/music/{fname}"
+                fpath = os.path.join(MUSIC_DIR, fname)
                 if os.path.isfile(fpath):
                     zf.write(fpath, f"music/{fname}")
 
@@ -985,14 +992,14 @@ async def import_data(file: UploadFile = File(...), token_valid: bool = Depends(
                     id_map["playlists"][old_id] = new_p.id
                     summary["playlists"] += 1
 
-            os.makedirs("data/downloads/videos", exist_ok=True)
-            os.makedirs("data/downloads/music", exist_ok=True)
+            os.makedirs(VIDEOS_DIR, exist_ok=True)
+            os.makedirs(MUSIC_DIR, exist_ok=True)
 
             for name in zf.namelist():
                 if name.startswith("videos/") and not name.endswith("/"):
-                    zf.extract(name, "data/downloads")
+                    zf.extract(name, downloads_dir())
                 elif name.startswith("music/") and not name.endswith("/"):
-                    zf.extract(name, "data/downloads")
+                    zf.extract(name, downloads_dir())
 
             if "settings" in metadata:
                 for s in metadata["settings"]:
@@ -1026,18 +1033,18 @@ from fastapi.responses import FileResponse
 
 @app.get("/api/files/videos/{filename:path}")
 def serve_video(filename: str, token_valid: bool = Depends(verify_token)):
-    path = f"data/downloads/videos/{filename}"
+    path = os.path.join(VIDEOS_DIR, filename)
     if not os.path.exists(path):
         raise HTTPException(404)
     return FileResponse(path, media_type="video/mp4", filename=filename)
 
 @app.get("/api/files/music/{filename:path}")
 def serve_music(filename: str, token_valid: bool = Depends(verify_token)):
-    path = f"data/downloads/music/{filename}"
+    path = os.path.join(MUSIC_DIR, filename)
     if not os.path.exists(path):
         raise HTTPException(404)
     ext = filename.split(".")[-1].lower()
-    media_types = {"mp3": "audio/mpeg", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
+    media_types = {"mp3": "audio/mpeg", "opus": "audio/opus", "webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "flac": "audio/flac", "wav": "audio/wav"}
     media_type = media_types.get(ext, "audio/mpeg")
     return FileResponse(path, media_type=media_type, filename=filename)
 

@@ -49,7 +49,8 @@ async def check_subscriptions():
             ).all()
             for vid in old_videos:
                 import os
-                vid_path = f"data/downloads/videos/{vid.video_id}.mp4"
+                from paths import downloads_dir
+                vid_path = os.path.join(downloads_dir(), "videos", f"{vid.video_id}.mp4")
                 if os.path.exists(vid_path):
                     os.remove(vid_path)
                 db.delete(vid)

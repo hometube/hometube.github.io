@@ -12,7 +12,8 @@ hometube/
 ├── backend/
 │   ├── main.py               # FastAPI app with REST endpoints
 │   ├── models.py             # DB models (User, Video, Music, Channel, Subscription, Playlist)
-│   ├── database.py           # SQLite configuration
+│   ├── database.py           # SQLite configuration (DB path resolved via paths.py)
+│   ├── paths.py              # Single source of truth for data_dir/db/downloads (reads ~/.config/hometube/config.json)
 │   ├── cli.py                # CLI: install, init, login, download, export/import, songs, playlists, videos
 │   ├── cli.sh                # Helper script: manages venv and installs ht command
 │   ├── run-dev.sh            # Dev runner with ngrok tunnel
@@ -68,10 +69,10 @@ hometube/
 │   │   │   ├── setup-backend.tsx    # Server/local mode choice
 │   │   │   └── setup-user.tsx       # User selection/creation
 │   │   └── (tabs)/
-│   │       ├── _layout.tsx          # Bottom tab navigator
+│   │       ├── _layout.tsx          # Stack navigator (nav via hamburger menu only)
 │   │       ├── videos/              # Video feed, add, channel, player
 │   │       ├── music/               # Music home, add, playlist, now-playing
-│   │       └── settings/            # Settings, export, import
+│   │       └── settings/            # Settings, backend URL, export, import
 │   ├── src/
 │   │   ├── providers/               # DataProvider, ServerProvider, LocalProvider
 │   │   ├── stores/
@@ -125,6 +126,8 @@ ht import backup.ht           # Import .ht file
 ht songs                      # List music for active user
 ht playlists                  # List playlists for active user
 ht videos                     # List videos for active user
+ht build                      # Build the Android app (release by default)
+ht deploy                     # Install the built app onto a connected device
 ```
 
 ### Frontend (Vue PWA)
@@ -214,6 +217,7 @@ npx tsc --noEmit   # TypeScript type check
 
 ## Notes
 
+- **One library, one data dir**: all paths (DB, downloads, file serving) are resolved by `backend/paths.py` from `data_dir` in `~/.config/hometube/config.json` (see `ht init`); `ht serve`, `ht download`/`ht` CLI commands, `main.py`, `ytdlp.py`, `import_music.py`, and `scheduler.py` all share the same data dir by default. `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars override it.
 - Backend serves the built frontend from `frontend/dist/`
 - Scheduler runs in background checking subscriptions every 60 seconds
 - Auto-delete: Videos watched >7 days ago without keep_flag are deleted

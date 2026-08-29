@@ -18,11 +18,13 @@ from mutagen.mp3 import MP3
 from mutagen.flac import FLAC
 from mutagen.wave import WAVE
 
-DB_PATH = os.environ.get("DB_PATH", "data/db.sqlite")
+from paths import db_path, downloads_dir
+
+DB_PATH = db_path()
 engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-DL_DIR = os.environ.get("DL_DIR", "data/downloads")
+DL_DIR = downloads_dir()
 MUSIC_DIR = os.path.join(DL_DIR, "music")
 
 SUPPORTED_EXTENSIONS = {'.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.webm'}
