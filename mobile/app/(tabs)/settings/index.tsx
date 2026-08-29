@@ -15,11 +15,12 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ProviderType } from "@/types";
 
 export default function Settings() {
-  const { user, setUser, loadUser } = useUserStore();
+  const { user, setUser, loadUser, backendUrl, loadBackendUrl } = useUserStore();
   const [providerType, setProviderType] = useState<ProviderType>("server");
 
   useEffect(() => {
     detectMode();
+    loadBackendUrl();
   }, []);
 
   const detectMode = async () => {
@@ -128,6 +129,14 @@ export default function Settings() {
           value={providerType === "server" ? "Server Mode" : "Local Mode"}
           onPress={handleToggleMode}
         />
+        {providerType === "server" && (
+          <SettingsRow
+            icon="server"
+            label="Backend URL"
+            value={backendUrl || "Not set"}
+            onPress={() => router.push("/(tabs)/settings/backend")}
+          />
+        )}
       </View>
 
       <View style={styles.section}>

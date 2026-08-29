@@ -139,7 +139,7 @@ export default function AddMusic() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#1a1a2e" },
-  form: { padding: 16, gap: 12 },
+  form: { padding: 16, gap: 12, paddingBottom: 80 },
   label: { color: "#fff", fontSize: 14, fontWeight: "600" },
   input: {
     backgroundColor: "#16213e",

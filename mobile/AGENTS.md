@@ -23,10 +23,10 @@ mobile/
 │   │   ├── setup-backend.tsx     # Server/local mode choice
 │   │   └── setup-user.tsx        # User selection/creation
 │   └── (tabs)/
-│       ├── _layout.tsx           # Bottom tab navigator
+│       ├── _layout.tsx           # Root stack navigator (nav via hamburger menu only)
 │       ├── videos/               # Video feed, add, channel, player
 │       ├── music/                # Music home, add, playlist, now-playing
-│       └── settings/             # Settings, export, import
+│       └── settings/            # Settings, backend URL, export, import
 ├── src/
 │   ├── providers/
 │   │   ├── DataProvider.ts       # Abstract provider interface

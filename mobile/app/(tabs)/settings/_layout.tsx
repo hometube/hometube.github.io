@@ -12,6 +12,7 @@ export default function SettingsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: "Settings" }} />
+      <Stack.Screen name="backend" options={{ title: "Backend URL" }} />
       <Stack.Screen name="export" options={{ title: "Export" }} />
       <Stack.Screen name="import" options={{ title: "Import" }} />
     </Stack>
