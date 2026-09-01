@@ -8,6 +8,7 @@ import TrackPlayer, {
 } from "react-native-track-player";
 import { API } from "../api";
 import { useUserStore } from "./userStore";
+import { useLibraryStore } from "./libraryStore";
 import type { Music, Playlist } from "../types";
 
 type ShuffleMode = "off" | "on";
@@ -19,9 +20,7 @@ export function cleanTitle(title?: string | null): string {
   return title.replace(/\s*\[[^\]]+\]\s*$/, "");
 }
 
-interface MusicState {
-  music: Music[];
-  playlists: Playlist[];
+interface PlaybackState {
   queue: Music[];
   originalOrder: Music[];
   playlistId: string | null;
@@ -29,13 +28,7 @@ interface MusicState {
   isPlaying: boolean;
   shuffle: ShuffleMode;
   repeat: boolean;
-  isLoading: boolean;
-  isDownloading: boolean;
-  downloadProgress: string;
-  error: string | null;
 
-  loadMusic: (userId: number) => Promise<void>;
-  loadPlaylists: (userId: number) => Promise<void>;
   loadPlaylistSongs: (songs: Music[], playlistId: string | null) => Promise<void>;
   playSong: (index: number) => Promise<void>;
   playFirst: () => Promise<void>;
@@ -53,9 +46,8 @@ interface MusicState {
   addToQueue: (song: Music) => Promise<void>;
   removeFromQueue: (songId: number) => Promise<void>;
 
-  addToPlaylist: (playlistId: number, song: Music) => Promise<void>;
-  _ensureSongsDownloaded: (songs: Music[]) => Promise<void>;
-  _cacheSongsBackground: (songs: Music[]) => Promise<void>;
+  markSongDownloaded: (songId: number) => void;
+  markSongsDownloaded: (ids: number[]) => void;
 
   restorePlaybackState: () => Promise<boolean>;
   savePlaybackState: () => Promise<void>;
@@ -70,6 +62,15 @@ function shuffleKeepingIndex(list: Music[], keepIndex: number): Music[] {
   }
   rest.splice(keepIndex, 0, list[keepIndex]);
   return rest;
+}
+
+function fullShuffle(list: Music[]): Music[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 async function trackFor(song: Music): Promise<Track> {
@@ -93,6 +94,7 @@ export function setupMusicPlayback(): void {
     Event.PlaybackActiveTrackChanged,
     (payload: any) => {
       const idx = typeof payload.index === "number" ? payload.index : -1;
+      if (idx < 0) return;
       useMusicStore.setState({ currentIndex: idx });
       useMusicStore.getState().savePlaybackState();
     }
@@ -100,26 +102,62 @@ export function setupMusicPlayback(): void {
 
   TrackPlayer.addEventListener(Event.PlaybackState, (payload: any) => {
     useMusicStore.setState({ isPlaying: payload.state === State.Playing });
-    useMusicStore.getState().savePlaybackState();
+    scheduleSavePlaybackState();
   });
 }
 
-export const useMusicStore = create<MusicState>((set, get) => {
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSavePlaybackState() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    useMusicStore.getState().savePlaybackState();
+  }, 1500);
+}
+
+export const useMusicStore = create<PlaybackState>((set, get) => {
   const _loadQueueToPlayer = async (
     queue: Music[],
     index: number,
     position = 0,
     shouldPlay = true
   ) => {
-    const tracks: Track[] = [];
-    for (const song of queue) {
-      tracks.push(await trackFor(song));
+    let playable = queue;
+    let activeIndex = index;
+
+    let reachable = true;
+    try {
+      reachable = await API.ping();
+    } catch {
+      reachable = false;
     }
+
+    if (!reachable) {
+      playable = queue.filter(
+        (song) => !/^https?:/i.test(API.getMusicUrl(song))
+      );
+      if (playable.length === 0) {
+        await TrackPlayer.reset();
+        set({ queue: [], originalOrder: [], currentIndex: -1 });
+        return;
+      }
+      const targetSong = queue[index];
+      const found = playable.findIndex(
+        (s) => targetSong && s.id === targetSong.id
+      );
+      activeIndex = found >= 0 ? found : 0;
+      const clamped = Math.min(activeIndex, playable.length - 1);
+      set({ queue: [...playable], originalOrder: [...playable], currentIndex: clamped });
+      activeIndex = clamped;
+    }
+
+    const tracks = await Promise.all(playable.map((song) => trackFor(song)));
     await TrackPlayer.reset();
     if (tracks.length > 0) {
       await TrackPlayer.add(tracks);
-      const activeIndex = Math.min(Math.max(index, 0), tracks.length - 1);
-      await TrackPlayer.skip(activeIndex, position);
+      const target = Math.min(Math.max(activeIndex, 0), tracks.length - 1);
+      await TrackPlayer.skip(target, position);
     }
     if (shouldPlay) {
       await TrackPlayer.play();
@@ -153,9 +191,22 @@ export const useMusicStore = create<MusicState>((set, get) => {
     await _loadQueueToPlayer(queue, targetIndex, position, isPlaying);
   };
 
+  const _cacheSongsBackground = async (songs: Music[]) => {
+    for (const song of songs) {
+      try {
+        const res = await API.cache(`/music/${song.id}/file`, {
+          ttl: 0,
+          refetch: false,
+        });
+        if (res) {
+          get().markSongDownloaded(song.id);
+          useLibraryStore.getState().setSongDownloaded(song.id);
+        }
+      } catch {}
+    }
+  };
+
   return {
-    music: [],
-    playlists: [],
     queue: [],
     originalOrder: [],
     playlistId: null,
@@ -163,34 +214,6 @@ export const useMusicStore = create<MusicState>((set, get) => {
     isPlaying: false,
     shuffle: "off",
     repeat: false,
-    isLoading: false,
-    isDownloading: false,
-    downloadProgress: "",
-    error: null,
-
-    loadMusic: async (userId) => {
-      set({ isLoading: true, error: null });
-      try {
-        const music = await API.get("/music", { user_id: userId });
-        set({ music: music as Music[] });
-      } catch (err: any) {
-        set({ error: err.message });
-      } finally {
-        set({ isLoading: false });
-      }
-    },
-
-    loadPlaylists: async (userId) => {
-      set({ isLoading: true, error: null });
-      try {
-        const playlists = await API.get("/playlists", { user_id: userId });
-        set({ playlists: playlists as Playlist[] });
-      } catch (err: any) {
-        set({ error: err.message });
-      } finally {
-        set({ isLoading: false });
-      }
-    },
 
     loadPlaylistSongs: async (songs, playlistId) => {
       const state = get();
@@ -226,40 +249,13 @@ export const useMusicStore = create<MusicState>((set, get) => {
       });
     },
 
-    _ensureSongsDownloaded: async (songs: Music[]) => {
-      const undownloaded = songs.filter((s) => !s.downloaded);
-      if (undownloaded.length === 0) return;
-
-      set({ isDownloading: true, downloadProgress: "" });
-
-      for (let i = 0; i < undownloaded.length; i++) {
-        const song = undownloaded[i];
-        set({ downloadProgress: `Downloading ${i + 1}/${undownloaded.length}: ${song.title || song.url}` });
-        try {
-          await API.post(`/music/${song.id}/download`, {});
-        } catch (err: any) {
-          console.log(`Download error for song ${song.id}: ${err.message}`);
-        }
-      }
-
-      set({ isDownloading: false, downloadProgress: "" });
-    },
-
-    _cacheSongsBackground: async (songs: Music[]) => {
-      for (const song of songs) {
-        try {
-          await API.cache(`/music/${song.id}/file`, { ttl: 0, refetch: false });
-        } catch {}
-      }
-    },
-
     playSong: async (index) => {
       const state = get();
       const song = state.queue[index];
       if (!song) return;
       await _loadQueueToPlayer(state.queue, index, 0, true);
       set({ currentIndex: index, isPlaying: true });
-      get()._cacheSongsBackground([song]);
+      _cacheSongsBackground([song]);
     },
 
     playFirst: async () => {
@@ -274,10 +270,15 @@ export const useMusicStore = create<MusicState>((set, get) => {
 
     shufflePlay: async () => {
       const state = get();
-      if (state.shuffle !== "on") {
-        await get().toggleShuffle();
-      }
-      const first = get().queue[0];
+      const source =
+        state.originalOrder.length > 0 ? state.originalOrder : state.queue;
+      const queue = fullShuffle(source);
+      const key = state.playlistId
+        ? `playlist_${state.playlistId}_shuffled`
+        : null;
+      if (key) await SecureStore.setItemAsync(key, "true");
+      set({ shuffle: "on", queue, currentIndex: 0 });
+      const first = queue[0];
       if (first) await get().playSong(0);
     },
 
@@ -376,15 +377,21 @@ export const useMusicStore = create<MusicState>((set, get) => {
       await _rebuildQueueToPlayer();
     },
 
-    addToPlaylist: async (playlistId, song) => {
-      try {
-        await API.post(`/playlists/${playlistId}/add`, {
-          music_id: song.id,
-        });
-        await get().loadPlaylists(song.added_by);
-      } catch (err: any) {
-        set({ error: err.message });
-      }
+    markSongDownloaded: (songId) => {
+      set((s) => ({
+        queue: s.queue.map((q) =>
+          q.id === songId ? { ...q, downloaded: true } : q
+        ),
+      }));
+    },
+
+    markSongsDownloaded: (ids) => {
+      const idSet = new Set(ids);
+      set((s) => ({
+        queue: s.queue.map((q) =>
+          idSet.has(q.id) ? { ...q, downloaded: true } : q
+        ),
+      }));
     },
 
     restorePlaybackState: async () => {
@@ -465,7 +472,7 @@ export const useMusicStore = create<MusicState>((set, get) => {
 
     savePlaybackState: async () => {
       const state = get();
-      if (state.currentIndex < 0) { 
+      if (state.currentIndex < 0) {
         await SecureStore.deleteItemAsync(STATE_KEY);
         return;
       }

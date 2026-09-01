@@ -1,60 +1,173 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Image,
   Alert,
   Modal,
-  Animated,
 } from "react-native";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams, router } from "expo-router";
-import { Swipeable } from "react-native-gesture-handler";
 import { API, isLocalModeAsync } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useMusicStore } from "@/stores/musicStore";
+import { useLibraryStore } from "@/stores/libraryStore";
+import { useDownloadStore } from "@/stores/downloadStore";
 import { Ionicons } from "@expo/vector-icons";
 import type { Music, Playlist } from "@/types";
+
+interface SongRowProps {
+  item: Music;
+  index: number;
+  isLocal: boolean;
+  manageMode: boolean;
+  activeId: number | null;
+  isLast: boolean;
+  onSongPress: (index: number) => void;
+  onLongPress: (item: Music) => void;
+  onMenu: (item: Music) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
+}
+
+const SongRow = memo(function SongRow({
+  item,
+  index,
+  isLocal,
+  manageMode,
+  activeId,
+  isLast,
+  onSongPress,
+  onLongPress,
+  onMenu,
+  onMoveUp,
+  onMoveDown,
+}: SongRowProps) {
+  const downloading = useDownloadStore((s) => s.downloadingIds.includes(item.id));
+  const disabled = isLocal && !item.downloaded;
+  const active = activeId === item.id;
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.songItem,
+        active && styles.songItemActive,
+        disabled && styles.songItemDisabled,
+      ]}
+      onPress={() => !manageMode && onSongPress(index)}
+      onLongPress={() => !manageMode && onLongPress(item)}
+      delayLongPress={350}
+      disabled={disabled && !manageMode}
+    >
+      <View style={styles.rowAlbumArtWrap}>
+        {item.album_art ? (
+          <Image source={{ uri: item.album_art }} style={[styles.albumArtSmall, disabled && styles.disabledImage]} />
+        ) : (
+          <View style={[styles.albumArtPlaceholder, disabled && styles.disabledImage]}>
+            <Ionicons name="musical-note" size={18} color={disabled ? "#444" : "#555"} />
+          </View>
+        )}
+        {downloading && (
+          <View style={styles.rowAlbumArtOverlay}>
+            <ActivityIndicator size="small" color="#fff" />
+          </View>
+        )}
+      </View>
+      <View style={styles.songInfo}>
+        <Text
+          style={[
+            styles.songTitle,
+            active && styles.songTitleActive,
+            disabled && styles.songTitleDisabled,
+          ]}
+          numberOfLines={1}
+        >
+          {item.title}
+        </Text>
+        <Text style={[styles.songArtist, disabled && styles.songTitleDisabled]} numberOfLines={1}>
+          {item.artist || "Unknown"}
+        </Text>
+      </View>
+      {item.downloaded && (
+        <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+      )}
+      <TouchableOpacity
+        style={styles.rowMenuBtn}
+        onPress={() => onMenu(item)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="ellipsis-horizontal" size={18} color="#666" />
+      </TouchableOpacity>
+      {manageMode && (
+        <View style={styles.reorderBtns}>
+          <TouchableOpacity onPress={() => onMoveUp(index)} disabled={index === 0}>
+            <Ionicons name="chevron-up" size={18} color={index === 0 ? "#333" : "#4ecca3"} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => onMoveDown(index)} disabled={isLast}>
+            <Ionicons name="chevron-down" size={18} color={isLast ? "#333" : "#4ecca3"} />
+          </TouchableOpacity>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+});
 
 export default function PlaylistView() {
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const { user } = useUserStore();
-  const {
-    music,
-    playlists,
-    queue,
-    currentIndex,
-    loadMusic,
-    loadPlaylists,
-    loadPlaylistSongs,
-    playSong,
-    playFirst,
-    shufflePlay,
-    hasActiveQueue,
-    isInQueue,
-    addToQueueNext,
-    addToQueue,
-    removeFromQueue,
-    isLoading,
-    isDownloading,
-    downloadProgress,
-    _ensureSongsDownloaded,
-  } = useMusicStore();
+
+  const queue = useMusicStore((s) => s.queue);
+  const currentIndex = useMusicStore((s) => s.currentIndex);
+  const loadPlaylistSongs = useMusicStore((s) => s.loadPlaylistSongs);
+  const playSong = useMusicStore((s) => s.playSong);
+  const playFirst = useMusicStore((s) => s.playFirst);
+  const shufflePlay = useMusicStore((s) => s.shufflePlay);
+  const hasActiveQueue = useMusicStore((s) => s.hasActiveQueue);
+  const isInQueue = useMusicStore((s) => s.isInQueue);
+  const addToQueueNext = useMusicStore((s) => s.addToQueueNext);
+  const addToQueue = useMusicStore((s) => s.addToQueue);
+  const removeFromQueue = useMusicStore((s) => s.removeFromQueue);
+
+  const music = useLibraryStore((s) => s.music);
+  const playlists = useLibraryStore((s) => s.playlists);
+  const isLoading = useLibraryStore((s) => s.isLoading);
+  const loadMusic = useLibraryStore((s) => s.loadMusic);
+  const loadPlaylists = useLibraryStore((s) => s.loadPlaylists);
+
+  const isDownloading = useDownloadStore((s) => s.isDownloading);
+  const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
+
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [songs, setSongs] = useState<Music[]>([]);
   const [isLocal, setIsLocal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [menuSong, setMenuSong] = useState<Music | null>(null);
   const [manageMode, setManageMode] = useState(false);
-  const swipeableRefs = useRef<Map<number, Swipeable>>(new Map());
+
+  const listRef = useRef<FlashListRef<Music>>(null);
 
   const isVirtual = id === "-1" || id === "-2";
   const playlistName = name || playlist?.name || "Playlist";
   const playlistId = isVirtual ? id : playlist ? String(playlist.id) : String(id);
   const activeId = currentIndex >= 0 ? queue[currentIndex]?.id ?? null : null;
+  const activeSongsIndex = songs.findIndex((s) => s.id === activeId);
+
+  useEffect(() => {
+    if (activeSongsIndex < 0) return;
+    const t = setTimeout(() => {
+      try {
+        listRef.current?.scrollToIndex({
+          index: activeSongsIndex,
+          viewPosition: 0.35,
+          animated: true,
+        });
+      } catch (e) {}
+    }, 300);
+    return () => clearTimeout(t);
+  }, [activeSongsIndex, songs]);
 
   useEffect(() => {
     if (user) {
@@ -76,7 +189,7 @@ export default function PlaylistView() {
       const p = playlists.find((pl) => pl.id === Number(id));
       if (p) {
         setPlaylist(p);
-        const sorted = p.songs
+        const sorted = [...p.songs]
           .sort((a, b) => a.position - b.position)
           .map((s) => music.find((m) => m.id === s.music_id))
           .filter(Boolean) as Music[];
@@ -86,8 +199,7 @@ export default function PlaylistView() {
   }, [id, music, playlists, isVirtual, user]);
 
   const playableSongs = isLocal ? songs.filter((s) => s.downloaded) : songs;
-
-  const isDisabled = (item: Music) => isLocal && !item.downloaded;
+  const offlineCount = songs.filter((s) => s.downloaded).length;
 
   const handlePlayAll = async () => {
     if (playableSongs.length === 0) {
@@ -96,7 +208,6 @@ export default function PlaylistView() {
     }
     await loadPlaylistSongs(playableSongs, playlistId);
     await playFirst();
-    router.push("/(tabs)/music/now-playing");
   };
 
   const handleShuffle = async () => {
@@ -106,21 +217,23 @@ export default function PlaylistView() {
     }
     await loadPlaylistSongs(playableSongs, playlistId);
     await shufflePlay();
-    router.push("/(tabs)/music/now-playing");
   };
 
-  const handleSongPress = async (index: number) => {
-    const song = songs[index];
-    if (isLocal && !song.downloaded) return;
-    await loadPlaylistSongs(playableSongs, playlistId);
-    const store = useMusicStore.getState();
-    const queueIndex = store.queue.findIndex((s) => s.id === song.id);
-    await playSong(queueIndex >= 0 ? queueIndex : 0);
-    router.push("/(tabs)/music/now-playing");
-  };
+  const handleSongPress = useCallback(
+    async (index: number) => {
+      const song = songs[index];
+      if (isLocal && !song.downloaded) return;
+      await loadPlaylistSongs(playableSongs, playlistId);
+      const store = useMusicStore.getState();
+      const queueIndex = store.queue.findIndex((s) => s.id === song.id);
+      await playSong(queueIndex >= 0 ? queueIndex : 0);
+    },
+    [songs, isLocal, playableSongs, playlistId, loadPlaylistSongs, playSong]
+  );
 
   const handleDownloadAll = async () => {
-    await _ensureSongsDownloaded(songs);
+    if (isLocal) return;
+    await downloadForOffline(songs);
   };
 
   const handleDeletePlaylist = () => {
@@ -141,25 +254,32 @@ export default function PlaylistView() {
     ]);
   };
 
-  const handleRemoveSong = async (song: Music) => {
-    if (!playlist || isVirtual) return;
-    try {
-      await API.delete(`/playlists/${playlist.id}/remove/${song.id}`);
-      setSongs((prev) => prev.filter((s) => s.id !== song.id));
-      await loadPlaylists(user!.id);
-    } catch (err: any) {
-      Alert.alert("Error", err.message);
-    }
-  };
+  const handleRemoveSong = useCallback(
+    async (song: Music) => {
+      if (!playlist || isVirtual) return;
+      try {
+        await API.delete(`/playlists/${playlist.id}/remove/${song.id}`);
+        setSongs((prev) => prev.filter((s) => s.id !== song.id));
+        await loadPlaylists(user!.id, true);
+        await loadMusic(user!.id, true);
+      } catch (err: any) {
+        Alert.alert("Error", err.message);
+      }
+    },
+    [playlist, isVirtual, loadPlaylists, loadMusic, user]
+  );
 
-  const handleDownloadSong = async (song: Music) => {
-    if (isLocal) return;
-    try {
-      await API.post(`/music/${song.id}/download`, {});
-    } catch (err: any) {
-      Alert.alert("Error", err.message);
-    }
-  };
+  const handleDownloadSong = useCallback(
+    async (song: Music) => {
+      if (isLocal) return;
+      try {
+        await downloadForOffline([song]);
+      } catch (err: any) {
+        Alert.alert("Error", err.message);
+      }
+    },
+    [isLocal, downloadForOffline]
+  );
 
   const handleSongAction = async (action: string, song: Music) => {
     switch (action) {
@@ -229,22 +349,6 @@ export default function PlaylistView() {
     return items;
   };
 
-  const handleMoveUp = (index: number) => {
-    if (index <= 0) return;
-    const reordered = [...songs];
-    [reordered[index - 1], reordered[index]] = [reordered[index], reordered[index - 1]];
-    setSongs(reordered);
-    persistOrder(reordered);
-  };
-
-  const handleMoveDown = (index: number) => {
-    if (index >= songs.length - 1) return;
-    const reordered = [...songs];
-    [reordered[index], reordered[index + 1]] = [reordered[index + 1], reordered[index]];
-    setSongs(reordered);
-    persistOrder(reordered);
-  };
-
   const persistOrder = useCallback(
     async (orderedSongs: Music[]) => {
       if (!playlist || isVirtual) return;
@@ -259,123 +363,50 @@ export default function PlaylistView() {
     [playlist, isVirtual],
   );
 
+  const handleMoveUp = useCallback(
+    (index: number) => {
+      if (index <= 0) return;
+      const reordered = [...songs];
+      [reordered[index - 1], reordered[index]] = [reordered[index], reordered[index - 1]];
+      setSongs(reordered);
+      persistOrder(reordered);
+    },
+    [songs, persistOrder]
+  );
+
+  const handleMoveDown = useCallback(
+    (index: number) => {
+      if (index >= songs.length - 1) return;
+      const reordered = [...songs];
+      [reordered[index], reordered[index + 1]] = [reordered[index + 1], reordered[index]];
+      setSongs(reordered);
+      persistOrder(reordered);
+    },
+    [songs, persistOrder]
+  );
+
   const toggleManageMode = () => {
     setManageMode((prev) => !prev);
   };
 
-  const renderRightActions = (
-    _progress: Animated.AnimatedInterpolation<number>,
-    _dragX: Animated.AnimatedInterpolation<number>,
-    song: Music,
-  ) => {
-    return (
-      <View style={[styles.swipeAction, { backgroundColor: "#e94560" }]}>
-        <Ionicons name="trash" size={20} color="#fff" />
-        <Text style={styles.swipeActionText}>Remove</Text>
-      </View>
-    );
-  };
-
-  const renderLeftActions = (
-    _progress: Animated.AnimatedInterpolation<number>,
-    _dragX: Animated.AnimatedInterpolation<number>,
-    song: Music,
-  ) => {
-    if (isLocal) return null;
-    return (
-      <View style={[styles.swipeAction, { backgroundColor: "#2d6a4f" }]}>
-        <Ionicons name="download" size={20} color="#fff" />
-        <Text style={styles.swipeActionText}>Download</Text>
-      </View>
-    );
-  };
-
-  const renderSongContent = (item: Music, index: number) => {
-    const disabled = isDisabled(item);
-    const active = activeId === item.id;
-    return (
-      <TouchableOpacity
-        style={[
-          styles.songItem,
-          active && styles.songItemActive,
-          disabled && styles.songItemDisabled,
-        ]}
-        onPress={() => !manageMode && handleSongPress(index)}
-        onLongPress={() => !manageMode && setMenuSong(item)}
-        delayLongPress={350}
-        disabled={disabled && !manageMode}
-      >
-        {item.album_art ? (
-          <Image source={{ uri: item.album_art }} style={[styles.albumArtSmall, disabled && styles.disabledImage]} />
-        ) : (
-          <View style={[styles.albumArtPlaceholder, disabled && styles.disabledImage]}>
-            <Ionicons name="musical-note" size={18} color={disabled ? "#444" : "#555"} />
-          </View>
-        )}
-        <View style={styles.songInfo}>
-          <Text
-            style={[
-              styles.songTitle,
-              active && styles.songTitleActive,
-              disabled && styles.songTitleDisabled,
-            ]}
-            numberOfLines={1}
-          >
-            {item.title}
-          </Text>
-          <Text style={[styles.songArtist, disabled && styles.songTitleDisabled]} numberOfLines={1}>
-            {item.artist || "Unknown"}
-          </Text>
-        </View>
-        {!manageMode && (
-          <TouchableOpacity
-            style={styles.rowMenuBtn}
-            onPress={() => setMenuSong(item)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="ellipsis-horizontal" size={18} color="#666" />
-          </TouchableOpacity>
-        )}
-        {manageMode && (
-          <View style={styles.reorderBtns}>
-            <TouchableOpacity onPress={() => handleMoveUp(index)} disabled={index === 0}>
-              <Ionicons name="chevron-up" size={18} color={index === 0 ? "#333" : "#4ecca3"} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleMoveDown(index)} disabled={index === songs.length - 1}>
-              <Ionicons name="chevron-down" size={18} color={index === songs.length - 1 ? "#333" : "#4ecca3"} />
-            </TouchableOpacity>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  const renderSong = ({ item, index }: { item: Music; index: number }) => {
-    if (!manageMode) {
-      return renderSongContent(item, index);
-    }
-    return (
-      <Swipeable
-        ref={(ref) => {
-          if (ref) swipeableRefs.current.set(item.id, ref);
-          else swipeableRefs.current.delete(item.id);
-        }}
-        renderRightActions={(p, d) => renderRightActions(p, d, item)}
-        renderLeftActions={(p, d) => renderLeftActions(p, d, item)}
-        onSwipeableWillOpen={(direction) => {
-          if (direction === "right") {
-            handleRemoveSong(item);
-          } else if (direction === "left") {
-            handleDownloadSong(item);
-          }
-        }}
-        overshootRight={false}
-        overshootLeft={false}
-      >
-        {renderSongContent(item, index)}
-      </Swipeable>
-    );
-  };
+  const renderSong = useCallback(
+    ({ item, index }: { item: Music; index: number }) => (
+      <SongRow
+        item={item}
+        index={index}
+        isLocal={isLocal}
+        manageMode={manageMode}
+        activeId={activeId}
+        isLast={index === songs.length - 1}
+        onSongPress={handleSongPress}
+        onLongPress={setMenuSong}
+        onMenu={setMenuSong}
+        onMoveUp={handleMoveUp}
+        onMoveDown={handleMoveDown}
+      />
+    ),
+    [isLocal, manageMode, activeId, songs.length, handleSongPress, handleRemoveSong, handleDownloadSong, handleMoveUp, handleMoveDown]
+  );
 
   const menuItems = [
     { icon: "play", label: "Play", onPress: handlePlayAll },
@@ -397,16 +428,25 @@ export default function PlaylistView() {
     <View style={styles.container}>
       {songs.length > 0 && (
         <View style={styles.header}>
-          {songs[0]?.album_art ? (
-            <Image source={{ uri: songs[0].album_art }} style={styles.albumArt} />
-          ) : (
-            <View style={styles.albumArtPlaceholderLarge}>
-              <Ionicons name="musical-notes" size={48} color="#444" />
-            </View>
-          )}
+          <View style={styles.albumArtWrap}>
+            {songs[0]?.album_art ? (
+              <Image source={{ uri: songs[0].album_art }} style={styles.albumArt} />
+            ) : (
+              <View style={styles.albumArtPlaceholderLarge}>
+                <Ionicons name="musical-notes" size={48} color="#444" />
+              </View>
+            )}
+            {isDownloading && (
+              <View style={styles.albumArtOverlay}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            )}
+          </View>
           <View style={styles.headerInfo}>
             <Text style={styles.headerTitle}>{playlistName}</Text>
-            <Text style={styles.headerCount}>{songs.length} songs</Text>
+            <Text style={styles.headerCount}>
+              {songs.length} songs{offlineCount > 0 ? ` · ${offlineCount} offline` : ""}
+            </Text>
           </View>
         </View>
       )}
@@ -431,18 +471,15 @@ export default function PlaylistView() {
         </TouchableOpacity>
       </View>
 
-      {isDownloading && downloadProgress ? (
-        <Text style={styles.downloadProgress}>{downloadProgress}</Text>
-      ) : null}
-
       {manageMode && (
         <View style={styles.manageBar}>
           <Ionicons name="reorder-three" size={16} color="#4ecca3" />
-          <Text style={styles.manageText}>Swipe to remove/download. Use arrows to reorder.</Text>
+          <Text style={styles.manageText}>Use the song menu to remove/download. Use arrows to reorder.</Text>
         </View>
       )}
 
-      <FlatList
+      <FlashList
+        ref={listRef}
         data={songs}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderSong}
@@ -524,6 +561,21 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 12,
   },
+  albumArtWrap: {
+    width: 80,
+    height: 80,
+  },
+  albumArtOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   albumArtPlaceholderLarge: {
     width: 80,
     height: 80,
@@ -553,7 +605,6 @@ const styles = StyleSheet.create({
   shuffleBtn: { backgroundColor: "#0f3460" },
   menuBtn: { backgroundColor: "#16213e", paddingHorizontal: 14 },
   controlText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-  downloadProgress: { color: "#4ecca3", fontSize: 12, paddingHorizontal: 16, paddingBottom: 8 },
   manageBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -582,6 +633,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  rowAlbumArtWrap: {
+    width: 36,
+    height: 36,
+  },
+  rowAlbumArtOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 6,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   songInfo: { flex: 1 },
   rowMenuBtn: {
     padding: 6,
@@ -594,14 +660,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 2,
   },
-  swipeAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 20,
-    justifyContent: "center",
-  },
-  swipeActionText: { color: "#fff", fontSize: 12, fontWeight: "600" },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

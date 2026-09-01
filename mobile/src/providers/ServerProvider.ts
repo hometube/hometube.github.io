@@ -117,7 +117,19 @@ export class ServerProvider extends DataProvider {
   }
 
   async get<T = any>(path: string, query?: Record<string, any>): Promise<T> {
+    const parsed = this.parsePath(path);
+    if (parsed.store === "music" && !parsed.id) {
+      const music = await this._fetch<Music[]>("GET", "/music", query);
+      return music.map((m) => ({
+        ...m,
+        downloaded: this._cachedMusicUrls.has(m.id),
+      })) as T;
+    }
     return this._fetch<T>("GET", path, query);
+  }
+
+  isMusicCached(songId: number): boolean {
+    return this._cachedMusicUrls.has(songId);
   }
 
   async post<T = any>(path: string, body?: any): Promise<T> {

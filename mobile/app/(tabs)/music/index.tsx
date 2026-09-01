@@ -2,22 +2,26 @@ import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
-import { useMusicStore } from "@/stores/musicStore";
+import { useLibraryStore } from "@/stores/libraryStore";
 import { Ionicons } from "@expo/vector-icons";
 import type { Playlist } from "@/types";
 
 export default function MusicHome() {
   const { user } = useUserStore();
-  const { playlists, music, isLoading, loadPlaylists, loadMusic } = useMusicStore();
+  const playlists = useLibraryStore((s) => s.playlists);
+  const music = useLibraryStore((s) => s.music);
+  const isLoading = useLibraryStore((s) => s.isLoading);
+  const loadPlaylists = useLibraryStore((s) => s.loadPlaylists);
+  const loadMusic = useLibraryStore((s) => s.loadMusic);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -30,8 +34,8 @@ export default function MusicHome() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     if (user) {
-      await loadPlaylists(user.id);
-      await loadMusic(user.id);
+      await loadPlaylists(user.id, true);
+      await loadMusic(user.id, true);
     }
     setRefreshing(false);
   }, [user]);
@@ -73,26 +77,40 @@ export default function MusicHome() {
     router.push("/(tabs)/music/add");
   };
 
-  const renderPlaylist = ({ item }: { item: Playlist & { _virtual?: boolean } }) => (
-    <TouchableOpacity
-      style={styles.playlistCard}
-      onPress={() => handlePlaylistPress(item)}
-    >
-      <View style={[styles.playlistIcon, item._virtual && styles.virtualIcon]}>
-        <Ionicons
-          name={item._virtual ? "musical-notes" : "folder"}
-          size={24}
-          color={item._virtual ? "#4ecca3" : "#e94560"}
-        />
-      </View>
-      <View style={styles.playlistInfo}>
-        <Text style={styles.playlistName}>{item.name}</Text>
-        <Text style={styles.songCount}>
-          {item.songs?.length || 0} songs
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color="#444" />
-    </TouchableOpacity>
+  const renderPlaylist = useCallback(
+    ({ item }: { item: Playlist & { _virtual?: boolean } }) => {
+      const total = item.songs?.length || 0;
+      const songIds = new Set(item.songs?.map((s) => s.music_id) ?? []);
+      const offline = music.filter((m) => songIds.has(m.id) && m.downloaded).length;
+      const allOffline = total > 0 && offline === total;
+      return (
+        <TouchableOpacity
+          style={styles.playlistCard}
+          onPress={() => handlePlaylistPress(item)}
+        >
+          <View style={[styles.playlistIcon, item._virtual && styles.virtualIcon]}>
+            <Ionicons
+              name={item._virtual ? "musical-notes" : "folder"}
+              size={24}
+              color={item._virtual ? "#4ecca3" : "#e94560"}
+            />
+          </View>
+          <View style={styles.playlistInfo}>
+            <View style={styles.playlistTitleRow}>
+              <Text style={styles.playlistName}>{item.name}</Text>
+              {allOffline && (
+                <Ionicons name="checkmark-circle" size={14} color="#4ecca3" />
+              )}
+            </View>
+            <Text style={[styles.songCount, allOffline && styles.songCountOffline]}>
+              {total} songs{offline > 0 ? ` · ${offline} offline` : ""}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#444" />
+        </TouchableOpacity>
+      );
+    },
+    [music]
   );
 
   return (
@@ -113,7 +131,7 @@ export default function MusicHome() {
           <Text style={styles.emptyHint}>Tap + to add music or import data</Text>
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={allPlaylists}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderPlaylist}
@@ -168,8 +186,14 @@ const styles = StyleSheet.create({
   },
   virtualIcon: { backgroundColor: "rgba(78,204,163,0.15)" },
   playlistInfo: { flex: 1 },
+  playlistTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   playlistName: { color: "#fff", fontSize: 16, fontWeight: "500", marginBottom: 2 },
   songCount: { color: "#888", fontSize: 12 },
+  songCountOffline: { color: "#4ecca3" },
   empty: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { color: "#666", fontSize: 16, marginTop: 12 },
   emptyHint: { color: "#444", fontSize: 13, marginTop: 4 },

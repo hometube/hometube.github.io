@@ -12,13 +12,15 @@ import {
 import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
-import { useMusicStore } from "@/stores/musicStore";
+import { useLibraryStore } from "@/stores/libraryStore";
 import { Ionicons } from "@expo/vector-icons";
 import type { Playlist } from "@/types";
 
 export default function AddMusic() {
   const { user } = useUserStore();
-  const { playlists, loadPlaylists } = useMusicStore();
+  const playlists = useLibraryStore((s) => s.playlists);
+  const loadPlaylists = useLibraryStore((s) => s.loadPlaylists);
+  const loadMusic = useLibraryStore((s) => s.loadMusic);
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<number | null>(null);
@@ -49,7 +51,11 @@ export default function AddMusic() {
       });
 
       Alert.alert("Added", "Music has been added", [
-        { text: "OK", onPress: () => router.back() },
+        { text: "OK", onPress: () => {
+          loadMusic(user.id, true);
+          loadPlaylists(user.id, true);
+          router.back();
+        } },
       ]);
     } catch (err: any) {
       Alert.alert("Error", err.message);

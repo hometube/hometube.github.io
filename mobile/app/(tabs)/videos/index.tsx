@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
   Alert,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
@@ -24,17 +24,15 @@ const FILTERS = [
 
 export default function VideoFeed() {
   const { user } = useUserStore();
-  const {
-    videos,
-    currentFilter,
-    isLoading,
-    loadVideos,
-    setFilter,
-    markWatched,
-    toggleKeep,
-    downloadVideo,
-    deleteVideo,
-  } = useVideoStore();
+  const videos = useVideoStore((s) => s.videos);
+  const currentFilter = useVideoStore((s) => s.currentFilter);
+  const isLoading = useVideoStore((s) => s.isLoading);
+  const loadVideos = useVideoStore((s) => s.loadVideos);
+  const setFilter = useVideoStore((s) => s.setFilter);
+  const markWatched = useVideoStore((s) => s.markWatched);
+  const toggleKeep = useVideoStore((s) => s.toggleKeep);
+  const downloadVideo = useVideoStore((s) => s.downloadVideo);
+  const deleteVideo = useVideoStore((s) => s.deleteVideo);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -50,44 +48,48 @@ export default function VideoFeed() {
     setRefreshing(false);
   }, [user]);
 
-  const handleVideoPress = (video: Video) => {
+  const handleVideoPress = useCallback((video: Video) => {
     router.push(`/(tabs)/videos/${video.id}`);
-  };
+  }, []);
 
-  const handleVideoLongPress = (video: Video) => {
-    Alert.alert(video.title, undefined, [
-      {
-        text: video.watched_at ? "Mark Unwatched" : "Mark Watched",
-        onPress: () => markWatched(video.id),
-      },
-      {
-        text: video.keep_flag ? "Unkeep" : "Keep",
-        onPress: () => toggleKeep(video.id),
-      },
-      {
-        text: "Download",
-        onPress: () => downloadVideo(video.id),
-      },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          Alert.alert("Delete Video", "Are you sure?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Delete", style: "destructive", onPress: () => deleteVideo(video.id) },
-          ]);
+  const handleVideoLongPress = useCallback(
+    (video: Video) => {
+      Alert.alert(video.title, undefined, [
+        {
+          text: video.watched_at ? "Mark Unwatched" : "Mark Watched",
+          onPress: () => markWatched(video.id),
         },
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  };
+        {
+          text: video.keep_flag ? "Unkeep" : "Keep",
+          onPress: () => toggleKeep(video.id),
+        },
+        {
+          text: "Download",
+          onPress: () => downloadVideo(video.id),
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert("Delete Video", "Are you sure?", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Delete", style: "destructive", onPress: () => deleteVideo(video.id) },
+            ]);
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    },
+    [markWatched, toggleKeep, downloadVideo, deleteVideo]
+  );
 
-  const renderVideo = ({ item }: { item: Video }) => (
-    <TouchableOpacity
-      style={styles.videoCard}
-      onPress={() => handleVideoPress(item)}
-      onLongPress={() => handleVideoLongPress(item)}
-    >
+  const renderVideo = useCallback(
+    ({ item }: { item: Video }) => (
+      <TouchableOpacity
+        style={styles.videoCard}
+        onPress={() => handleVideoPress(item)}
+        onLongPress={() => handleVideoLongPress(item)}
+      >
       <View style={styles.videoThumb}>
         <Ionicons name="videocam" size={32} color="#555" />
         {item.watched_at && (
@@ -114,6 +116,8 @@ export default function VideoFeed() {
       </View>
       <Ionicons name="chevron-forward" size={18} color="#444" />
     </TouchableOpacity>
+    ),
+    [handleVideoPress, handleVideoLongPress]
   );
 
   return (
@@ -158,7 +162,7 @@ export default function VideoFeed() {
           <Text style={styles.emptyHint}>Tap + to add a video</Text>
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={videos}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderVideo}

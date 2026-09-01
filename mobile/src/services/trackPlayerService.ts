@@ -1,5 +1,7 @@
 import TrackPlayer, { Event } from "react-native-track-player";
 
+let lastErrorAt = 0;
+
 export async function TrackPlayerService() {
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
     TrackPlayer.play();
@@ -23,5 +25,12 @@ export async function TrackPlayerService() {
 
   TrackPlayer.addEventListener(Event.RemoteSeek, (event) => {
     TrackPlayer.seekTo(event.position);
+  });
+
+  TrackPlayer.addEventListener(Event.PlaybackError, () => {
+    const now = Date.now();
+    if (now - lastErrorAt < 3000) return;
+    lastErrorAt = now;
+    TrackPlayer.skipToNext().catch(() => {});
   });
 }

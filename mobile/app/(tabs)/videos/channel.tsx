@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  FlatList,
   ActivityIndicator,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
@@ -176,7 +176,7 @@ export default function AddChannel() {
       )}
 
       {videos.length > 0 && (
-        <FlatList
+        <FlashList
           data={videos}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ padding: 16 }}
