@@ -1070,6 +1070,20 @@ def cmd_playlist_update_rename(args):
         db.close()
 
 
+def get_local_ip():
+    """Return the machine's primary LAN IP address, or None if unavailable."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except Exception:
+        return None
+
+
 def cmd_serve(args):
     """Start the HomeTube server."""
     import uvicorn
@@ -1078,7 +1092,16 @@ def cmd_serve(args):
     if os.getcwd() != backend_dir:
         os.chdir(backend_dir)
 
-    print(f"Starting HomeTube server on http://{args.host}:{args.port}")
+    if args.host in ("0.0.0.0", "::", ""):
+        ip = get_local_ip()
+        if ip:
+            print(f"Starting HomeTube server on http://{args.host}:{args.port}")
+            print(f"  Local access via:  http://127.0.0.1:{args.port}")
+            print(f"  LAN (phone/devices): http://{ip}:{args.port}")
+        else:
+            print(f"Starting HomeTube server on http://{args.host}:{args.port}")
+    else:
+        print(f"Starting HomeTube server on http://{args.host}:{args.port}")
     uvicorn.run("main:app", host=args.host, port=args.port, log_level=args.log_level)
 
 

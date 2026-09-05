@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "HomeTube",
-    "slug": "hometube",
+    "slug": "hoekz",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "hometube",
@@ -45,10 +45,20 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-sharing",
+      "expo-splash-screen",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "af93146f-5f07-44ef-a47a-30588a796c2e"
+      }
+    },
+    "owner": "hoekzema-clan"
   }
 }

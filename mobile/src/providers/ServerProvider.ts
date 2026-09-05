@@ -1,6 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as SecureStore from "expo-secure-store";
 import { DataProvider } from "./DataProvider";
+import { localDb } from "../db/localDb";
 import type {
   User,
   Video,
@@ -19,7 +20,10 @@ const KEYS = {
   BACKEND_URL: "backendUrl",
   JWT_TOKEN: "jwt_token",
   NGROK_TOKEN: "ngrok_token",
+  REQUEST_TIMEOUT: "requestTimeout",
 };
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 
 export class ServerProvider extends DataProvider {
   get type(): ProviderType {
@@ -32,6 +36,8 @@ export class ServerProvider extends DataProvider {
   private _backendUrl: string = "";
   private _jwt: string = "";
   private _ngrokToken: string = "";
+  private _requestTimeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS;
+  private _reachable: boolean | null = null;
   private _blobUrls: string[] = [];
   private _cachedMusicUrls: Map<number, string> = new Map();
 
@@ -45,6 +51,13 @@ export class ServerProvider extends DataProvider {
     this._jwt = (await SecureStore.getItemAsync(KEYS.JWT_TOKEN)) || "";
     this._ngrokToken =
       (await SecureStore.getItemAsync(KEYS.NGROK_TOKEN)) || "";
+    const timeout = parseInt(
+      (await SecureStore.getItemAsync(KEYS.REQUEST_TIMEOUT)) || "",
+      10
+    );
+    if (!isNaN(timeout) && timeout > 0) {
+      this._requestTimeoutMs = timeout * 1000;
+    }
     await this._restoreCache();
   }
 
@@ -74,6 +87,37 @@ export class ServerProvider extends DataProvider {
   setJwt(token: string): void {
     this._jwt = token;
     SecureStore.setItemAsync(KEYS.JWT_TOKEN, token);
+  }
+
+  setRequestTimeout(seconds: number): void {
+    const value = Math.max(1, Math.round(seconds));
+    this._requestTimeoutMs = value * 1000;
+    SecureStore.setItemAsync(KEYS.REQUEST_TIMEOUT, String(value));
+  }
+
+  setReachable(online: boolean): void {
+    this._reachable = online;
+  }
+
+  private async _fetchWithTimeout(
+    url: string,
+    options: RequestInit = {}
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this._requestTimeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (e) {
+      this._reachable = false;
+      if (e instanceof Error && e.name === "AbortError") {
+        throw new Error(
+          `Request timed out after ${this._requestTimeoutMs / 1000}s`
+        );
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private get _authHeaders(): Record<string, string> {
@@ -116,16 +160,131 @@ export class ServerProvider extends DataProvider {
     return this.fetchJson<T>(url, options);
   }
 
+  async fetchJson<T>(
+    url: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const res = await this._fetchWithTimeout(url, {
+      headers: { "Content-Type": "application/json", ...options.headers },
+      ...options,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    this._reachable = true;
+    return res.json();
+  }
+
   async get<T = any>(path: string, query?: Record<string, any>): Promise<T> {
     const parsed = this.parsePath(path);
+    const listEndpoint =
+      parsed.store === "videos" ||
+      parsed.store === "music" ||
+      parsed.store === "playlists" ||
+      parsed.store === "channels" ||
+      parsed.store === "subscriptions" ||
+      parsed.store === "users";
+
+    let result: T;
+    if (listEndpoint) {
+      const cacheKey = this._cacheKey(path, query);
+      if (this._reachable === false) {
+        const cached = await this._cachedResponse<T>(cacheKey);
+        if (!cached) {
+          throw new Error(
+            "Server unreachable and no cached data available"
+          );
+        }
+        result = cached;
+      } else {
+        try {
+          result = await this._fetch<T>("GET", path, query);
+          this._reachable = true;
+          await this._cacheResponse(cacheKey, result);
+        } catch {
+          this._reachable = false;
+          const cached = await this._cachedResponse<T>(cacheKey);
+          if (cached) {
+            result = cached;
+          } else {
+            throw new Error(
+              "Server unreachable and no cached data available"
+            );
+          }
+        }
+      }
+    } else {
+      result = await this._fetch<T>("GET", path, query);
+    }
+
     if (parsed.store === "music" && !parsed.id) {
-      const music = await this._fetch<Music[]>("GET", "/music", query);
-      return music.map((m) => ({
+      return (result as Music[]).map((m) => ({
         ...m,
         downloaded: this._cachedMusicUrls.has(m.id),
       })) as T;
     }
-    return this._fetch<T>("GET", path, query);
+
+    return result;
+  }
+
+  private _cacheKey(path: string, query?: Record<string, any>): string {
+    const qs = query
+      ? Object.entries(query)
+          .filter(([, v]) => v !== undefined && v !== null)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, v]) => `${k}=${v}`)
+          .join("&")
+      : "";
+    return `GET:${path}${qs ? `?${qs}` : ""}`;
+  }
+
+  private async _cacheResponse(key: string, data: any): Promise<void> {
+    try {
+      await localDb.setMeta(`cache:${key}`, JSON.stringify(data));
+    } catch (e) {
+      console.log("Cache write error:", e);
+    }
+  }
+
+  private async _cachedResponse<T>(key: string): Promise<T | null> {
+    try {
+      const raw = await localDb.getMeta(`cache:${key}`);
+      if (raw) return JSON.parse(raw) as T;
+      const base = key.split("?")[0];
+      const all = await localDb.getAll("meta");
+      const candidates = all
+        .filter((m) => m.key.startsWith(`cache:${base}`))
+        .sort((a: any, b: any) =>
+          (b.updated_at || "").localeCompare(a.updated_at || "")
+        );
+      const match = candidates.find((m) => m.value);
+      if (match) return JSON.parse(match.value) as T;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async updateCachedList<T = any>(
+    path: string,
+    query: Record<string, any>,
+    predicate: (item: T) => boolean,
+    update: (item: T) => T,
+    remove = false
+  ): Promise<void> {
+    const cacheKey = this._cacheKey(path, query);
+    try {
+      const raw = await localDb.getMeta(`cache:${cacheKey}`);
+      if (!raw) return;
+      const list: T[] = JSON.parse(raw);
+      const updated = remove
+        ? list.filter((item) => !predicate(item))
+        : list.map((item) => (predicate(item) ? update(item) : item));
+      await localDb.setMeta(`cache:${cacheKey}`, JSON.stringify(updated));
+    } catch (e) {
+      console.log("Cache update error:", e);
+    }
   }
 
   isMusicCached(songId: number): boolean {
@@ -161,7 +320,7 @@ export class ServerProvider extends DataProvider {
   async ping(): Promise<boolean> {
     try {
       const url = this._apiUrl("status");
-      const res = await fetch(url, {
+      const res = await this._fetchWithTimeout(url, {
         headers: { ...this._authHeaders },
       });
       return res.ok;
@@ -250,7 +409,7 @@ export class ServerProvider extends DataProvider {
 
   async exportData(body: ExportBody): Promise<string> {
     const url = this._apiUrl("export");
-    const res = await fetch(url, {
+    const res = await this._fetchWithTimeout(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -287,7 +446,7 @@ export class ServerProvider extends DataProvider {
       type: file.mimeType || "application/zip",
     } as any);
 
-    const res = await fetch(url, {
+    const res = await this._fetchWithTimeout(url, {
       method: "POST",
       headers: { ...this._authHeaders },
       body: formData,

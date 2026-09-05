@@ -12,6 +12,7 @@ import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useLibraryStore } from "@/stores/libraryStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { Ionicons } from "@expo/vector-icons";
 import type { Playlist } from "@/types";
 
@@ -22,9 +23,12 @@ export default function MusicHome() {
   const isLoading = useLibraryStore((s) => s.isLoading);
   const loadPlaylists = useLibraryStore((s) => s.loadPlaylists);
   const loadMusic = useLibraryStore((s) => s.loadMusic);
+  const showVirtualPlaylists = useSettingsStore((s) => s.showVirtualPlaylists);
+  const loadSettings = useSettingsStore((s) => s.load);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    loadSettings();
     if (user) {
       loadPlaylists(user.id);
       loadMusic(user.id);
@@ -63,7 +67,11 @@ export default function MusicHome() {
       ]
     : [];
 
-  const allPlaylists = [...virtualPlaylists, ...playlists];
+  const visibleVirtualPlaylists = showVirtualPlaylists
+    ? virtualPlaylists
+    : [];
+
+  const allPlaylists = [...visibleVirtualPlaylists, ...playlists];
 
   const handlePlaylistPress = (playlist: any) => {
     if (playlist._virtual || playlist.id > 0) {

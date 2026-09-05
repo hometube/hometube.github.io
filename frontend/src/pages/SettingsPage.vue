@@ -18,6 +18,7 @@ const defaultSettings = {
   defaultRepeat: false,
   showWaveform: true,
   defaultSubQuality: 'best',
+  showVirtualPlaylists: true,
 }
 
 const qualityOptions = [
@@ -238,6 +239,18 @@ const resetApp = () => {
             :class="settings.showWaveform ? 'bg-blue-500' : 'bg-gray-600'">
             <div class="absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform"
               :class="settings.showWaveform ? 'translate-x-6' : 'translate-x-0.5'" />
+          </button>
+        </div>
+        <div class="flex items-center justify-between p-4">
+          <div>
+            <div class="text-sm font-medium">Smart Playlists</div>
+            <div class="text-xs text-gray-400">Show "All Songs" and "My Songs" in Music</div>
+          </div>
+          <button @click="toggle('showVirtualPlaylists')"
+            class="relative w-12 h-6 rounded-full transition-colors"
+            :class="settings.showVirtualPlaylists ? 'bg-blue-500' : 'bg-gray-600'">
+            <div class="absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform"
+              :class="settings.showVirtualPlaylists ? 'translate-x-6' : 'translate-x-0.5'" />
           </button>
         </div>
       </div>

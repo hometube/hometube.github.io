@@ -63,37 +63,58 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   },
 
   markWatched: async (videoId) => {
+    const state = get();
+    const current = state.videos.find((v) => v.id === videoId);
+    const updated = state.videos.map((v) => {
+      if (v.id === videoId) {
+        return {
+          ...v,
+          watched_at: v.watched_at ? null : new Date().toISOString(),
+        };
+      }
+      return v;
+    });
+    set({ videos: updated });
     try {
       await API.post(`/videos/${videoId}/watch`);
-      const state = get();
-      const updated = state.videos.map((v) => {
-        if (v.id === videoId) {
-          return {
-            ...v,
-            watched_at: v.watched_at ? null : new Date().toISOString(),
-          };
-        }
-        return v;
-      });
-      set({ videos: updated });
     } catch (err: any) {
       set({ error: err.message });
+    }
+    if (current) {
+      await API.updateCachedList(
+        "/videos",
+        { user_id: current.added_by, filter: get().currentFilter },
+        (v: any) => v.id === videoId,
+        (v: any) => ({
+          ...v,
+          watched_at: v.watched_at ? null : new Date().toISOString(),
+        })
+      );
     }
   },
 
   toggleKeep: async (videoId) => {
+    const state = get();
+    const current = state.videos.find((v) => v.id === videoId);
+    const updated = state.videos.map((v) => {
+      if (v.id === videoId) {
+        return { ...v, keep_flag: !v.keep_flag };
+      }
+      return v;
+    });
+    set({ videos: updated });
     try {
       await API.post(`/videos/${videoId}/keep`);
-      const state = get();
-      const updated = state.videos.map((v) => {
-        if (v.id === videoId) {
-          return { ...v, keep_flag: !v.keep_flag };
-        }
-        return v;
-      });
-      set({ videos: updated });
     } catch (err: any) {
       set({ error: err.message });
+    }
+    if (current) {
+      await API.updateCachedList(
+        "/videos",
+        { user_id: current.added_by, filter: get().currentFilter },
+        (v: any) => v.id === videoId,
+        (v: any) => ({ ...v, keep_flag: !v.keep_flag })
+      );
     }
   },
 
@@ -112,12 +133,22 @@ export const useVideoStore = create<VideoState>((set, get) => ({
   },
 
   deleteVideo: async (videoId) => {
+    const state = get();
+    const target = state.videos.find((v) => v.id === videoId);
+    set({ videos: state.videos.filter((v) => v.id !== videoId) });
     try {
       await API.delete(`/videos/${videoId}`);
-      const state = get();
-      set({ videos: state.videos.filter((v) => v.id !== videoId) });
     } catch (err: any) {
       set({ error: err.message });
+    }
+    if (target) {
+      await API.updateCachedList(
+        "/videos",
+        { user_id: target.added_by, filter: get().currentFilter },
+        (v: any) => v.id === videoId,
+        (v: any) => v,
+        true
+      );
     }
   },
 

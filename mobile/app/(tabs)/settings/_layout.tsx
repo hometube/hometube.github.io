@@ -1,4 +1,5 @@
 import { Stack } from "expo-router";
+import ConnectionPill from "../../../src/components/ConnectionPill";
 
 export default function SettingsLayout() {
   return (
@@ -9,6 +10,7 @@ export default function SettingsLayout() {
         headerTintColor: "#fff",
         headerTitleStyle: { fontWeight: "600" },
         contentStyle: { backgroundColor: "#1a1a2e" },
+        headerRight: () => <ConnectionPill />,
       }}
     >
       <Stack.Screen name="index" options={{ title: "Settings" }} />

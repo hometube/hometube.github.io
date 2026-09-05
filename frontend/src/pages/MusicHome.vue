@@ -11,6 +11,8 @@ const userStore = useUserStore()
 const musicStore = useMusicStore()
 
 const visibleVirtualPlaylists = computed(() => {
+  const settings = JSON.parse(localStorage.getItem('settings') || '{}')
+  if (settings.showVirtualPlaylists === false) return []
   const vps = musicStore.virtualPlaylists
   if (isLocalMode()) return vps.filter(vp => vp.id === 'all-songs')
   return vps

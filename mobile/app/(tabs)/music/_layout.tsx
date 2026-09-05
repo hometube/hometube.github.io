@@ -2,6 +2,7 @@ import { View, TouchableOpacity } from "react-native";
 import { Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUIStore } from "../../../src/stores/uiStore";
+import ConnectionPill from "../../../src/components/ConnectionPill";
 import MiniPlayer from "../../../src/components/MiniPlayer";
 
 export default function MusicLayout() {
@@ -21,11 +22,13 @@ export default function MusicLayout() {
               <Ionicons name="menu" size={24} color="#fff" />
             </TouchableOpacity>
           ),
+          headerRight: () => <ConnectionPill />,
         }}
       >
         <Stack.Screen name="index" options={{ title: "Music" }} />
         <Stack.Screen name="add" options={{ title: "Add Music" }} />
         <Stack.Screen name="playlist/[id]" options={{ title: "Playlist" }} />
+        <Stack.Screen name="playing" options={{ title: "Playing" }} />
       </Stack>
       <MiniPlayer />
     </View>

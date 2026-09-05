@@ -51,7 +51,7 @@ export default function SetupUser() {
       await setUser({ id: 0, username: username.trim() });
       const result = await API.post("/users", { username: username.trim() });
       await setUser(result);
-      router.replace("/(tabs)/videos");
+      router.replace("/(tabs)/music");
     } catch (err: any) {
       Alert.alert("Error", err.message);
     } finally {
@@ -63,7 +63,7 @@ export default function SetupUser() {
     setLoading(true);
     try {
       await setUser(user);
-      router.replace("/(tabs)/videos");
+      router.replace("/(tabs)/music");
     } finally {
       setLoading(false);
     }

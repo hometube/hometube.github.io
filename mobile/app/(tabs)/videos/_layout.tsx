@@ -2,6 +2,7 @@ import { TouchableOpacity } from "react-native";
 import { Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUIStore } from "../../../src/stores/uiStore";
+import ConnectionPill from "../../../src/components/ConnectionPill";
 
 export default function VideosLayout() {
   const toggleMenu = useUIStore((s) => s.toggleMenu);
@@ -19,6 +20,7 @@ export default function VideosLayout() {
             <Ionicons name="menu" size={24} color="#fff" />
           </TouchableOpacity>
         ),
+        headerRight: () => <ConnectionPill />,
       }}
     >
       <Stack.Screen name="index" options={{ title: "Videos" }} />

@@ -6,21 +6,29 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  Switch,
 } from "react-native";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { API, getProvider, resetProvider } from "@/api";
 import { useUserStore } from "@/stores/userStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { Ionicons } from "@expo/vector-icons";
 import type { ProviderType } from "@/types";
 
 export default function Settings() {
   const { user, setUser, loadUser, backendUrl, loadBackendUrl } = useUserStore();
+  const showVirtualPlaylists = useSettingsStore((s) => s.showVirtualPlaylists);
+  const setShowVirtualPlaylists = useSettingsStore((s) => s.setShowVirtualPlaylists);
+  const requestTimeout = useSettingsStore((s) => s.requestTimeout);
+  const setRequestTimeout = useSettingsStore((s) => s.setRequestTimeout);
+  const loadSettings = useSettingsStore((s) => s.load);
   const [providerType, setProviderType] = useState<ProviderType>("server");
 
   useEffect(() => {
     detectMode();
     loadBackendUrl();
+    loadSettings();
   }, []);
 
   const detectMode = async () => {
@@ -61,6 +69,21 @@ export default function Settings() {
     await SecureStore.deleteItemAsync("user");
     setUser(null as any);
     router.replace("/welcome/setup-user");
+  };
+
+  const handleTimeoutPress = () => {
+    const options = [3, 5, 10, 15, 30, 60];
+    Alert.alert(
+      "Request Timeout",
+      "How long the app waits for a server response (in seconds).",
+      [
+        ...options.map((sec) => ({
+          text: `${sec}s${sec === requestTimeout ? " (current)" : ""}`,
+          onPress: () => setRequestTimeout(sec),
+        })),
+        { text: "Cancel", style: "cancel" as const },
+      ]
+    );
   };
 
   const handleLogout = async () => {
@@ -130,13 +153,42 @@ export default function Settings() {
           onPress={handleToggleMode}
         />
         {providerType === "server" && (
-          <SettingsRow
-            icon="server"
-            label="Backend URL"
-            value={backendUrl || "Not set"}
-            onPress={() => router.push("/(tabs)/settings/backend")}
-          />
+          <>
+            <SettingsRow
+              icon="server"
+              label="Backend URL"
+              value={backendUrl || "Not set"}
+              onPress={() => router.push("/(tabs)/settings/backend")}
+            />
+            <SettingsRow
+              icon="timer"
+              label="Request Timeout"
+              value={`${requestTimeout}s`}
+              onPress={handleTimeoutPress}
+            />
+          </>
         )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Music</Text>
+        <View style={styles.row}>
+          <View style={styles.rowLeft}>
+            <Ionicons name="albums" size={20} color="#888" />
+            <View>
+              <Text style={styles.rowLabel}>Smart Playlists</Text>
+              <Text style={styles.rowSub}>
+                Show "All Songs" and "My Songs" in Music
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={showVirtualPlaylists}
+            onValueChange={setShowVirtualPlaylists}
+            trackColor={{ false: "#333", true: "#0f3460" }}
+            thumbColor={showVirtualPlaylists ? "#4ecca3" : "#555"}
+          />
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -197,6 +249,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   rowLabel: { color: "#fff", fontSize: 15 },
+  rowSub: { color: "#888", fontSize: 12, marginTop: 2 },
   rowRight: {
     flexDirection: "row",
     alignItems: "center",

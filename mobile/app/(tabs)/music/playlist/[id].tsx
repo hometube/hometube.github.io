@@ -8,6 +8,7 @@ import {
   Image,
   Alert,
   Modal,
+  TextInput,
 } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams, router } from "expo-router";
@@ -16,6 +17,7 @@ import { useUserStore } from "@/stores/userStore";
 import { useMusicStore } from "@/stores/musicStore";
 import { useLibraryStore } from "@/stores/libraryStore";
 import { useDownloadStore } from "@/stores/downloadStore";
+import { useConnectionStore } from "@/stores/connectionStore";
 import { Ionicons } from "@expo/vector-icons";
 import type { Music, Playlist } from "@/types";
 
@@ -125,11 +127,13 @@ export default function PlaylistView() {
   const playSong = useMusicStore((s) => s.playSong);
   const playFirst = useMusicStore((s) => s.playFirst);
   const shufflePlay = useMusicStore((s) => s.shufflePlay);
-  const hasActiveQueue = useMusicStore((s) => s.hasActiveQueue);
   const isInQueue = useMusicStore((s) => s.isInQueue);
-  const addToQueueNext = useMusicStore((s) => s.addToQueueNext);
   const addToQueue = useMusicStore((s) => s.addToQueue);
   const removeFromQueue = useMusicStore((s) => s.removeFromQueue);
+  const playNow = useMusicStore((s) => s.playNow);
+  const playNext = useMusicStore((s) => s.playNext);
+  const addToQueueSongs = useMusicStore((s) => s.addToQueueSongs);
+  const shuffleAndAddToQueue = useMusicStore((s) => s.shuffleAndAddToQueue);
 
   const music = useLibraryStore((s) => s.music);
   const playlists = useLibraryStore((s) => s.playlists);
@@ -140,22 +144,75 @@ export default function PlaylistView() {
   const isDownloading = useDownloadStore((s) => s.isDownloading);
   const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
 
+  const connectionStatus = useConnectionStore((s) => s.status);
+  const checkConnection = useConnectionStore((s) => s.checkConnection);
+  const startMonitoring = useConnectionStore((s) => s.startMonitoring);
+  const stopMonitoring = useConnectionStore((s) => s.stopMonitoring);
+
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [songs, setSongs] = useState<Music[]>([]);
   const [isLocal, setIsLocal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [menuSong, setMenuSong] = useState<Music | null>(null);
   const [manageMode, setManageMode] = useState(false);
+  const [offlineOnly, setOfflineOnly] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [renameName, setRenameName] = useState("");
 
+  const autoOfflineOnly = useRef(false);
+  const prevServerOffline = useRef<boolean | null>(null);
   const listRef = useRef<FlashListRef<Music>>(null);
 
   const isVirtual = id === "-1" || id === "-2";
-  const playlistName = name || playlist?.name || "Playlist";
+  const playlistName = playlist?.name || name || "Playlist";
   const playlistId = isVirtual ? id : playlist ? String(playlist.id) : String(id);
   const activeId = currentIndex >= 0 ? queue[currentIndex]?.id ?? null : null;
-  const activeSongsIndex = songs.findIndex((s) => s.id === activeId);
+
+  const serverOffline = !isLocal && connectionStatus === "offline";
 
   useEffect(() => {
+    if (isLocal) return;
+    startMonitoring();
+    checkConnection();
+    return () => stopMonitoring();
+  }, [isLocal, startMonitoring, stopMonitoring, checkConnection]);
+
+  useEffect(() => {
+    const prev = prevServerOffline.current;
+    prevServerOffline.current = serverOffline;
+    if (serverOffline && prev !== true) {
+      autoOfflineOnly.current = true;
+      setOfflineOnly(true);
+    } else if (!serverOffline && prev === true && autoOfflineOnly.current) {
+      autoOfflineOnly.current = false;
+      setOfflineOnly(false);
+    }
+  }, [serverOffline]);
+
+  useEffect(() => {
+    if (isLocal || !offlineOnly) return;
+    setManageMode(false);
+  }, [offlineOnly, isLocal]);
+
+  const offlineCount = useMemo(
+    () => songs.filter((s) => s.downloaded).length,
+    [songs]
+  );
+
+  const visibleSongs = useMemo(
+    () => (offlineOnly ? songs.filter((s) => s.downloaded) : songs),
+    [offlineOnly, songs]
+  );
+
+  const playableSongs = useMemo(() => {
+    if (isLocal) return songs.filter((s) => s.downloaded);
+    if (offlineOnly) return visibleSongs;
+    return songs;
+  }, [isLocal, offlineOnly, visibleSongs, songs]);
+
+  useEffect(() => {
+    if (activeId == null) return;
+    const activeSongsIndex = visibleSongs.findIndex((s) => s.id === activeId);
     if (activeSongsIndex < 0) return;
     const t = setTimeout(() => {
       try {
@@ -167,7 +224,7 @@ export default function PlaylistView() {
       } catch (e) {}
     }, 300);
     return () => clearTimeout(t);
-  }, [activeSongsIndex, songs]);
+  }, [activeId, visibleSongs]);
 
   useEffect(() => {
     if (user) {
@@ -198,37 +255,62 @@ export default function PlaylistView() {
     }
   }, [id, music, playlists, isVirtual, user]);
 
-  const playableSongs = isLocal ? songs.filter((s) => s.downloaded) : songs;
-  const offlineCount = songs.filter((s) => s.downloaded).length;
-
   const handlePlayAll = async () => {
     if (playableSongs.length === 0) {
-      if (isLocal) Alert.alert("No Songs", "No downloaded songs available to play.");
+      if (isLocal || offlineOnly)
+        Alert.alert("No Songs", "No downloaded songs available to play.");
       return;
     }
+    const wasEmpty = useMusicStore.getState().queue.length === 0;
     await loadPlaylistSongs(playableSongs, playlistId);
     await playFirst();
+    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
   };
 
   const handleShuffle = async () => {
     if (playableSongs.length === 0) {
-      if (isLocal) Alert.alert("No Songs", "No downloaded songs available to play.");
+      if (isLocal || offlineOnly)
+        Alert.alert("No Songs", "No downloaded songs available to play.");
       return;
     }
+    const wasEmpty = useMusicStore.getState().queue.length === 0;
     await loadPlaylistSongs(playableSongs, playlistId);
     await shufflePlay();
+    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
+  };
+
+  const handleAddToQueue = async () => {
+    if (playableSongs.length === 0) {
+      if (isLocal || offlineOnly)
+        Alert.alert("No Songs", "No downloaded songs available to play.");
+      return;
+    }
+    const wasEmpty = useMusicStore.getState().queue.length === 0;
+    await addToQueueSongs(playableSongs);
+    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
+  };
+
+  const handleShuffleAddToQueue = async () => {
+    if (playableSongs.length === 0) {
+      if (isLocal || offlineOnly)
+        Alert.alert("No Songs", "No downloaded songs available to play.");
+      return;
+    }
+    const wasEmpty = useMusicStore.getState().queue.length === 0;
+    await shuffleAndAddToQueue(playableSongs);
+    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
   };
 
   const handleSongPress = useCallback(
     async (index: number) => {
-      const song = songs[index];
-      if (isLocal && !song.downloaded) return;
+      const song = visibleSongs[index];
+      if ((isLocal || offlineOnly) && !song.downloaded) return;
       await loadPlaylistSongs(playableSongs, playlistId);
       const store = useMusicStore.getState();
       const queueIndex = store.queue.findIndex((s) => s.id === song.id);
       await playSong(queueIndex >= 0 ? queueIndex : 0);
     },
-    [songs, isLocal, playableSongs, playlistId, loadPlaylistSongs, playSong]
+    [visibleSongs, isLocal, offlineOnly, playableSongs, playlistId, loadPlaylistSongs, playSong]
   );
 
   const handleDownloadAll = async () => {
@@ -252,6 +334,27 @@ export default function PlaylistView() {
         },
       },
     ]);
+  };
+
+  const openRename = () => {
+    setRenameName(playlist?.name ?? "");
+    setShowRename(true);
+  };
+
+  const handleRename = async () => {
+    if (!playlist) return;
+    const name = renameName.trim();
+    if (!name || name === playlist.name) {
+      setShowRename(false);
+      return;
+    }
+    try {
+      await API.put(`/playlists/${playlist.id}`, { name });
+      await loadPlaylists(user!.id, true);
+      setShowRename(false);
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    }
   };
 
   const handleRemoveSong = useCallback(
@@ -283,19 +386,11 @@ export default function PlaylistView() {
 
   const handleSongAction = async (action: string, song: Music) => {
     switch (action) {
-      case "play": {
-        let store = useMusicStore.getState();
-        let idx = store.queue.findIndex((s) => s.id === song.id);
-        if (idx < 0) {
-          await loadPlaylistSongs(playableSongs, playlistId);
-          store = useMusicStore.getState();
-          idx = store.queue.findIndex((s) => s.id === song.id);
-        }
-        if (idx >= 0) playSong(idx);
+      case "play_now":
+        playNow(song);
         break;
-      }
       case "play_next":
-        addToQueueNext(song);
+        playNext(song);
         break;
       case "add_to_queue":
         addToQueue(song);
@@ -313,18 +408,17 @@ export default function PlaylistView() {
   };
 
   const songMenuItems = (song: Music) => {
-    const hasQueue = hasActiveQueue();
     const inQueue = isInQueue(song.id);
     const items: { icon: string; label: string; onPress: () => void; destructive?: boolean }[] = [
-      { icon: "play", label: "Play", onPress: () => handleSongAction("play", song) },
+      { icon: "play", label: "Play Now", onPress: () => handleSongAction("play_now", song) },
     ];
-    if (hasQueue && !inQueue) {
+    if (!inQueue) {
       items.push(
         { icon: "play-forward", label: "Play Next", onPress: () => handleSongAction("play_next", song) },
         { icon: "add", label: "Add to Queue", onPress: () => handleSongAction("add_to_queue", song) },
       );
     }
-    if (hasQueue && inQueue) {
+    if (inQueue) {
       items.push({
         icon: "remove-circle",
         label: "Remove from Queue",
@@ -397,7 +491,7 @@ export default function PlaylistView() {
         isLocal={isLocal}
         manageMode={manageMode}
         activeId={activeId}
-        isLast={index === songs.length - 1}
+        isLast={index === visibleSongs.length - 1}
         onSongPress={handleSongPress}
         onLongPress={setMenuSong}
         onMenu={setMenuSong}
@@ -405,15 +499,18 @@ export default function PlaylistView() {
         onMoveDown={handleMoveDown}
       />
     ),
-    [isLocal, manageMode, activeId, songs.length, handleSongPress, handleRemoveSong, handleDownloadSong, handleMoveUp, handleMoveDown]
+    [isLocal, manageMode, activeId, visibleSongs.length, handleSongPress, handleMoveUp, handleMoveDown]
   );
 
   const menuItems = [
     { icon: "play", label: "Play", onPress: handlePlayAll },
     { icon: "shuffle", label: "Shuffle Play", onPress: handleShuffle },
+    { icon: "add", label: "Add to Queue", onPress: handleAddToQueue },
+    { icon: "shuffle", label: "Shuffle and Add to Queue", onPress: handleShuffleAddToQueue },
     ...(!isLocal ? [{ icon: "download", label: "Download All", onPress: handleDownloadAll }] : []),
+    ...(!isVirtual && !offlineOnly ? [{ icon: "reorder-three", label: manageMode ? "Done" : "Manage", onPress: toggleManageMode }] : []),
+    ...(!isVirtual ? [{ icon: "pencil", label: "Rename Playlist", onPress: openRename }] : []),
     ...(!isVirtual ? [{ icon: "trash", label: "Delete Playlist", onPress: handleDeletePlaylist, destructive: true }] : []),
-    { icon: manageMode ? "checkmark-circle" : "reorder-three", label: manageMode ? "Done" : "Manage", onPress: toggleManageMode },
   ];
 
   if (isLoading) {
@@ -426,11 +523,11 @@ export default function PlaylistView() {
 
   return (
     <View style={styles.container}>
-      {songs.length > 0 && (
+      {visibleSongs.length > 0 && (
         <View style={styles.header}>
           <View style={styles.albumArtWrap}>
-            {songs[0]?.album_art ? (
-              <Image source={{ uri: songs[0].album_art }} style={styles.albumArt} />
+            {visibleSongs[0]?.album_art ? (
+              <Image source={{ uri: visibleSongs[0].album_art }} style={styles.albumArt} />
             ) : (
               <View style={styles.albumArtPlaceholderLarge}>
                 <Ionicons name="musical-notes" size={48} color="#444" />
@@ -445,7 +542,7 @@ export default function PlaylistView() {
           <View style={styles.headerInfo}>
             <Text style={styles.headerTitle}>{playlistName}</Text>
             <Text style={styles.headerCount}>
-              {songs.length} songs{offlineCount > 0 ? ` · ${offlineCount} offline` : ""}
+              {visibleSongs.length} songs{offlineCount > 0 && offlineOnly ? ` of ${songs.length} · ${offlineCount} offline` : offlineCount > 0 ? ` · ${offlineCount} offline` : ""}
             </Text>
           </View>
         </View>
@@ -471,6 +568,32 @@ export default function PlaylistView() {
         </TouchableOpacity>
       </View>
 
+      {!isLocal && (
+        <View style={styles.filterRow}>
+          {serverOffline ? (
+            <View style={styles.offlineBar}>
+              <Ionicons name="cloud-offline" size={14} color="#e94560" />
+              <Text style={styles.offlineBarText} numberOfLines={1}>
+                Server unreachable — only downloaded songs can play
+              </Text>
+            </View>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.filterChip, offlineOnly && styles.filterChipActive]}
+            onPress={() => setOfflineOnly((v) => !v)}
+          >
+            <Ionicons
+              name="cloud-offline"
+              size={15}
+              color={offlineOnly ? "#0f3460" : "#888"}
+            />
+            <Text style={[styles.filterText, offlineOnly && styles.filterTextActive]}>
+              Offline only
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {manageMode && (
         <View style={styles.manageBar}>
           <Ionicons name="reorder-three" size={16} color="#4ecca3" />
@@ -478,9 +601,23 @@ export default function PlaylistView() {
         </View>
       )}
 
+      {visibleSongs.length === 0 && songs.length > 0 && (
+        <View style={styles.filterEmpty}>
+          <Ionicons name="cloud-offline-outline" size={40} color="#444" />
+          <Text style={styles.filterEmptyText}>
+            No songs in this playlist are available offline.
+          </Text>
+          {!isLocal && (
+            <Text style={styles.filterEmptyHint}>
+              Go online or download songs to play them here.
+            </Text>
+          )}
+        </View>
+      )}
+
       <FlashList
         ref={listRef}
-        data={songs}
+        data={visibleSongs}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderSong}
         contentContainerStyle={{ paddingBottom: 140 }}
@@ -510,6 +647,39 @@ export default function PlaylistView() {
                 </Text>
               </TouchableOpacity>
             ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={showRename} transparent animationType="slide" onRequestClose={() => setShowRename(false)}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowRename(false)}>
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Rename Playlist</Text>
+            <TextInput
+              style={styles.renameInput}
+              placeholder="Playlist name"
+              placeholderTextColor="#666"
+              value={renameName}
+              onChangeText={setRenameName}
+              autoFocus
+              maxLength={100}
+            />
+            <View style={styles.renameActions}>
+              <TouchableOpacity
+                style={[styles.renameBtn, styles.renameCancelBtn]}
+                onPress={() => setShowRename(false)}
+              >
+                <Text style={styles.renameCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.renameBtn, styles.renameSaveBtn, !renameName.trim() && styles.renameBtnDisabled]}
+                onPress={handleRename}
+                disabled={!renameName.trim()}
+              >
+                <Text style={styles.renameSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -593,6 +763,46 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 12,
   },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  offlineBar: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(233,69,96,0.12)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  offlineBarText: { color: "#e94560", fontSize: 12, flexShrink: 1 },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#16213e",
+    borderColor: "#333",
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  filterChipActive: { backgroundColor: "#4ecca3", borderColor: "#4ecca3" },
+  filterText: { color: "#888", fontSize: 12, fontWeight: "600" },
+  filterTextActive: { color: "#0f3460" },
+  filterEmpty: {
+    alignItems: "center",
+    paddingTop: 40,
+    paddingHorizontal: 32,
+  },
+  filterEmptyText: { color: "#888", fontSize: 14, marginTop: 12, textAlign: "center" },
+  filterEmptyHint: { color: "#555", fontSize: 12, marginTop: 6, textAlign: "center" },
   controlBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -693,4 +903,27 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   sheetLabel: { color: "#fff", fontSize: 16 },
+  renameInput: {
+    backgroundColor: "#0f3460",
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 15,
+    color: "#fff",
+    marginBottom: 16,
+  },
+  renameActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  renameBtn: {
+    flex: 1,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: "center",
+  },
+  renameCancelBtn: { backgroundColor: "#0f3460" },
+  renameCancelText: { color: "#888", fontSize: 16, fontWeight: "600" },
+  renameSaveBtn: { backgroundColor: "#e94560" },
+  renameSaveText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  renameBtnDisabled: { opacity: 0.6 },
 });

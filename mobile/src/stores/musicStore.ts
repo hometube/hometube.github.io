@@ -45,6 +45,10 @@ interface PlaybackState {
   addToQueueNext: (song: Music) => Promise<void>;
   addToQueue: (song: Music) => Promise<void>;
   removeFromQueue: (songId: number) => Promise<void>;
+  playNow: (song: Music) => Promise<void>;
+  playNext: (song: Music) => Promise<void>;
+  addToQueueSongs: (songs: Music[]) => Promise<void>;
+  shuffleAndAddToQueue: (songs: Music[]) => Promise<void>;
 
   markSongDownloaded: (songId: number) => void;
   markSongsDownloaded: (ids: number[]) => void;
@@ -104,6 +108,14 @@ export function setupMusicPlayback(): void {
     useMusicStore.setState({ isPlaying: payload.state === State.Playing });
     scheduleSavePlaybackState();
   });
+
+  if (!_playbackSaveTimer) {
+    _playbackSaveTimer = setInterval(() => {
+      if (useMusicStore.getState().isPlaying) {
+        useMusicStore.getState().savePlaybackState();
+      }
+    }, 10000);
+  }
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,6 +127,8 @@ function scheduleSavePlaybackState() {
     useMusicStore.getState().savePlaybackState();
   }, 1500);
 }
+
+let _playbackSaveTimer: ReturnType<typeof setInterval> | null = null;
 
 export const useMusicStore = create<PlaybackState>((set, get) => {
   const _loadQueueToPlayer = async (
@@ -356,17 +370,26 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
 
     addToQueueNext: async (song) => {
       const state = get();
-      const index = state.currentIndex >= 0 ? state.currentIndex + 1 : state.queue.length;
+      if (state.queue.length === 0 || state.currentIndex < 0) {
+        await get().playNow(song);
+        return;
+      }
+      const index = state.currentIndex + 1;
       const queue = [...state.queue];
       queue.splice(index, 0, { ...song });
-      set({ queue });
+      set({ queue, originalOrder: [...queue] });
       await _rebuildQueueToPlayer();
     },
 
     addToQueue: async (song) => {
       const state = get();
       if (state.queue.some((s) => s.id === song.id)) return;
-      set({ queue: [...state.queue, { ...song }] });
+      if (state.queue.length === 0 || state.currentIndex < 0) {
+        await get().playNow(song);
+        return;
+      }
+      const queue = [...state.queue, { ...song }];
+      set({ queue, originalOrder: [...queue] });
       await _rebuildQueueToPlayer();
     },
 
@@ -375,6 +398,57 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       const queue = state.queue.filter((s) => s.id !== songId);
       set({ queue });
       await _rebuildQueueToPlayer();
+    },
+
+    playNow: async (song) => {
+      const fresh = [{ ...song }];
+      set({
+        queue: fresh,
+        originalOrder: fresh,
+        playlistId: null,
+        shuffle: "off",
+        currentIndex: 0,
+      });
+      await _loadQueueToPlayer(fresh, 0, 0, true);
+      _cacheSongsBackground(fresh);
+    },
+
+    playNext: async (song) => {
+      const state = get();
+      if (state.queue.length === 0 || state.currentIndex < 0) {
+        await get().playNow(song);
+        return;
+      }
+      const index = state.currentIndex + 1;
+      const queue = [...state.queue];
+      queue.splice(index, 0, { ...song });
+      set({ queue, originalOrder: [...queue] });
+      await _rebuildQueueToPlayer();
+    },
+
+    addToQueueSongs: async (songs) => {
+      const state = get();
+      const list = songs.map((s) => ({ ...s }));
+      if (list.length === 0) return;
+      if (state.queue.length === 0 || state.currentIndex < 0) {
+        set({
+          queue: list,
+          originalOrder: [...list],
+          playlistId: null,
+          shuffle: "off",
+          currentIndex: 0,
+        });
+        await _loadQueueToPlayer(list, 0, 0, true);
+        _cacheSongsBackground(list);
+        return;
+      }
+      const queue = [...state.queue, ...list];
+      set({ queue, originalOrder: [...queue] });
+      await _rebuildQueueToPlayer();
+    },
+
+    shuffleAndAddToQueue: async (songs) => {
+      await get().addToQueueSongs(fullShuffle(songs));
     },
 
     markSongDownloaded: (songId) => {
@@ -408,8 +482,34 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       const user = useUserStore.getState().user;
       if (!user) return false;
 
+      const oldSnapshot =
+        !(saved.version >= 2) ||
+        !Array.isArray(saved.queueIds) ||
+        saved.queueIds.length === 0;
+
       let songs: Music[] = [];
-      if (saved.playlistId === "-1" || saved.playlistId === "-2") {
+      let originalOrder: Music[] | null = null;
+
+      if (!oldSnapshot) {
+        try {
+          const allMusic = (await API.get("/music", {
+            user_id: user.id,
+          })) as Music[];
+          const byId = new Map(allMusic.map((m) => [m.id, m]));
+          songs = (saved.queueIds as number[])
+            .map((id) => byId.get(id))
+            .filter(Boolean) as Music[];
+          const originalIds = Array.isArray(saved.originalOrderIds)
+            ? saved.originalOrderIds
+            : saved.queueIds;
+          originalOrder = (originalIds as number[])
+            .map((id) => byId.get(id))
+            .filter(Boolean) as Music[];
+        } catch {
+          return false;
+        }
+        if (songs.length === 0) return false;
+      } else if (saved.playlistId === "-1" || saved.playlistId === "-2") {
         const allMusic = (await API.get("/music", { user_id: user.id })) as Music[];
         songs =
           saved.playlistId === "-2"
@@ -440,21 +540,21 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       if (songs.length === 0) return false;
 
       let shuff: ShuffleMode = saved.shuffled === "on" ? "on" : "off";
-      if (saved.playlistId) {
+      if (oldSnapshot && saved.playlistId) {
         const stored = await SecureStore.getItemAsync(`playlist_${saved.playlistId}_shuffled`);
         if (stored !== null) shuff = stored === "true" ? "on" : "off";
       }
 
       let queue = [...songs];
       let index = Math.min(saved.currentIndex, songs.length - 1);
-      if (shuff === "on") {
+      if (shuff === "on" && oldSnapshot) {
         queue = shuffleKeepingIndex(songs, index);
         index = queue.findIndex((s) => s.id === songs[index]?.id);
         if (index < 0) index = 0;
       }
 
       set({
-        originalOrder: [...songs],
+        originalOrder: originalOrder || [...songs],
         queue,
         playlistId: saved.playlistId,
         shuffle: shuff,
@@ -486,9 +586,15 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
         duration = progress.duration || 0;
       } catch {}
       const s = {
+        version: 2,
         playlistId: state.playlistId,
         currentIndex: state.currentIndex,
         songId: song.id,
+        queueIds: state.queue.map((q) => q.id),
+        originalOrderIds:
+          state.originalOrder.length > 0
+            ? state.originalOrder.map((q) => q.id)
+            : state.queue.map((q) => q.id),
         shuffled: state.shuffle,
         repeat: state.repeat,
         playing: state.isPlaying,

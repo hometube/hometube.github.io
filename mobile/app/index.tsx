@@ -16,7 +16,7 @@ export default function Index() {
       } else if (!user) {
         router.replace("/welcome/setup-user");
       } else {
-        router.replace("/(tabs)/videos");
+        router.replace("/(tabs)/music");
       }
     }
     checkFirstLaunch();

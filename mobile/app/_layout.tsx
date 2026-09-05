@@ -6,6 +6,7 @@ import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useUserStore } from "../src/stores/userStore";
 import { useMusicStore, setupMusicPlayback } from "../src/stores/musicStore";
+import { useConnectionStore } from "../src/stores/connectionStore";
 import { localDb } from "../src/db/localDb";
 import TrackPlayer from "react-native-track-player";
 import HamburgerMenu from "../src/components/HamburgerMenu";
@@ -33,6 +34,9 @@ export default function RootLayout() {
     init();
 
     const appStateSub = AppState.addEventListener("change", (next) => {
+      if (next === "active") {
+        useConnectionStore.getState().checkConnection();
+      }
       if (next !== "active") {
         useMusicStore.getState().savePlaybackState();
       }

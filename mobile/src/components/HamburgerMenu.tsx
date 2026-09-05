@@ -9,6 +9,7 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useUIStore } from "@/stores/uiStore";
+import ConnectionPill from "./ConnectionPill";
 
 export default function HamburgerMenu() {
   const { menuOpen, setMenuOpen } = useUIStore();
@@ -22,18 +23,18 @@ export default function HamburgerMenu() {
 
   const navItems = [
     {
+      section: "Music",
+      items: [
+        { icon: "home", label: "Music Home", path: "/(tabs)/music" },
+        { icon: "add-circle", label: "Add Music", path: "/(tabs)/music/add" },
+      ],
+    },
+    {
       section: "Video",
       items: [
         { icon: "home", label: "Video Home", path: "/(tabs)/videos" },
         { icon: "add-circle", label: "Add Video", path: "/(tabs)/videos/add" },
         { icon: "tv", label: "Add Channel", path: "/(tabs)/videos/channel" },
-      ],
-    },
-    {
-      section: "Music",
-      items: [
-        { icon: "home", label: "Music Home", path: "/(tabs)/music" },
-        { icon: "add-circle", label: "Add Music", path: "/(tabs)/music/add" },
       ],
     },
     {
@@ -60,9 +61,12 @@ export default function HamburgerMenu() {
         <SafeAreaView style={{ flex: 1 }}>
           <View style={styles.header}>
             <Text style={styles.title}>Menu</Text>
-            <TouchableOpacity onPress={() => setMenuOpen(false)}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </TouchableOpacity>
+            <View style={styles.headerRight}>
+              <ConnectionPill />
+              <TouchableOpacity onPress={() => setMenuOpen(false)}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
           <ScrollView>
             {navItems.map((section) => (
@@ -117,6 +121,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24,
     paddingTop: 8,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   title: {
     color: "#fff",

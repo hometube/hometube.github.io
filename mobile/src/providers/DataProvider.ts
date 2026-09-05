@@ -37,6 +37,24 @@ export abstract class DataProvider {
   abstract checkCache(paths: string[]): Promise<SwCacheStatus>;
   abstract downloadFile(url: string, filename: string): Promise<void>;
 
+  setRequestTimeout(_seconds: number): void {
+    // No-op for providers that do not make server requests.
+  }
+
+  setReachable(_online: boolean): void {
+    // No-op for providers that do not make server requests.
+  }
+
+  async updateCachedList<T = any>(
+    _path: string,
+    _query: Record<string, any>,
+    _predicate: (item: T) => boolean,
+    _update: (item: T) => T,
+    _remove = false
+  ): Promise<void> {
+    // No-op for providers that do not maintain a server response cache.
+  }
+
   buildUrl(base: string, path: string, query?: Record<string, any>): string {
     let url = `${base.replace(/\/+$/, "")}/${path.replace(/^\//, "")}`;
     if (query) {

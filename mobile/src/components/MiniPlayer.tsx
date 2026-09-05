@@ -13,20 +13,17 @@ import { router } from "expo-router";
 import { usePlaybackState, useProgress, State } from "react-native-track-player";
 import { Ionicons } from "@expo/vector-icons";
 import { useMusicStore, cleanTitle } from "@/stores/musicStore";
-import { useLibraryStore } from "@/stores/libraryStore";
 
 export default function MiniPlayer() {
   const playbackState = usePlaybackState();
   const progress = useProgress(1000);
   const queue = useMusicStore((s) => s.queue);
   const currentIndex = useMusicStore((s) => s.currentIndex);
-  const playlistId = useMusicStore((s) => s.playlistId);
   const isPlaying = useMusicStore((s) => s.isPlaying);
   const togglePlayPause = useMusicStore((s) => s.togglePlayPause);
   const next = useMusicStore((s) => s.next);
   const previous = useMusicStore((s) => s.previous);
   const seekTo = useMusicStore((s) => s.seekTo);
-  const playlists = useLibraryStore((s) => s.playlists);
 
   const [dragValue, setDragValue] = useState<number | null>(null);
   const [pendingSeek, setPendingSeek] = useState<number | null>(null);
@@ -130,17 +127,8 @@ export default function MiniPlayer() {
   durationRef.current = duration;
   seekToRef.current = seekTo;
 
-  const playlistName =
-    playlistId === "-1"
-      ? "All Songs"
-      : playlistId === "-2"
-      ? "My Songs"
-      : playlists.find((p) => String(p.id) === playlistId)?.name;
-
   const goToCurrentPlaylist = () => {
-    if (!playlistId) return;
-    const nameQuery = playlistName ? `?name=${encodeURIComponent(playlistName)}` : "";
-    router.navigate(`/(tabs)/music/playlist/${playlistId}${nameQuery}` as any);
+    router.navigate("/(tabs)/music/playing" as any);
   };
 
   return (
