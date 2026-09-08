@@ -13,7 +13,7 @@ import * as SecureStore from "expo-secure-store";
 import { API, getProvider, resetProvider } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ProviderType } from "@/types";
 
 export default function Settings() {

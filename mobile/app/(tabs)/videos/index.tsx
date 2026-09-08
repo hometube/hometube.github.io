@@ -14,7 +14,7 @@ import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useVideoStore } from "@/stores/videoStore";
 import type { Video } from "@/types";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 const FILTERS = [
   { key: "all", label: "All" },

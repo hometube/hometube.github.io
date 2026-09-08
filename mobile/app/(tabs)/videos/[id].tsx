@@ -4,7 +4,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useVideoStore } from "@/stores/videoStore";
 import { API } from "@/api";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Video } from "@/types";
 
 export default function VideoPlayer() {

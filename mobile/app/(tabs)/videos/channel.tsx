@@ -13,7 +13,7 @@ import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useVideoStore } from "@/stores/videoStore";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 interface ChannelResult {
   id: number;

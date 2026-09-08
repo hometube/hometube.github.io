@@ -12,7 +12,7 @@ import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { API, getProvider, resetProvider } from "@/api";
 import { useUserStore } from "@/stores/userStore";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 export default function BackendSettings() {
   const { setBackendUrl, loadBackendUrl, loadUser } = useUserStore();

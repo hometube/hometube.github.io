@@ -10,7 +10,7 @@ import {
 import { router } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { API } from "@/api";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 export default function ImportPage() {
   const [loading, setLoading] = useState(false);

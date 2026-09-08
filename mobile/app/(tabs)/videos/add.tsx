@@ -12,7 +12,7 @@ import {
 import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 interface Format {
   format_id: string;

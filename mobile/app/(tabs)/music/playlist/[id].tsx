@@ -18,7 +18,7 @@ import { useMusicStore } from "@/stores/musicStore";
 import { useLibraryStore } from "@/stores/libraryStore";
 import { useDownloadStore } from "@/stores/downloadStore";
 import { useConnectionStore } from "@/stores/connectionStore";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Music, Playlist } from "@/types";
 
 interface SongRowProps {

@@ -8,7 +8,7 @@ import {
   Modal,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { isLocalModeAsync } from "@/api";
 import { useMusicStore } from "@/stores/musicStore";
 import { useLibraryStore } from "@/stores/libraryStore";

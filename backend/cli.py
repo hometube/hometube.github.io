@@ -1123,15 +1123,14 @@ def cmd_build(args):
         sys.exit(1)
 
     android_dir = os.path.join(mobile_dir, "android")
-    if not os.path.isdir(android_dir):
-        print("Generating Android project via expo prebuild...")
-        result = subprocess.run(
-            ["npx", "expo", "prebuild", "--platform", "android"],
-            cwd=mobile_dir,
-        )
-        if result.returncode != 0:
-            print("Error: expo prebuild failed", file=sys.stderr)
-            sys.exit(1)
+    print("Syncing Android project via expo prebuild...")
+    result = subprocess.run(
+        ["npx", "expo", "prebuild", "--platform", "android"],
+        cwd=mobile_dir,
+    )
+    if result.returncode != 0:
+        print("Error: expo prebuild failed", file=sys.stderr)
+        sys.exit(1)
 
     variant = "debug" if args.debug else "release"
     task = f"assemble{variant.capitalize()}"

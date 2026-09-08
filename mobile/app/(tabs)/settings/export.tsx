@@ -12,7 +12,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 export default function ExportPage() {
   const { user } = useUserStore();

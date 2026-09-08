@@ -13,7 +13,7 @@ import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useLibraryStore } from "@/stores/libraryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Playlist } from "@/types";
 
 export default function MusicHome() {

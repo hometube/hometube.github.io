@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { usePlaybackState, useProgress, State } from "react-native-track-player";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMusicStore, cleanTitle } from "@/stores/musicStore";
 
 export default function MiniPlayer() {
