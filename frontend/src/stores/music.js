@@ -217,13 +217,14 @@ export const useMusicStore = defineStore('music', () => {
     { id: 'all-songs', name: 'All Songs', songs: songs.value }
   ])
 
-  const load = async () => {
+  const load = async (kind = 'music') => {
     const userStore = useUserStore()
     if (!userStore.user) return
     try {
+      const params = kind ? { user_id: userStore.user.id, kind } : { user_id: userStore.user.id }
       const [pls, allSongs] = await Promise.all([
-        API.get('/playlists', { user_id: userStore.user.id }),
-        API.get('/music', { user_id: userStore.user.id })
+        API.get('/playlists', params),
+        API.get('/music', params)
       ])
       playlists.value = pls
       songs.value = allSongs
@@ -296,7 +297,9 @@ export const useMusicStore = defineStore('music', () => {
       repeat: repeat.value,
       playing: playing.value,
       currentTime: audio.value.currentTime,
-      duration: audio.value.duration
+      duration: audio.value.duration,
+      songIds: displaySongs.value.map(s => s.id),
+      originalSongIds: originalOrder.value.map(s => s.id)
     }
     localStorage.setItem('musicPlayerState', JSON.stringify(state))
   }
@@ -316,24 +319,37 @@ export const useMusicStore = defineStore('music', () => {
 
       let pl = null
       let songs = []
+      let originalFallback = null
+
+      const allMusic = await API.get('/music', { user_id: user.id })
 
       if (state.playlistId === 'my-songs') {
-        const allSongs = await API.get('/music', { user_id: user.id })
         pl = { type: 'virtual', name: 'My Songs' }
-        songs = allSongs.filter(m => m.added_by === user.id)
+        songs = allMusic.filter(m => m.added_by === user.id)
       } else if (state.playlistId === 'all-songs') {
-        const allSongs = await API.get('/music', { user_id: user.id })
         pl = { type: 'virtual', name: 'All Songs' }
-        songs = allSongs
+        songs = allMusic
       } else {
         const playlists = await API.get('/playlists', { user_id: user.id })
         const found = playlists.find(p => p.id === parseInt(state.playlistId))
         if (found) {
           pl = found
-          const allMusic = await API.get('/music', { user_id: user.id })
+          const songMap = new Map(allMusic.map(m => [m.id, m]))
           songs = (found.songs || [])
-            .map(s => allMusic.find(m => m.id === s.music_id))
+            .map(s => songMap.get(s.music_id))
             .filter(Boolean)
+        }
+      }
+
+      if ((!pl || songs.length === 0) && Array.isArray(state.songIds) && state.songIds.length) {
+        const byId = new Map(allMusic.map(m => [m.id, m]))
+        const restored = state.songIds.map(id => byId.get(id)).filter(Boolean)
+        if (restored.length) {
+          pl = pl || { type: 'unknown', name: 'Last Played' }
+          songs = restored
+          if (Array.isArray(state.originalSongIds) && state.originalSongIds.length) {
+            originalFallback = state.originalSongIds.map(id => byId.get(id)).filter(Boolean)
+          }
         }
       }
 
@@ -341,7 +357,7 @@ export const useMusicStore = defineStore('music', () => {
 
       playlist.value = pl
       playlistId.value = state.playlistId
-      originalOrder.value = songs
+      originalOrder.value = originalFallback || songs
 
       if (!downloadedCache.value || Object.keys(downloadedCache.value).length === 0) {
         await checkDownloaded(songs)

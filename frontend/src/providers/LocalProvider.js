@@ -67,6 +67,23 @@ export class LocalProvider extends DataProvider {
         return { store: pathToStore[table], id: parseInt(generic[2]), action: 'by_id' }
       }
     }
+    // /podcasts
+    if (basePath === '/podcasts') {
+      return { store: null, id: null, action: 'podcasts' }
+    }
+    // /podcasts/subscribe
+    if (basePath === '/podcasts/subscribe') {
+      return { store: null, id: null, action: 'podcast_subscribe' }
+    }
+    // /podcasts/{id}/check
+    const podCheck = basePath.match(/^\/podcasts\/(\d+)\/check$/)
+    if (podCheck) return { store: null, id: parseInt(podCheck[1]), action: 'podcast_check' }
+    // /podcasts/{id}/episodes
+    const podEpisodes = basePath.match(/^\/podcasts\/(\d+)\/episodes$/)
+    if (podEpisodes) return { store: null, id: parseInt(podEpisodes[1]), action: 'podcast_episodes' }
+    // /podcasts/{id}
+    const podById = basePath.match(/^\/podcasts\/(\d+)$/)
+    if (podById) return { store: null, id: parseInt(podById[1]), action: 'podcast_unsubscribe' }
     return { store: null, id: null, action: null }
   }
 
@@ -74,6 +91,21 @@ export class LocalProvider extends DataProvider {
   _get(store, id) { return LocalDB.get(store, id) }
   _store(store, records) { return LocalDB.store(store, records) }
   _delete(store, id) { return LocalDB.delete(store, id) }
+
+  async _musicWithDownloaded(records) {
+    const files = await LocalDB.getFilesByType('music')
+    const fileIds = new Set(files.map(f => f.id))
+    return records.map(d => {
+      let exists = false
+      if (d.filename) exists = fileIds.has(`music_${d.filename}`)
+      if (!exists && d.video_id) {
+        for (const ext of ['mp3', 'webm', 'm4a', 'ogg', 'flac', 'wav']) {
+          if (fileIds.has(`music_${d.video_id}.${ext}`)) { exists = true; break }
+        }
+      }
+      return { ...d, downloaded: exists }
+    })
+  }
 
   async get(path, query = {}, json = true) {
     const basePath = this._getBasePath(path)
@@ -84,6 +116,9 @@ export class LocalProvider extends DataProvider {
       if (query.user_id) {
         const uid = parseInt(query.user_id)
         data = data.filter(r => r.added_by === uid || r.user_id === uid)
+      }
+      if (query.kind && (match.store === 'music' || match.store === 'playlists')) {
+        data = data.filter(r => (r.kind || 'music') === query.kind)
       }
       if (match.store === 'videos' || match.store === 'music') {
         const files = await LocalDB.getFilesByType(match.store)
@@ -109,6 +144,54 @@ export class LocalProvider extends DataProvider {
 
     if (match.action === 'channel_videos') {
       return []
+    }
+
+    if (match.action === 'podcasts') {
+      const subs = await this._getAll('subscriptions')
+      const channels = await this._getAll('channels')
+      const allMusic = await this._getAll('music')
+      const uid = query.user_id ? parseInt(query.user_id) : null
+      const feeds = []
+      for (const s of subs) {
+        if ((s.kind || 'video') !== 'podcast') continue
+        if (uid && s.user_id !== uid) continue
+        const chan = channels.find(c => c.id === s.channel_id)
+        const episodes = allMusic.filter(m => m.channel_id === s.channel_id && m.kind === 'podcast' && (!uid || m.added_by === uid))
+        const withDl = await this._musicWithDownloaded(episodes)
+        feeds.push({
+          subscription_id: s.id,
+          channel_id: s.channel_id,
+          channel_name: chan?.name || 'Unknown',
+          channel_url: chan?.url || '',
+          criteria: s.criteria || {},
+          episode_count: episodes.length,
+          downloaded_count: withDl.filter(e => e.downloaded).length,
+          last_checked: s.last_checked || null,
+          created_at: s.created_at || null,
+        })
+      }
+      return feeds
+    }
+
+    if (match.action === 'podcast_episodes') {
+      const sub = await this._get('subscriptions', match.id)
+      if (!sub || (sub.kind || 'video') !== 'podcast') return null
+      const chan = await this._get('channels', sub.channel_id)
+      const uid = query.user_id ? parseInt(query.user_id) : null
+      const allMusic = await this._getAll('music')
+      let episodes = allMusic.filter(m => m.channel_id === sub.channel_id && m.kind === 'podcast' && (!uid || m.added_by === uid))
+      episodes = await this._musicWithDownloaded(episodes)
+      return {
+        subscription_id: sub.id,
+        channel_id: sub.channel_id,
+        channel_name: chan?.name || 'Unknown',
+        channel_url: chan?.url || '',
+        episodes,
+      }
+    }
+
+    if (match.action === 'podcast_check' || match.action === 'podcast_subscribe') {
+      return { ok: true }
     }
 
     if (match.action === 'info') {
@@ -138,7 +221,7 @@ export class LocalProvider extends DataProvider {
     if (basePath === '/playlists' && !match.store) {
       const all = await this._getAll('playlists')
       const maxId = all.reduce((max, p) => Math.max(max, p.id || 0), 0)
-      const playlist = { id: maxId + 1, name: body.name, user_id: body.user_id, songs: [] }
+      const playlist = { id: maxId + 1, name: body.name, user_id: body.user_id, songs: [], kind: body.kind || 'music' }
       await this._store('playlists', playlist)
       return playlist
     }
@@ -165,6 +248,10 @@ export class LocalProvider extends DataProvider {
 
     const noopPaths = ['/videos/add', '/music/add', '/channels/add', '/channels']
     if (noopPaths.includes(basePath) || basePath.startsWith('/channels/') && basePath.endsWith('/subscribe')) {
+      return { ok: true }
+    }
+
+    if (match.action === 'podcast_subscribe' || match.action === 'podcast_check') {
       return { ok: true }
     }
 
@@ -227,6 +314,11 @@ export class LocalProvider extends DataProvider {
     }
 
     if (match.store === 'subscriptions' && match.action === 'by_id') {
+      await this._delete('subscriptions', match.id)
+      return { ok: true }
+    }
+
+    if (match.action === 'podcast_unsubscribe') {
       await this._delete('subscriptions', match.id)
       return { ok: true }
     }
@@ -436,7 +528,11 @@ export class LocalProvider extends DataProvider {
     if (metadata.music) {
       const cleaned = metadata.music.map(m => {
         const { id, added_by, ...rest } = m
-        return { ...rest, added_by: idMap.users?.[added_by] || added_by }
+        return {
+          ...rest,
+          added_by: idMap.users?.[added_by] || added_by,
+          channel_id: idMap.channels?.[m.channel_id] || m.channel_id,
+        }
       })
       await this._store('music', cleaned)
       idMap.music = {}

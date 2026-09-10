@@ -21,6 +21,7 @@ const {
   currentTime,
   duration,
   playbackError,
+  playlist,
 } = storeToRefs(musicStore)
 
 const {
@@ -43,14 +44,20 @@ const showWaveform = computed(() => {
 })
 
 const onPlaylistPage = computed(() => {
-  if (!route.path.startsWith('/music/playlist/')) return false
+  if (!route.path.startsWith('/music/playlist/') && !route.path.startsWith('/podcast/playlist/')) return false
   const id = route.params.id || route.path.split('/').pop()
   return isCurrentPlaylist(String(id))
 })
 
 const goToCurrentPlaylist = () => {
-  if (playlistId.value) {
+  if (!playlistId.value) return
+  if (playlistId.value === 'my-songs' || playlistId.value === 'all-songs') {
     router.push(`/music/playlist/${playlistId.value}`)
+    return
+  }
+  if (String(parseInt(playlistId.value)) === String(playlistId.value)) {
+    const kind = playlist.value?.kind === 'podcast' ? 'podcast' : 'music'
+    router.push(`/${kind}/playlist/${playlistId.value}`)
   }
 }
 </script>

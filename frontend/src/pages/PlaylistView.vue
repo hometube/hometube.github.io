@@ -48,6 +48,9 @@ const {
   load,
 } = musicStore
 
+const isPodcast = computed(() => route.name === 'podcast-playlist')
+const kind = computed(() => isPodcast.value ? 'podcast' : 'music')
+
 const showPlaylistMenu = ref(false)
 const showSongMenu = ref(false)
 const menuSong = ref(null)
@@ -97,7 +100,7 @@ const handleRemoveFromPlaylist = async () => {
 const downloadedSongs = computed(() => displaySongs.value.filter(s => s.downloaded))
 
 const otherPlaylists = computed(() => {
-  const all = musicStore.playlists
+  const all = musicStore.playlists.filter(p => (p.kind || 'music') === kind.value)
   if (!playlist.value || playlist.value.type === 'virtual') return all
   return all.filter(p => p.id !== playlist.value.id)
 })
@@ -107,7 +110,7 @@ const menuSongInQueue = computed(() => isInQueue(menuSong.value?.id))
 const handleAddToPlaylist = async (pl) => {
   if (!menuSong.value) return
   await API.post(`/playlists/${pl.id}/add`, { music_id: menuSong.value.id })
-  load()
+  load(kind.value)
   closeMenu()
 }
 
@@ -115,9 +118,9 @@ const createNewPlaylist = async () => {
   if (!menuSong.value || !userStore.user) return
   const name = prompt('Playlist name:')
   if (!name) return
-  const pl = await API.post('/playlists', { name, user_id: userStore.user.id })
+  const pl = await API.post('/playlists', { name, user_id: userStore.user.id, kind: kind.value })
   await API.post(`/playlists/${pl.id}/add`, { music_id: menuSong.value.id })
-  load()
+  load(kind.value)
   closeMenu()
 }
 
@@ -125,7 +128,7 @@ const handleDeleteSong = async () => {
   if (!menuSong.value) return
   if (!confirm(`Delete "${cleanTitle(menuSong.value.title)}"? This cannot be undone.`)) return
   await API.delete(`/music/${menuSong.value.id}`)
-  await load()
+  await load(kind.value)
   loadPlaylist()
   closeMenu()
 }
@@ -136,15 +139,15 @@ const handleRenamePlaylist = async () => {
   if (!name || name === playlist.value.name) return
   await API.put(`/playlists/${playlist.value.id}`, { name })
   playlist.value.name = name
-  await load()
+  await load(kind.value)
 }
 
 const handleDeletePlaylist = async () => {
   if (!playlist.value || playlist.value.type === 'virtual') return
   if (!confirm(`Delete playlist "${playlist.value.name}"?`)) return
   await API.delete(`/playlists/${playlist.value.id}`)
-  await load()
-  router.push('/music')
+  await load(kind.value)
+  router.push(kind.value === 'podcast' ? '/podcast' : '/music')
 }
 
 const handleDownloadPlaylist = async () => {
@@ -203,11 +206,11 @@ const loadPlaylist = async () => {
       pl = { type: 'virtual', name: 'All Songs' }
       songs = allSongs
     } else {
-      const playlists = await API.get('/playlists', { user_id: userStore.user.id })
+      const playlists = await API.get('/playlists', { user_id: userStore.user.id, kind: kind.value })
       const found = playlists.find(p => p.id === parseInt(id))
       if (found) {
         pl = found
-        const allMusic = await API.get('/music', { user_id: userStore.user.id })
+        const allMusic = await API.get('/music', { user_id: userStore.user.id, kind: kind.value })
         songs = (found.songs || [])
           .map(s => allMusic.find(m => m.id === s.music_id))
           .filter(Boolean)
@@ -219,6 +222,7 @@ const loadPlaylist = async () => {
     } else {
       error.value = 'Playlist not found'
     }
+    load(kind.value)
     scrollToCurrentSong()
   } catch (e) {
     error.value = 'Failed to load playlist'
@@ -229,7 +233,7 @@ const loadPlaylist = async () => {
 }
 
 const close = () => {
-  router.push('/music')
+  router.push(kind.value === 'podcast' ? '/podcast' : '/music')
 }
 
 const scrollToCurrentSong = async () => {

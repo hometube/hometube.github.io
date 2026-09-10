@@ -79,6 +79,7 @@ export class ServerProvider extends DataProvider {
 
     ServiceWorkerInternal.sendCacheRule('/api/music', { ttl: Infinity, refetch: true })
     ServiceWorkerInternal.sendCacheRule('/api/playlists', { ttl: Infinity, refetch: true })
+    ServiceWorkerInternal.sendCacheRule('/api/podcasts', { ttl: Infinity, refetch: true })
   }
 
   _getJWT() {
