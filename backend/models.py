@@ -20,6 +20,7 @@ class Subscription(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     criteria = Column(JSON)
     check_interval = Column(Integer, default=3600)
+    kind = Column(String(20), default="video", server_default="video")
     last_checked = Column(DateTime)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -35,6 +36,7 @@ class Playlist(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(200), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"))
+    kind = Column(String(20), default="music", server_default="music")
     created_at = Column(DateTime, server_default=func.now())
     songs = Column(JSON, default=[])
 
@@ -60,9 +62,11 @@ class Music(Base):
     title = Column(String(300))
     artist = Column(String(200))
     album_art = Column(String(500))
+    channel_id = Column(Integer, ForeignKey("channels.id"))
     filename = Column(String(500))
     is_playlist = Column(Boolean, default=False)
     playlist_id = Column(String(50))
+    kind = Column(String(20), default="music", server_default="music")
     downloaded = Column(Boolean, default=False)
     added_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, server_default=func.now())

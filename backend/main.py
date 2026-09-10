@@ -18,7 +18,7 @@ import urllib.parse
 import jwt
 from datetime import datetime, timedelta
 
-from database import engine, get_db, Base
+from database import engine, get_db, Base, ensure_schema
 import models
 from services import ytdlp, scheduler
 from paths import downloads_dir
@@ -79,6 +79,67 @@ def clean_title(title):
         return title
     return re.sub(r'\s*\[[^\]]+\]\s*$', '', title)
 
+
+def get_or_create_channel(db, url, name=None):
+    chan = db.query(models.Channel).filter(models.Channel.url == url).first()
+    if not chan and name:
+        chan = db.query(models.Channel).filter(models.Channel.name == name).first()
+    if not chan:
+        chan = models.Channel(url=url, name=name or "")
+        db.add(chan)
+        db.commit()
+        db.refresh(chan)
+    return chan
+
+
+def resolve_channel_from_info(db, info):
+    url = info.get("channel_url") or info.get("uploader_url")
+    if not url:
+        return None
+    name = info.get("channel") or info.get("uploader")
+    return get_or_create_channel(db, url, name)
+
+
+def backfill_podcast_episodes(db, channel, user_id, criteria=None, limit=100):
+    entries = ytdlp.get_channel_videos(channel.url)
+    count = 0
+    for entry in entries[:limit]:
+        if not entry or not entry.get("id"):
+            continue
+        exists = db.query(models.Music).filter(
+            models.Music.kind == "podcast",
+            models.Music.video_id == entry.get("id")
+        ).first()
+        if exists:
+            continue
+        title = entry.get("title") or "Unknown"
+        duration = entry.get("duration") or 0
+        criteria = criteria or {}
+        keywords = criteria.get("keywords") or []
+        if keywords and not any(k.lower() in title.lower() for k in keywords):
+            continue
+        if criteria.get("min_length") and duration and duration < criteria["min_length"]:
+            continue
+        if criteria.get("max_length") and duration and duration > criteria["max_length"]:
+            continue
+        entry_url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id')}"
+        episode = models.Music(
+            video_id=entry.get("id"),
+            url=entry_url,
+            title=clean_title(title),
+            artist=channel.name,
+            album_art=ytdlp.pick_album_art(entry),
+            is_playlist=False,
+            downloaded=False,
+            added_by=user_id,
+            kind="podcast",
+            channel_id=channel.id
+        )
+        db.add(episode)
+        count += 1
+    db.commit()
+    return count
+
 class UserCreate(BaseModel):
     username: str
 
@@ -95,10 +156,18 @@ class SubscribeReq(BaseModel):
     criteria: dict = {}
     check_interval: int = 3600
 
+class PodcastSubscribe(BaseModel):
+    url: str
+    user_id: int
+    criteria: dict = {}
+    check_interval: int = 3600
+
 class MusicAdd(BaseModel):
     url: str
     user_id: int
     playlist_id: Optional[int] = None
+    kind: str = "music"
+    channel_id: Optional[int] = None
 
 class MusicDownload(BaseModel):
     filename: Optional[str] = None
@@ -106,6 +175,7 @@ class MusicDownload(BaseModel):
 class PlaylistCreate(BaseModel):
     name: str
     user_id: int
+    kind: str = "music"
 
 class PlaylistRename(BaseModel):
     name: str
@@ -140,7 +210,7 @@ class ExportRequest(BaseModel):
     video_ids: Optional[List[int]] = None
     music_ids: Optional[List[int]] = None
 
-Base.metadata.create_all(bind=engine)
+ensure_schema()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -498,15 +568,17 @@ def delete_video(vid_id: int, token_valid: bool = Depends(verify_token), db: Ses
 
 # Playlists
 @app.get("/api/playlists")
-def list_playlists(user_id: int = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+def list_playlists(user_id: int = None, kind: str = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
     q = db.query(models.Playlist)
     if user_id:
         q = q.filter(models.Playlist.user_id == user_id)
+    if kind:
+        q = q.filter(models.Playlist.kind == kind)
     return q.order_by(models.Playlist.created_at.desc()).all()
 
 @app.post("/api/playlists")
 def create_playlist(data: PlaylistCreate, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
-    playlist = models.Playlist(name=data.name, user_id=data.user_id)
+    playlist = models.Playlist(name=data.name, user_id=data.user_id, kind=data.kind)
     db.add(playlist)
     db.commit()
     db.refresh(playlist)
@@ -569,10 +641,16 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
     if not info:
         raise HTTPException(400, "Invalid music URL")
 
+    is_podcast = data.kind == "podcast"
+
     if "entries" in info:
         entries = info.get("entries", [])
         if not entries:
             raise HTTPException(400, "Empty playlist")
+
+        channel = None
+        if is_podcast and not data.channel_id:
+            channel = resolve_channel_from_info(db, info)
 
         music_ids = []
         for entry in entries:
@@ -584,6 +662,8 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
             video_id = entry.get("id")
             entry_url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={video_id}"
 
+            entry_channel = channel or (resolve_channel_from_info(db, entry) if is_podcast else None)
+
             music = models.Music(
                 video_id=video_id,
                 url=entry_url,
@@ -591,13 +671,16 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
                 artist=artist,
                 album_art=album_art,
                 is_playlist=False,
+                kind=data.kind,
+                channel_id=data.channel_id or (entry_channel.id if entry_channel else None),
                 added_by=data.user_id
             )
             db.add(music)
             db.flush()
-            filename = ytdlp.download_music(entry_url, music.id)
-            music.filename = filename
-            music.downloaded = True
+            if not is_podcast:
+                filename = ytdlp.download_music(entry_url, music.id)
+                music.filename = filename
+                music.downloaded = True
             db.flush()
             music_ids.append(music.id)
 
@@ -610,7 +693,7 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
                 playlist.songs = songs
         else:
             playlist_name = (info.get("title") or "New Playlist").strip()
-            playlist = models.Playlist(name=playlist_name, user_id=data.user_id)
+            playlist = models.Playlist(name=playlist_name, user_id=data.user_id, kind=data.kind)
             db.add(playlist)
             db.flush()
             songs = [{"music_id": mid, "position": i} for i, mid in enumerate(music_ids)]
@@ -620,14 +703,28 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
         return {"ok": True, "count": len(music_ids), "is_playlist": True, "playlist_id": playlist.id}
 
     title = clean_title(info.get("title"))
-    music = models.Music(video_id=info.get("id"), url=data.url, title=title, artist=info.get("artist"), album_art=ytdlp.pick_album_art(info), is_playlist=False, added_by=data.user_id)
+    channel = None
+    if is_podcast and not data.channel_id:
+        channel = resolve_channel_from_info(db, info)
+    music = models.Music(
+        video_id=info.get("id"),
+        url=data.url,
+        title=title,
+        artist=info.get("artist") or info.get("channel") or info.get("uploader"),
+        album_art=ytdlp.pick_album_art(info),
+        is_playlist=False,
+        kind=data.kind,
+        channel_id=data.channel_id or (channel.id if channel else None),
+        added_by=data.user_id
+    )
     db.add(music)
     db.commit()
     db.refresh(music)
-    filename = ytdlp.download_music(music.url, music.id)
-    music.filename = filename
-    music.downloaded = True
-    db.commit()
+    if not is_podcast:
+        filename = ytdlp.download_music(music.url, music.id)
+        music.filename = filename
+        music.downloaded = True
+        db.commit()
     if data.playlist_id:
         playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
         if playlist:
@@ -638,10 +735,12 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
     return music
 
 @app.get("/api/music")
-def list_music(user_id: int = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+def list_music(user_id: int = None, kind: str = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
     q = db.query(models.Music)
     if user_id:
         q = q.filter(models.Music.added_by == user_id)
+    if kind:
+        q = q.filter(models.Music.kind == kind)
     return q.order_by(models.Music.created_at.desc()).all()
 
 @app.post("/api/music/{music_id}/download")
@@ -780,6 +879,113 @@ def update_music(music_id: int, data: MusicUpdate, token_valid: bool = Depends(v
         music.added_by = data.added_by
     db.commit()
     return music
+
+# Podcasts
+@app.get("/api/podcasts")
+def list_podcasts(user_id: int = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    q = db.query(models.Subscription).filter(models.Subscription.kind == "podcast")
+    if user_id:
+        q = q.filter(models.Subscription.user_id == user_id)
+    subscriptions = q.order_by(models.Subscription.created_at.desc()).all()
+    result = []
+    for sub in subscriptions:
+        channel = db.query(models.Channel).filter(models.Channel.id == sub.channel_id).first()
+        if not channel:
+            continue
+        episodes = db.query(models.Music).filter(
+            models.Music.kind == "podcast",
+            models.Music.channel_id == channel.id
+        ).all()
+        result.append({
+            "subscription_id": sub.id,
+            "channel_id": channel.id,
+            "channel_name": channel.name,
+            "channel_url": channel.url,
+            "criteria": sub.criteria or {},
+            "episode_count": len(episodes),
+            "downloaded_count": sum(1 for e in episodes if e.downloaded),
+            "last_checked": sub.last_checked.isoformat() if sub.last_checked else None,
+            "created_at": sub.created_at.isoformat() if sub.created_at else None,
+        })
+    return result
+
+@app.post("/api/podcasts/subscribe")
+def subscribe_podcast(data: PodcastSubscribe, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    info = ytdlp.get_video_info(data.url)
+    if not info:
+        raise HTTPException(400, "Invalid channel URL")
+    channel = get_or_create_channel(db, data.url, info.get("title") or info.get("channel"))
+    existing = db.query(models.Subscription).filter(
+        models.Subscription.channel_id == channel.id,
+        models.Subscription.user_id == data.user_id,
+        models.Subscription.kind == "podcast"
+    ).first()
+    if existing:
+        return {"ok": True, "subscription_id": existing.id, "channel_id": channel.id, "backfilled": 0}
+    sub = models.Subscription(
+        channel_id=channel.id,
+        user_id=data.user_id,
+        criteria=data.criteria,
+        check_interval=data.check_interval,
+        kind="podcast"
+    )
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    backfilled = backfill_podcast_episodes(db, channel, data.user_id, data.criteria)
+    return {"ok": True, "subscription_id": sub.id, "channel_id": channel.id, "backfilled": backfilled}
+
+@app.get("/api/podcasts/{sub_id}/episodes")
+def list_podcast_episodes(sub_id: int, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    sub = db.query(models.Subscription).filter(
+        models.Subscription.id == sub_id,
+        models.Subscription.kind == "podcast"
+    ).first()
+    if not sub:
+        raise HTTPException(404)
+    channel = db.query(models.Channel).filter(models.Channel.id == sub.channel_id).first()
+    if not channel:
+        raise HTTPException(404)
+    episodes = db.query(models.Music).filter(
+        models.Music.kind == "podcast",
+        models.Music.channel_id == channel.id
+    ).order_by(models.Music.created_at.desc()).all()
+    return {
+        "subscription_id": sub.id,
+        "channel_id": channel.id,
+        "channel_name": channel.name,
+        "channel_url": channel.url,
+        "episodes": episodes,
+    }
+
+@app.post("/api/podcasts/{sub_id}/check")
+def check_podcast(sub_id: int, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    """Force a manual refresh of a podcast feed."""
+    sub = db.query(models.Subscription).filter(
+        models.Subscription.id == sub_id,
+        models.Subscription.kind == "podcast"
+    ).first()
+    if not sub:
+        raise HTTPException(404)
+    channel = db.query(models.Channel).filter(models.Channel.id == sub.channel_id).first()
+    if not channel:
+        raise HTTPException(404)
+    added = backfill_podcast_episodes(db, channel, sub.user_id, sub.criteria or {}, limit=100)
+    sub.last_checked = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "added": added}
+
+@app.delete("/api/podcasts/{sub_id}")
+def unsubscribe_podcast(sub_id: int, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    sub = db.query(models.Subscription).filter(
+        models.Subscription.id == sub_id,
+        models.Subscription.kind == "podcast"
+    ).first()
+    if not sub:
+        raise HTTPException(404)
+    db.delete(sub)
+    db.commit()
+    return {"ok": True}
 
 # Export / Import
 def serialize_row(obj):
@@ -959,6 +1165,8 @@ async def import_data(file: UploadFile = File(...), token_valid: bool = Depends(
                 for m in metadata["music"]:
                     old_id = m["id"]
                     del m["id"]
+                    if m.get("channel_id") and m["channel_id"] in id_map.get("channels", {}):
+                        m["channel_id"] = id_map["channels"][m["channel_id"]]
                     if m.get("added_by") and m["added_by"] in id_map.get("users", {}):
                         m["added_by"] = id_map["users"][m["added_by"]]
                     if m.get("created_at"):

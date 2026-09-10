@@ -1,8 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta
 from database import SessionLocal
-from models import Subscription, Video, Channel
-from .ytdlp import get_channel_videos
+from models import Subscription, Video, Music, Channel
+from .ytdlp import get_channel_videos, pick_album_art
 
 async def check_subscriptions():
     while True:
@@ -15,9 +15,16 @@ async def check_subscriptions():
                 channel = db.query(Channel).filter(Channel.id == sub.channel_id).first()
                 if not channel:
                     continue
+                is_podcast = (sub.kind or "video") == "podcast"
                 videos = get_channel_videos(channel.url)
                 for v in videos:
-                    exists = db.query(Video).filter(Video.video_id == v.get("id")).first()
+                    v_id = v.get("id")
+                    if not v_id:
+                        continue
+                    if is_podcast:
+                        exists = db.query(Music).filter(Music.kind == "podcast", Music.video_id == v_id).first()
+                    else:
+                        exists = db.query(Video).filter(Video.video_id == v_id).first()
                     if not exists:
                         criteria = sub.criteria or {}
                         title = v.get("title", "")
@@ -29,15 +36,31 @@ async def check_subscriptions():
                             continue
                         if criteria.get("max_length") and duration > criteria["max_length"]:
                             continue
-                        vid = Video(
-                            video_id=v.get("id"),
-                            title=title,
-                            channel_id=channel.id,
-                            url=v.get("url"),
-                            added_by=sub.user_id,
-                            quality=criteria.get("quality", "best")
-                        )
-                        db.add(vid)
+                        if is_podcast:
+                            ep_url = v.get("webpage_url") or v.get("url") or f"https://www.youtube.com/watch?v={v_id}"
+                            ep = Music(
+                                video_id=v_id,
+                                title=title,
+                                channel_id=channel.id,
+                                url=ep_url,
+                                artist=channel.name,
+                                album_art=pick_album_art(v),
+                                is_playlist=False,
+                                downloaded=False,
+                                added_by=sub.user_id,
+                                kind="podcast"
+                            )
+                            db.add(ep)
+                        else:
+                            vid = Video(
+                                video_id=v_id,
+                                title=title,
+                                channel_id=channel.id,
+                                url=v.get("url"),
+                                added_by=sub.user_id,
+                                quality=criteria.get("quality", "best")
+                            )
+                            db.add(vid)
                 sub.last_checked = datetime.utcnow()
                 db.commit()
             # Auto-delete watched videos older than 7 days without keep flag
