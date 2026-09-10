@@ -18,6 +18,7 @@ import { useMusicStore } from "@/stores/musicStore";
 import { useLibraryStore } from "@/stores/libraryStore";
 import { useDownloadStore } from "@/stores/downloadStore";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { AddToPlaylistSheet } from "@/components";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Music, Playlist } from "@/types";
 
@@ -158,6 +159,9 @@ export default function PlaylistView() {
   const [offlineOnly, setOfflineOnly] = useState(false);
   const [showRename, setShowRename] = useState(false);
   const [renameName, setRenameName] = useState("");
+  const [playlistPickerSong, setPlaylistPickerSong] = useState<Music | null>(
+    null
+  );
 
   const autoOfflineOnly = useRef(false);
   const prevServerOffline = useRef<boolean | null>(null);
@@ -401,6 +405,10 @@ export default function PlaylistView() {
       case "download":
         handleDownloadSong(song);
         break;
+      case "add_to_playlist":
+        setMenuSong(null);
+        setPlaylistPickerSong(song);
+        break;
       case "remove_playlist":
         handleRemoveSong(song);
         break;
@@ -432,6 +440,11 @@ export default function PlaylistView() {
         onPress: () => handleSongAction("download", song),
       });
     }
+    items.push({
+      icon: "list",
+      label: "Add to Playlist",
+      onPress: () => handleSongAction("add_to_playlist", song),
+    });
     if (!isVirtual && playlist) {
       items.push({
         icon: "trash",
@@ -714,6 +727,10 @@ export default function PlaylistView() {
           </View>
         </TouchableOpacity>
       </Modal>
+    <AddToPlaylistSheet
+        song={playlistPickerSong}
+        onClose={() => setPlaylistPickerSong(null)}
+      />
     </View>
   );
 }

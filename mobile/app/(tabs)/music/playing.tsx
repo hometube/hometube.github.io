@@ -78,6 +78,7 @@ export default function PlayingView() {
   const playSong = useMusicStore((s) => s.playSong);
   const toggleRepeat = useMusicStore((s) => s.toggleRepeat);
   const removeFromQueue = useMusicStore((s) => s.removeFromQueue);
+  const clearQueue = useMusicStore((s) => s.clearQueue);
   const music = useLibraryStore((s) => s.music);
   const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
 
@@ -150,19 +151,33 @@ export default function PlayingView() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.heading}>Playing</Text>
-        <TouchableOpacity
-          style={[styles.repeatBtn, repeat && styles.repeatBtnActive]}
-          onPress={toggleRepeat}
-        >
-          <Ionicons
-            name={repeat ? "repeat" : "repeat-outline"}
-            size={20}
-            color={repeat ? "#e94560" : "#888"}
-          />
-          <Text style={[styles.repeatText, repeat && styles.repeatTextActive]}>
-            {repeat ? "Repeat On" : "Repeat Off"}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.repeatBtn, repeat && styles.repeatBtnActive]}
+            onPress={toggleRepeat}
+          >
+            <Ionicons
+              name={repeat ? "repeat" : "repeat-outline"}
+              size={20}
+              color={repeat ? "#e94560" : "#888"}
+            />
+            <Text
+              style={[styles.repeatText, repeat && styles.repeatTextActive]}
+            >
+              {repeat ? "Repeat On" : "Repeat Off"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.repeatBtn, styles.clearBtn]}
+            onPress={clearQueue}
+            disabled={queue.length === 0}
+          >
+            <Ionicons name="trash-outline" size={18} color="#e94560" />
+            <Text style={[styles.repeatText, { color: "#e94560" }]}>
+              Clear Queue
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {queue.length === 0 ? (
@@ -250,6 +265,12 @@ const styles = StyleSheet.create({
   repeatBtnActive: { backgroundColor: "rgba(233,69,96,0.15)" },
   repeatText: { color: "#888", fontSize: 13, fontWeight: "600" },
   repeatTextActive: { color: "#e94560" },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  clearBtn: { backgroundColor: "rgba(233,69,96,0.1)" },
   songItem: {
     flexDirection: "row",
     alignItems: "center",
