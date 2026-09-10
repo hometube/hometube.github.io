@@ -6,6 +6,9 @@ import AddChannel from './pages/AddChannel.vue'
 import MusicHome from './pages/MusicHome.vue'
 import AddMusic from './pages/AddMusic.vue'
 import PlaylistView from './pages/PlaylistView.vue'
+import PodcastHome from './pages/PodcastHome.vue'
+import AddPodcast from './pages/AddPodcast.vue'
+import PodcastFeed from './pages/PodcastFeed.vue'
 import AboutPage from './pages/AboutPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
 import DebugPage from './pages/DebugPage.vue'
@@ -26,6 +29,10 @@ const routes = [
   { path: '/music', name: 'music', component: MusicHome, meta: { requiresUser: true } },
   { path: '/music/add', name: 'music-add', component: AddMusic, meta: { requiresUser: true } },
   { path: '/music/playlist/:id', name: 'playlist', component: PlaylistView, props: true, meta: { requiresUser: true } },
+  { path: '/podcast', name: 'podcast', component: PodcastHome, meta: { requiresUser: true } },
+  { path: '/podcast/add', name: 'podcast-add', component: AddPodcast, meta: { requiresUser: true } },
+  { path: '/podcast/feed/:id', name: 'podcast-feed', component: PodcastFeed, props: true, meta: { requiresUser: true } },
+  { path: '/podcast/playlist/:id', name: 'podcast-playlist', component: PlaylistView, props: true, meta: { requiresUser: true } },
   { path: '/settings', name: 'settings', component: SettingsPage, meta: { requiresUser: true } },
   { path: '/debug', name: 'debug', component: DebugPage, meta: { requiresUser: true } },
   { path: '/export', name: 'export', component: ExportPage, meta: { requiresUser: true } },
@@ -82,7 +89,7 @@ router.beforeEach((to, from, next) => {
       return
     }
     // Block add pages in local mode (no backend to download from URLs)
-    if (localMode && (to.path === '/video/add' || to.path === '/video/channel' || to.path === '/music/add')) {
+    if (localMode && (to.path === '/video/add' || to.path === '/video/channel' || to.path === '/music/add' || to.path === '/podcast/add')) {
       next('/import')
       return
     }

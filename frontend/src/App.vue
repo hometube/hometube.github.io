@@ -30,6 +30,7 @@ const backendMenu = ref(null)
 const mode = computed(() => {
   if (route.path.startsWith('/video')) return 'video'
   if (route.path.startsWith('/music')) return 'music'
+  if (route.path.startsWith('/podcast')) return 'podcast'
   if (route.path === '/export' || route.path === '/import') return 'data'
   if (route.path === '/settings' || route.path === '/debug') return 'settings'
   return 'setup'
@@ -37,6 +38,7 @@ const mode = computed(() => {
 const modeLabel = computed(() => {
   if (mode.value === 'video') return 'Video'
   if (mode.value === 'music') return 'Music'
+  if (mode.value === 'podcast') return 'Podcast'
   if (mode.value === 'data') return 'Data'
   if (mode.value === 'settings') return 'Settings'
   return 'Setup'
@@ -49,6 +51,8 @@ const navigate = (tab, subPage = null) => {
     router.push(subPage === 'add' ? '/video/add' : subPage === 'channel' ? '/video/channel' : '/video')
   } else if (tab === 'music') {
     router.push(subPage === 'add' ? '/music/add' : '/music')
+  } else if (tab === 'podcast') {
+    router.push(subPage === 'add' ? '/podcast/add' : '/podcast')
   } else if (tab === 'settings') {
     router.push('/settings')
   } else if (tab === 'export') {
@@ -153,6 +157,18 @@ onUnmounted(() => {
             <button v-if="!isLocalMode()" @click="navigate('music', 'add')"
               class="block w-full text-left p-2 rounded hover:bg-gray-800 text-white">
               <FontAwesomeIcon :icon="['fas', 'plus']" class="mr-2" /> Add Music
+            </button>
+          </div>
+
+          <div class="mb-4">
+            <div class="text-xs text-gray-500 uppercase mb-2">Podcast</div>
+            <button @click="navigate('podcast', 'home')"
+              class="block w-full text-left p-2 rounded hover:bg-gray-800 text-white">
+              <FontAwesomeIcon :icon="['fas', 'rss']" class="mr-2" /> Podcast Home
+            </button>
+            <button v-if="!isLocalMode()" @click="navigate('podcast', 'add')"
+              class="block w-full text-left p-2 rounded hover:bg-gray-800 text-white">
+              <FontAwesomeIcon :icon="['fas', 'plus']" class="mr-2" /> Add Podcast
             </button>
           </div>
 
