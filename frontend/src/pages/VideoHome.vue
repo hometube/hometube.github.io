@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { API } from '../api.js'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import Plyr from 'plyr'
@@ -7,8 +8,20 @@ import 'plyr/dist/plyr.css'
 import { useUserStore } from '../stores/user.js'
 import { useVideoStore } from '../stores/video.js'
 
+const router = useRouter()
 const userStore = useUserStore()
 const videoStore = useVideoStore()
+
+const searchQuery = ref('')
+
+const filteredVideos = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return videoStore.filteredVideos
+  return videoStore.filteredVideos.filter(v =>
+    (v.title || '').toLowerCase().includes(q) ||
+    (v.channel_name || '').toLowerCase().includes(q)
+  )
+})
 
 const playerRef = ref(null)
 const player = ref(null)
@@ -33,6 +46,14 @@ onMounted(() => videoStore.load())
 
 <template>
   <div class="p-4 pt-16">
+    <div class="flex items-center gap-2 mb-4">
+      <input v-model="searchQuery" type="text" placeholder="Search videos by title or channel…"
+        class="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-gray-500" />
+      <button @click="router.push('/video/add')" class="shrink-0 px-4 py-2 bg-blue-600 rounded-lg text-white text-sm font-medium">
+        <FontAwesomeIcon :icon="['fas', 'plus']" /> Add
+      </button>
+    </div>
+
     <div class="flex gap-2 mb-4 overflow-x-auto">
       <button v-for="f in videoStore.filters" :key="f.id" @click="videoStore.setFilter(f.id)"
         :class="['px-3 py-1 rounded-full text-sm whitespace-nowrap', videoStore.currentFilter === f.id ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300']">
@@ -55,11 +76,12 @@ onMounted(() => videoStore.load())
       </div>
     </div>
 
-    <div v-if="videoStore.filteredVideos.length === 0" class="text-center py-8 text-gray-500">
-      No videos found. Go to Add Video to get started!
+    <div v-if="filteredVideos.length === 0" class="text-center py-8 text-gray-500">
+      <template v-if="searchQuery.trim()">No videos match your search.</template>
+      <template v-else>No videos found. Go to Add Video to get started!</template>
     </div>
     <div v-else class="space-y-2">
-      <div v-for="v in videoStore.filteredVideos" :key="v.id" class="bg-gray-800 border border-gray-700 rounded-lg p-3 flex items-center justify-between">
+      <div v-for="v in filteredVideos" :key="v.id" class="bg-gray-800 border border-gray-700 rounded-lg p-3 flex items-center justify-between">
         <div class="flex-1 cursor-pointer" @click="playVideo(v)">
           <div class="text-sm font-medium">{{ v.title }}</div>
           <div class="flex gap-2 mt-1">
