@@ -7,12 +7,15 @@ import {
   Alert,
   ScrollView,
   Switch,
+  Modal,
 } from "react-native";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { API, getProvider, resetProvider } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useConnectionStore } from "@/stores/connectionStore";
+import StatusDot from "@/components/StatusDot";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ProviderType } from "@/types";
 
@@ -23,12 +26,18 @@ export default function Settings() {
   const requestTimeout = useSettingsStore((s) => s.requestTimeout);
   const setRequestTimeout = useSettingsStore((s) => s.setRequestTimeout);
   const loadSettings = useSettingsStore((s) => s.load);
+  const connectionStatus = useConnectionStore((s) => s.status);
+  const checkConnection = useConnectionStore((s) => s.checkConnection);
   const [providerType, setProviderType] = useState<ProviderType>("server");
+  const [showTimeout, setShowTimeout] = useState(false);
+
+  const TIMEOUT_OPTIONS = [5, 15, 30, 60];
 
   useEffect(() => {
     detectMode();
     loadBackendUrl();
     loadSettings();
+    checkConnection();
   }, []);
 
   const detectMode = async () => {
@@ -72,18 +81,7 @@ export default function Settings() {
   };
 
   const handleTimeoutPress = () => {
-    const options = [3, 5, 10, 15, 30, 60];
-    Alert.alert(
-      "Request Timeout",
-      "How long the app waits for a server response (in seconds).",
-      [
-        ...options.map((sec) => ({
-          text: `${sec}s${sec === requestTimeout ? " (current)" : ""}`,
-          onPress: () => setRequestTimeout(sec),
-        })),
-        { text: "Cancel", style: "cancel" as const },
-      ]
-    );
+    setShowTimeout(true);
   };
 
   const handleLogout = async () => {
@@ -137,7 +135,8 @@ export default function Settings() {
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <>
+      <ScrollView style={styles.container}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>User</Text>
         <SettingsRow
@@ -154,6 +153,33 @@ export default function Settings() {
         />
         {providerType === "server" && (
           <>
+            <View style={styles.row}>
+              <View style={styles.rowLeft}>
+                <Ionicons name="wifi" size={20} color="#888" />
+                <View>
+                  <Text style={styles.rowLabel}>Connection</Text>
+                  <Text style={styles.rowSub}>Refreshes every 15 seconds</Text>
+                </View>
+              </View>
+              <View style={styles.rowRight}>
+                <StatusDot size={8} />
+                <Text
+                  style={[
+                    styles.rowValue,
+                    { fontWeight: "600" },
+                    connectionStatus === "online"
+                      ? styles.onlineText
+                      : styles.offlineText,
+                  ]}
+                >
+                  {connectionStatus === "online"
+                    ? "Online"
+                    : connectionStatus === "offline"
+                    ? "Offline"
+                    : "Checking…"}
+                </Text>
+              </View>
+            </View>
             <SettingsRow
               icon="server"
               label="Backend URL"
@@ -199,7 +225,7 @@ export default function Settings() {
           onPress={() => router.push("/(tabs)/settings/export")}
         />
         <SettingsRow
-          icon="upload"
+          icon="cloud-upload"
           label="Import"
           onPress={() => router.push("/(tabs)/settings/import")}
         />
@@ -216,7 +242,51 @@ export default function Settings() {
       </View>
 
       <Text style={styles.version}>HomeTube v1.0.0</Text>
-    </ScrollView>
+      </ScrollView>
+
+      <Modal
+        visible={showTimeout}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTimeout(false)}
+      >
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={() => setShowTimeout(false)}
+        >
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Request Timeout</Text>
+            <Text style={styles.sheetSub}>
+              How long the app waits for a server response.
+            </Text>
+            {TIMEOUT_OPTIONS.map((sec) => {
+              const active = sec === requestTimeout;
+              return (
+                <TouchableOpacity
+                  key={sec}
+                  style={styles.sheetItem}
+                  onPress={() => {
+                    setRequestTimeout(sec);
+                    setShowTimeout(false);
+                  }}
+                >
+                  <Text
+                    style={[styles.sheetLabel, active && styles.sheetLabelActive]}
+                  >
+                    {sec} seconds
+                  </Text>
+                  {active && (
+                    <Ionicons name="checkmark-circle" size={20} color="#e94560" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
   );
 }
 
@@ -256,7 +326,43 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rowValue: { color: "#888", fontSize: 13 },
+  onlineText: { color: "#4ecca3" },
+  offlineText: { color: "#888" },
   dangerText: { color: "#e94560" },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  bottomSheet: {
+    backgroundColor: "#16213e",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#333",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  sheetSub: { color: "#888", fontSize: 13, marginTop: 4, marginBottom: 8 },
+  sheetItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+  },
+  sheetLabel: { color: "#fff", fontSize: 16 },
+  sheetLabelActive: { color: "#e94560", fontWeight: "600" },
   version: {
     color: "#444",
     fontSize: 12,
