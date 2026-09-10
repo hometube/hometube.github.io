@@ -1,5 +1,10 @@
 export { LoadingSpinner } from "./LoadingSpinner";
 export { EmptyState } from "./EmptyState";
-export { default as HamburgerMenu } from "./HamburgerMenu";
+export { AddToPlaylistSheet } from "./AddToPlaylistSheet";
 export { default as MiniPlayer } from "./MiniPlayer";
-export { default as ConnectionPill } from "./ConnectionPill";
+export { default as ModeButton } from "./ModeButton";
+export { default as ModeSwitchModal } from "./ModeSwitchModal";
+export { default as SettingsButton } from "./SettingsButton";
+export { default as ModeTracker } from "./ModeTracker";
+export { default as StatusDot } from "./StatusDot";
+export { default as StatusToast } from "./StatusToast";

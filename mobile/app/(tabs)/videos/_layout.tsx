@@ -1,12 +1,8 @@
-import { TouchableOpacity } from "react-native";
 import { Stack } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import { useUIStore } from "../../../src/stores/uiStore";
-import ConnectionPill from "../../../src/components/ConnectionPill";
+import ModeButton from "../../../src/components/ModeButton";
+import SettingsButton from "../../../src/components/SettingsButton";
 
 export default function VideosLayout() {
-  const toggleMenu = useUIStore((s) => s.toggleMenu);
-
   return (
     <Stack
       screenOptions={{
@@ -15,15 +11,13 @@ export default function VideosLayout() {
         headerTintColor: "#fff",
         headerTitleStyle: { fontWeight: "600" },
         contentStyle: { backgroundColor: "#1a1a2e" },
-        headerLeft: () => (
-          <TouchableOpacity onPress={toggleMenu} style={{ marginRight: 16 }}>
-            <Ionicons name="menu" size={24} color="#fff" />
-          </TouchableOpacity>
-        ),
-        headerRight: () => <ConnectionPill />,
+        headerRight: () => <SettingsButton />,
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Videos" }} />
+      <Stack.Screen
+        name="index"
+        options={{ title: "", headerLeft: () => <ModeButton /> }}
+      />
       <Stack.Screen name="add" options={{ title: "Add Video" }} />
       <Stack.Screen name="channel" options={{ title: "Add Channel" }} />
       <Stack.Screen

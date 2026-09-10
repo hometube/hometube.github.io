@@ -4,12 +4,15 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useUserStore } from "../src/stores/userStore";
 import { useMusicStore, setupMusicPlayback } from "../src/stores/musicStore";
 import { useConnectionStore } from "../src/stores/connectionStore";
 import { localDb } from "../src/db/localDb";
 import TrackPlayer from "react-native-track-player";
-import HamburgerMenu from "../src/components/HamburgerMenu";
+import ModeTracker from "../src/components/ModeTracker";
+import ModeSwitchModal from "../src/components/ModeSwitchModal";
+import StatusToast from "../src/components/StatusToast";
 
 export default function RootLayout() {
   const { loadUser, loadBackendUrl } = useUserStore();
@@ -46,13 +49,17 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-      <HamburgerMenu />
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+        <ModeTracker />
+        <ModeSwitchModal />
+        <StatusToast />
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
