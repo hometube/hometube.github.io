@@ -5,6 +5,7 @@ export default function AppLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="videos" />
       <Stack.Screen name="music" />
+      <Stack.Screen name="podcasts" />
       <Stack.Screen name="settings" />
     </Stack>
   );

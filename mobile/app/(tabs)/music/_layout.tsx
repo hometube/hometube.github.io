@@ -1,13 +1,10 @@
-import { View, TouchableOpacity } from "react-native";
+import { View } from "react-native";
 import { Stack } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import { useUIStore } from "../../../src/stores/uiStore";
-import ConnectionPill from "../../../src/components/ConnectionPill";
+import ModeButton from "../../../src/components/ModeButton";
+import SettingsButton from "../../../src/components/SettingsButton";
 import MiniPlayer from "../../../src/components/MiniPlayer";
 
 export default function MusicLayout() {
-  const toggleMenu = useUIStore((s) => s.toggleMenu);
-
   return (
     <View style={{ flex: 1 }}>
       <Stack
@@ -17,15 +14,13 @@ export default function MusicLayout() {
           headerTintColor: "#fff",
           headerTitleStyle: { fontWeight: "600" },
           contentStyle: { backgroundColor: "#1a1a2e" },
-          headerLeft: () => (
-            <TouchableOpacity onPress={toggleMenu} style={{ marginRight: 16 }}>
-              <Ionicons name="menu" size={24} color="#fff" />
-            </TouchableOpacity>
-          ),
-          headerRight: () => <ConnectionPill />,
+          headerRight: () => <SettingsButton />,
         }}
       >
-        <Stack.Screen name="index" options={{ title: "Music" }} />
+        <Stack.Screen
+          name="index"
+          options={{ title: "", headerLeft: () => <ModeButton /> }}
+        />
         <Stack.Screen name="add" options={{ title: "Add Music" }} />
         <Stack.Screen name="playlist/[id]" options={{ title: "Playlist" }} />
         <Stack.Screen name="playing" options={{ title: "Playing" }} />
