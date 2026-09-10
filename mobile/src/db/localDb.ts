@@ -34,6 +34,7 @@ class LocalDB {
   private async _init(): Promise<void> {
     this.db = await SQLite.openDatabaseAsync(DB_NAME);
     await this.createTables();
+    await this.ensureColumns();
     try {
       const dir = await FileSystem.getInfoAsync(FILE_DIR);
       if (!dir.exists) {
@@ -67,6 +68,7 @@ class LocalDB {
         user_id INTEGER NOT NULL,
         criteria TEXT,
         check_interval INTEGER DEFAULT 3600,
+        kind TEXT DEFAULT 'video',
         last_checked TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (channel_id) REFERENCES channels(id),
@@ -99,6 +101,8 @@ class LocalDB {
         playlist_id TEXT,
         downloaded INTEGER DEFAULT 0,
         added_by INTEGER,
+        kind TEXT DEFAULT 'music',
+        channel_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (added_by) REFERENCES users(id)
       );
@@ -106,6 +110,7 @@ class LocalDB {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         user_id INTEGER NOT NULL,
+        kind TEXT DEFAULT 'music',
         created_at TEXT DEFAULT (datetime('now')),
         songs TEXT DEFAULT '[]',
         FOREIGN KEY (user_id) REFERENCES users(id)
@@ -127,6 +132,22 @@ class LocalDB {
         value TEXT
       );
     `);
+  }
+
+  private async ensureColumns(): Promise<void> {
+    const db = await this.ensureDb();
+    const additions: { table: "subscriptions" | "music" | "playlists"; column: string; ddl: string }[] = [
+      { table: "subscriptions", column: "kind", ddl: "ALTER TABLE subscriptions ADD COLUMN kind TEXT DEFAULT 'video'" },
+      { table: "music", column: "kind", ddl: "ALTER TABLE music ADD COLUMN kind TEXT DEFAULT 'music'" },
+      { table: "music", column: "channel_id", ddl: "ALTER TABLE music ADD COLUMN channel_id INTEGER" },
+      { table: "playlists", column: "kind", ddl: "ALTER TABLE playlists ADD COLUMN kind TEXT DEFAULT 'music'" },
+    ];
+    for (const { table, column, ddl } of additions) {
+      const rows = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+      if (!rows.some((r) => r.name === column)) {
+        await db.execAsync(ddl);
+      }
+    }
   }
 
   async getAll<T = any>(storeName: StoreName): Promise<T[]> {

@@ -23,7 +23,7 @@ mobile/
 │   │   ├── setup-backend.tsx     # Server/local mode choice
 │   │   └── setup-user.tsx        # User selection/creation
 │   └── (tabs)/
-│       ├── _layout.tsx           # Root stack navigator (nav via hamburger menu only)
+│       ├── _layout.tsx           # Root stack navigator (nav via mode switcher + settings gear)
 │       ├── videos/               # Video feed, add, channel, player
 │       ├── music/                # Music home, add, playlist, now-playing
 │       └── settings/            # Settings, backend URL, export, import
@@ -37,14 +37,19 @@ mobile/
 │   │   ├── userStore.ts          # User state (Zustand)
 │   │   ├── musicStore.ts         # Music playback (react-native-track-player)
 │   │   ├── videoStore.ts         # Video state
-│   │   └── uiStore.ts           # UI state (menu, navigation)
+│   │   └── modeStore.ts          # Current mode (music/video/podcast) + switch modal
 │   ├── db/
 │   │   └── localDb.ts           # SQLite wrapper (9 tables mirroring IndexedDB stores)
 │   ├── services/
 │   │   ├── trackPlayerService.ts # Background audio service
 │   │   └── playerSetup.ts       # TrackPlayer registration
 │   ├── components/
-│   │   ├── HamburgerMenu.tsx    # Slide-out navigation menu
+│   │   ├── ModeButton.tsx       # Top-left mode icon (opens mode switcher)
+│   │   ├── ModeSwitchModal.tsx  # Modal to switch between music/video/podcast
+│   │   ├── SettingsButton.tsx   # Top-right gear → settings
+│   │   ├── ModeTracker.tsx      # Syncs current mode with active route
+│   │   ├── StatusToast.tsx      # Top toast when connection status changes
+│   │   ├── StatusDot.tsx        # Green/gray dot (server mode) on settings icon and in settings
 │   │   ├── LoadingSpinner.tsx
 │   │   ├── EmptyState.tsx
 │   │   └── index.ts            # Component re-exports

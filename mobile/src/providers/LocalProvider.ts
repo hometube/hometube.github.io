@@ -105,6 +105,11 @@ export class LocalProvider extends DataProvider {
           (m) => m.added_by === Number(query.user_id)
         );
       }
+      if (query?.kind) {
+        allMusic = allMusic.filter(
+          (m) => (m.kind || "music") === query.kind
+        );
+      }
       if (query?.playlist_id) {
         const playlist = await localDb.get<Playlist>(
           "playlists",
@@ -130,7 +135,84 @@ export class LocalProvider extends DataProvider {
           (p) => p.user_id === Number(query.user_id)
         );
       }
+      if (query?.kind) {
+        playlists = playlists.filter(
+          (p) => (p.kind || "music") === query.kind
+        );
+      }
       return playlists as T;
+    }
+
+    if (store === "podcasts") {
+      const userId = query?.user_id ? Number(query.user_id) : null;
+      const subscriptions = await localDb.getAll<Subscription>("subscriptions");
+      const channels = await localDb.getAll<Channel>("channels");
+      const episodes = await localDb.getAll<Music>("music");
+      const files = await localDb.getFilesByType("music");
+      const fileIds = new Set(files.map((f: any) => f.id));
+
+      const channelById = new Map(channels.map((c) => [c.id, c]));
+
+      const podcastSubs = subscriptions.filter(
+        (s) =>
+          (s.kind || "video") === "podcast" &&
+          (userId == null || s.user_id === userId)
+      );
+
+      if (parsed.id && parsed.action === "episodes") {
+        const sub = podcastSubs.find(
+          (s) => s.id === Number(parsed.id)
+        );
+        if (!sub) return null as T;
+        const channel = channelById.get(sub.channel_id);
+        const list = episodes
+          .filter(
+            (m) =>
+              (m.kind || "music") === "podcast" &&
+              m.channel_id === sub.channel_id
+          )
+          .map((m) => ({
+            ...m,
+            downloaded: fileIds.has(`${m.id}`),
+          }))
+          .sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime()
+          );
+        return {
+          subscription_id: sub.id,
+          channel_id: sub.channel_id,
+          channel_name: channel?.name || "Podcast",
+          channel_url: channel?.url || "",
+          episodes: list,
+        } as T;
+      }
+
+      const feeds = podcastSubs.map((sub) => {
+        const channel = channelById.get(sub.channel_id);
+        const subEpisodes = episodes.filter(
+          (m) =>
+            (m.kind || "music") === "podcast" &&
+            m.channel_id === sub.channel_id
+        );
+        return {
+          subscription_id: sub.id,
+          channel_id: sub.channel_id,
+          channel_name: channel?.name || "Podcast",
+          channel_url: channel?.url || "",
+          criteria: sub.criteria || null,
+          check_interval:
+            sub.check_interval != null ? sub.check_interval : 60,
+          episode_count: subEpisodes.length,
+          downloaded_count: subEpisodes.filter((m) => fileIds.has(`${m.id}`))
+            .length,
+          last_checked: sub.last_checked || null,
+          created_at: sub.created_at,
+        };
+      });
+
+      return feeds as T;
     }
 
     if (store === "downloads") {
@@ -195,6 +277,14 @@ export class LocalProvider extends DataProvider {
       throw new Error("Cannot manage subscriptions in local mode");
     }
 
+    if (store === "podcasts" && parsed.id === "subscribe") {
+      return { ok: true, subscription_id: null, channel_id: null } as T;
+    }
+
+    if (store === "podcasts" && parsed.id && action === "check") {
+      return { ok: true, last_checked: new Date().toISOString() } as T;
+    }
+
     if (store === "music" && action === "add") {
       throw new Error("Cannot add music in local mode");
     }
@@ -211,6 +301,7 @@ export class LocalProvider extends DataProvider {
         created_at: new Date().toISOString(),
         songs: [],
       };
+      if (body.kind) newPlaylist.kind = body.kind;
       await localDb.store("playlists", newPlaylist);
       return newPlaylist as T;
     }
@@ -303,6 +394,11 @@ export class LocalProvider extends DataProvider {
       return true as T;
     }
 
+    if (store === "podcasts" && id && !action) {
+      await localDb.delete("subscriptions", Number(id));
+      return true as T;
+    }
+
     if (store === "videos" && id) {
       const video = await localDb.get<Video>("videos", Number(id));
       if (video) {
@@ -345,6 +441,10 @@ export class LocalProvider extends DataProvider {
   }
 
   async ping(): Promise<boolean> {
+    return true;
+  }
+
+  isReachable(): boolean {
     return true;
   }
 
@@ -568,6 +668,9 @@ export class LocalProvider extends DataProvider {
       await localDb.store("music", {
         ...song,
         id: newId,
+        channel_id: song.channel_id
+          ? idMap.channels[song.channel_id] || song.channel_id
+          : null,
         added_by: idMap.users[song.added_by] || song.added_by,
       });
       const fileName = song.filename || `${song.id}`;

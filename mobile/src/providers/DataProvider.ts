@@ -24,6 +24,10 @@ export abstract class DataProvider {
   abstract exchangeToken(token: string): Promise<string>;
   abstract ping(): Promise<boolean>;
 
+  isReachable(): boolean | null {
+    return null;
+  }
+
   abstract getVideoUrl(video: Video): string;
   abstract getMusicUrl(song: Music): string;
   abstract releaseUrl(url: string): void;

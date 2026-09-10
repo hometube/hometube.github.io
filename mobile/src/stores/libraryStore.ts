@@ -27,7 +27,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (!force && get().loadedForUserId === userId) return;
     set({ isLoading: true, error: null });
     try {
-      const music = await API.get("/music", { user_id: userId });
+      const music = await API.get("/music", { user_id: userId, kind: "music" });
       set({ music: music as Music[], loadedForUserId: userId });
     } catch (err: any) {
       set({ error: err.message });
@@ -40,7 +40,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (!force && get().loadedForUserId === userId) return;
     set({ isLoading: true, error: null });
     try {
-      const playlists = await API.get("/playlists", { user_id: userId });
+      const playlists = await API.get("/playlists", {
+        user_id: userId,
+        kind: "music",
+      });
       set({ playlists: playlists as Playlist[], loadedForUserId: userId });
     } catch (err: any) {
       set({ error: err.message });

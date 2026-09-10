@@ -22,6 +22,7 @@ export interface Subscription {
   user_id: number;
   criteria: SubscriptionCriteria;
   check_interval: number;
+  kind?: "video" | "podcast";
   last_checked?: string;
   created_at: string;
 }
@@ -54,6 +55,8 @@ export interface Music {
   playlist_id?: string;
   downloaded: boolean;
   added_by: number;
+  kind?: "music" | "podcast";
+  channel_id?: number;
   created_at: string;
 }
 
@@ -61,6 +64,7 @@ export interface Playlist {
   id: number;
   name: string;
   user_id: number;
+  kind?: "music" | "podcast";
   created_at: string;
   songs: PlaylistSong[];
 }
@@ -111,6 +115,26 @@ export interface HtMetadata {
   music: Music[];
   playlists: Playlist[];
   settings: Setting[];
+}
+
+export interface PodcastFeed {
+  subscription_id: number;
+  channel_id: number;
+  channel_name: string;
+  channel_url: string;
+  criteria: SubscriptionCriteria;
+  episode_count: number;
+  downloaded_count: number;
+  last_checked?: string | null;
+  created_at: string;
+}
+
+export interface PodcastEpisodesResponse {
+  subscription_id: number;
+  channel_id: number;
+  channel_name: string;
+  channel_url: string;
+  episodes: Music[];
 }
 
 export type ProviderType = "server" | "local";

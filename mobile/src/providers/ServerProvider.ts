@@ -99,6 +99,10 @@ export class ServerProvider extends DataProvider {
     this._reachable = online;
   }
 
+  isReachable(): boolean | null {
+    return this._reachable;
+  }
+
   private async _fetchWithTimeout(
     url: string,
     options: RequestInit = {}
@@ -184,7 +188,8 @@ export class ServerProvider extends DataProvider {
       parsed.store === "playlists" ||
       parsed.store === "channels" ||
       parsed.store === "subscriptions" ||
-      parsed.store === "users";
+      parsed.store === "users" ||
+      parsed.store === "podcasts";
 
     let result: T;
     if (listEndpoint) {

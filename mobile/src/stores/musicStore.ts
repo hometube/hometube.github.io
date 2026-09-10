@@ -6,9 +6,10 @@ import TrackPlayer, {
   RepeatMode,
   Event,
 } from "react-native-track-player";
-import { API } from "../api";
+import { API, getProvider } from "../api";
 import { useUserStore } from "./userStore";
 import { useLibraryStore } from "./libraryStore";
+import { useConnectionStore } from "./connectionStore";
 import type { Music, Playlist } from "../types";
 
 type ShuffleMode = "off" | "on";
@@ -39,6 +40,7 @@ interface PlaybackState {
   toggleShuffle: () => Promise<void>;
   toggleRepeat: () => Promise<void>;
   seekTo: (position: number) => Promise<void>;
+  clearQueue: () => Promise<void>;
 
   hasActiveQueue: () => boolean;
   isInQueue: (songId: number) => boolean;
@@ -77,11 +79,11 @@ function fullShuffle(list: Music[]): Music[] {
   return out;
 }
 
-async function trackFor(song: Music): Promise<Track> {
-  const url = await API.getMusicUrl(song);
+async function trackFor(song: Music, url?: string): Promise<Track> {
+  const resolved = url || (await API.getMusicUrl(song));
   return {
     id: String(song.id),
-    url,
+    url: resolved,
     title: song.title || song.url,
     artist: song.artist || "Unknown",
     artwork: song.album_art || undefined,
@@ -136,41 +138,67 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
     index: number,
     position = 0,
     shouldPlay = true
-  ) => {
+  ): Promise<number> => {
+    const urls = await Promise.all(queue.map((song) => API.getMusicUrl(song)));
+    const urlById = new Map<number, string>();
+    queue.forEach((song, i) => urlById.set(song.id, urls[i]));
+
+    const isRemote = (u: string) => /^https?:/i.test(u);
+    const allLocal = urls.every((u) => !isRemote(u));
+
     let playable = queue;
     let activeIndex = index;
 
-    let reachable = true;
-    try {
-      reachable = await API.ping();
-    } catch {
-      reachable = false;
-    }
-
-    if (!reachable) {
-      playable = queue.filter(
-        (song) => !/^https?:/i.test(API.getMusicUrl(song))
-      );
-      if (playable.length === 0) {
-        await TrackPlayer.reset();
-        set({ queue: [], originalOrder: [], currentIndex: -1 });
-        return;
+    if (!allLocal) {
+      let reachable: boolean | null = null;
+      const conn = useConnectionStore.getState().status;
+      const known = (await getProvider()).isReachable();
+      if (conn === "online") reachable = true;
+      else if (conn === "offline" || known === false) reachable = false;
+      if (reachable === null) {
+        if (known === true) {
+          reachable = true;
+        } else {
+          try {
+            reachable = await API.ping();
+          } catch {
+            reachable = false;
+          }
+        }
       }
-      const targetSong = queue[index];
-      const found = playable.findIndex(
-        (s) => targetSong && s.id === targetSong.id
-      );
-      activeIndex = found >= 0 ? found : 0;
-      const clamped = Math.min(activeIndex, playable.length - 1);
-      set({ queue: [...playable], originalOrder: [...playable], currentIndex: clamped });
-      activeIndex = clamped;
+
+      if (!reachable) {
+        playable = queue.filter((song) => !isRemote(urlById.get(song.id)!));
+        if (playable.length === 0) {
+          await TrackPlayer.reset();
+          set({ queue: [], originalOrder: [], currentIndex: -1 });
+          return -1;
+        }
+        if (playable.length !== queue.length) {
+          const targetSong = queue[index];
+          activeIndex = playable.findIndex(
+            (s) => targetSong && s.id === targetSong.id
+          );
+          if (activeIndex < 0) activeIndex = 0;
+          activeIndex = Math.min(activeIndex, playable.length - 1);
+          set({
+            queue: [...playable],
+            originalOrder: [...playable],
+            currentIndex: activeIndex,
+            shuffle: get().shuffle,
+          });
+        }
+      }
     }
 
-    const tracks = await Promise.all(playable.map((song) => trackFor(song)));
+    const tracks = await Promise.all(
+      playable.map((song) => trackFor(song, urlById.get(song.id)!))
+    );
     await TrackPlayer.reset();
     if (tracks.length > 0) {
       await TrackPlayer.add(tracks);
       const target = Math.min(Math.max(activeIndex, 0), tracks.length - 1);
+      activeIndex = target;
       await TrackPlayer.skip(target, position);
     }
     if (shouldPlay) {
@@ -178,6 +206,7 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
     } else {
       await TrackPlayer.pause();
     }
+    return activeIndex;
   };
 
   const _rebuildQueueToPlayer = async () => {
@@ -267,9 +296,11 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       const state = get();
       const song = state.queue[index];
       if (!song) return;
-      await _loadQueueToPlayer(state.queue, index, 0, true);
-      set({ currentIndex: index, isPlaying: true });
-      _cacheSongsBackground([song]);
+      const target = await _loadQueueToPlayer(state.queue, index, 0, true);
+      set({ currentIndex: target, isPlaying: true });
+      if (target >= 0) {
+        _cacheSongsBackground([state.queue[target] ?? song]);
+      }
     },
 
     playFirst: async () => {
@@ -364,6 +395,19 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       await TrackPlayer.seekTo(position);
     },
 
+    clearQueue: async () => {
+      await TrackPlayer.reset();
+      set({
+        queue: [],
+        originalOrder: [],
+        playlistId: null,
+        currentIndex: -1,
+        isPlaying: false,
+        shuffle: "off",
+      });
+      await SecureStore.deleteItemAsync(STATE_KEY);
+    },
+
     hasActiveQueue: () => get().queue.length > 0,
 
     isInQueue: (songId) => get().queue.some((s) => s.id === songId),
@@ -409,8 +453,9 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
         shuffle: "off",
         currentIndex: 0,
       });
-      await _loadQueueToPlayer(fresh, 0, 0, true);
-      _cacheSongsBackground(fresh);
+      const target = await _loadQueueToPlayer(fresh, 0, 0, true);
+      set({ currentIndex: target });
+      if (target >= 0) _cacheSongsBackground(fresh);
     },
 
     playNext: async (song) => {
@@ -438,7 +483,8 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
           shuffle: "off",
           currentIndex: 0,
         });
-        await _loadQueueToPlayer(list, 0, 0, true);
+        const target = await _loadQueueToPlayer(list, 0, 0, true);
+        set({ currentIndex: target });
         _cacheSongsBackground(list);
         return;
       }
