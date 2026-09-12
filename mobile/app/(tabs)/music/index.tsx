@@ -139,7 +139,7 @@ export default function MusicHome() {
     return playlists.filter(
       (p) =>
         (p.name || "").toLowerCase().includes(q) ||
-        (p.songs || []).some((sp) => set.has(sp.music_id))
+        (p.songs || []).some((sp) => sp.music_id != null && set.has(sp.music_id))
     );
   }, [debouncedQuery, playlists, songMatches]);
 

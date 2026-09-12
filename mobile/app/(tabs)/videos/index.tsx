@@ -8,19 +8,21 @@ import {
   RefreshControl,
   Alert,
   TextInput,
+  Image,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
-import { useVideoStore } from "@/stores/videoStore";
+import { useVideoStore, videoThumb, type VideoFilter } from "@/stores/videoStore";
 import type { Video } from "@/types";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-const FILTERS = [
+const FILTERS: { key: VideoFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "my-feed", label: "My Feed" },
   { key: "unwatched", label: "Unwatched" },
+  { key: "keep", label: "Kept" },
 ];
 
 export default function VideoFeed() {
@@ -33,6 +35,7 @@ export default function VideoFeed() {
   const markWatched = useVideoStore((s) => s.markWatched);
   const toggleKeep = useVideoStore((s) => s.toggleKeep);
   const downloadVideo = useVideoStore((s) => s.downloadVideo);
+  const downloadingIds = useVideoStore((s) => s.downloadingIds);
   const deleteVideo = useVideoStore((s) => s.deleteVideo);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -99,6 +102,14 @@ export default function VideoFeed() {
           onPress: () => toggleKeep(video.id),
         },
         {
+          text: "Add to Playlist",
+          onPress: () =>
+            router.push({
+              pathname: "/(tabs)/videos/playlists",
+              params: { addVideoId: String(video.id) },
+            }),
+        },
+        {
           text: "Download",
           onPress: () => downloadVideo(video.id),
         },
@@ -126,11 +137,23 @@ export default function VideoFeed() {
         onLongPress={() => handleVideoLongPress(item)}
       >
       <View style={styles.videoThumb}>
-        <Ionicons name="videocam" size={32} color="#555" />
-        {item.watched_at && (
+        {videoThumb(item) ? (
+          <Image source={{ uri: videoThumb(item) }} style={styles.thumbImage} />
+        ) : (
+          <Ionicons name="videocam" size={32} color="#555" />
+        )}
+        {item.watched_at ? (
           <View style={styles.watchedBadge}>
             <Ionicons name="checkmark" size={12} color="#fff" />
           </View>
+        ) : item.position ? (
+          <View style={styles.resumeBadge}>
+            <Ionicons name="refresh" size={10} color="#fff" />
+            <Text style={styles.resumeText}>{Math.round(item.position / 60)}m</Text>
+          </View>
+        ) : null}
+        {!!item.duration && (
+          <Text style={styles.durationText}>{Math.floor(item.duration / 60)}m</Text>
         )}
       </View>
       <View style={styles.videoInfo}>
@@ -147,12 +170,15 @@ export default function VideoFeed() {
           {item.downloaded && (
             <Ionicons name="download" size={14} color="#4ecca3" />
           )}
+          {downloadingIds.includes(item.id) && (
+            <ActivityIndicator size="small" color="#4ecca3" />
+          )}
         </View>
       </View>
       <Ionicons name="chevron-forward" size={18} color="#444" />
     </TouchableOpacity>
     ),
-    [handleVideoPress, handleVideoLongPress]
+    [handleVideoPress, handleVideoLongPress, downloadingIds]
   );
 
   return (
@@ -191,12 +217,21 @@ export default function VideoFeed() {
             <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => router.push("/(tabs)/videos/add")}
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <TouchableOpacity
+              style={styles.playlistBtn}
+              onPress={() => router.push("/(tabs)/videos/playlists")}
+              accessibilityLabel="Video playlists"
+            >
+              <Ionicons name="list" size={20} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => router.push("/(tabs)/videos/add")}
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -351,6 +386,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    overflow: "hidden",
+  },
+  thumbImage: {
+    width: "100%",
+    height: "100%",
   },
   watchedBadge: {
     position: "absolute",
@@ -360,6 +400,38 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     width: 18,
     height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  resumeBadge: {
+    position: "absolute",
+    bottom: 4,
+    left: 4,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  resumeText: { color: "#fff", fontSize: 10 },
+  durationText: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    color: "#fff",
+    fontSize: 10,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    overflow: "hidden",
+  },
+  playlistBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#0f3460",
     justifyContent: "center",
     alignItems: "center",
   },

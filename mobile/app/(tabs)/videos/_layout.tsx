@@ -21,6 +21,14 @@ export default function VideosLayout() {
       <Stack.Screen name="add" options={{ title: "Add Video" }} />
       <Stack.Screen name="channel" options={{ title: "Add Channel" }} />
       <Stack.Screen
+        name="playlists"
+        options={{ title: "Video Playlists", headerShown: false }}
+      />
+      <Stack.Screen
+        name="playlist/[id]"
+        options={{ title: "Playlist", headerShown: false }}
+      />
+      <Stack.Screen
         name="[id]"
         options={{ title: "Video Player", headerShown: false }}
       />

@@ -62,7 +62,7 @@ export class LocalProvider extends DataProvider {
 
       videos = videos.map((v) => ({
         ...v,
-        downloaded: fileIds.has(v.video_id),
+        downloaded: fileIds.has(`video_${v.video_id}`),
         channel_name: "",
       }));
 
@@ -248,9 +248,17 @@ export class LocalProvider extends DataProvider {
     if (store === "videos" && id && action === "watch") {
       const video = await localDb.get<Video>("videos", Number(id));
       if (video) {
-        video.watched_at = video.watched_at
-          ? null as any
-          : new Date().toISOString();
+        if (typeof body?.watched === "boolean") {
+          if (body.watched) {
+            video.watched_at = new Date().toISOString();
+            video.position = body.position || 0;
+          } else {
+            video.watched_at = null as any;
+          }
+        }
+        if (typeof body?.position === "number") {
+          video.position = body.position;
+        }
         await localDb.store("videos", video);
       }
       return video as T;
@@ -259,7 +267,8 @@ export class LocalProvider extends DataProvider {
     if (store === "videos" && id && action === "keep") {
       const video = await localDb.get<Video>("videos", Number(id));
       if (video) {
-        video.keep_flag = !video.keep_flag;
+        video.keep_flag =
+          typeof body?.keep === "boolean" ? body.keep : !video.keep_flag;
         await localDb.store("videos", video);
       }
       return video as T;
@@ -309,18 +318,30 @@ export class LocalProvider extends DataProvider {
     if (store === "playlists" && id && action === "add") {
       const playlist = await localDb.get<Playlist>("playlists", Number(id));
       if (playlist) {
-        const existing = playlist.songs.find(
-          (s: PlaylistSong) => s.music_id === body.music_id
-        );
+        const existing = body.video_id
+          ? playlist.songs.find(
+              (s: PlaylistSong) => s.type === "video" && s.video_id === body.video_id
+            )
+          : playlist.songs.find(
+              (s: PlaylistSong) => s.music_id === body.music_id
+            );
         if (!existing) {
           const maxPos = Math.max(
             0,
-            ...playlist.songs.map((s: PlaylistSong) => s.position)
+            ...playlist.songs.map((s: PlaylistSong) => s.position || 0)
           );
-          playlist.songs.push({
-            music_id: body.music_id,
-            position: maxPos + 1,
-          });
+          playlist.songs.push(
+            body.video_id
+              ? {
+                  video_id: body.video_id,
+                  position: maxPos + 1,
+                  type: "video",
+                }
+              : {
+                  music_id: body.music_id,
+                  position: maxPos + 1,
+                }
+          );
           await localDb.store("playlists", playlist);
         }
       }
@@ -373,12 +394,17 @@ export class LocalProvider extends DataProvider {
     const { store, id, action } = parsed;
 
     if (store === "playlists" && id && action === "remove") {
-      const [musicId] = parsed.action!.split("/");
+      const parts = path.replace(/^\/+/, "").split("/");
+      const itemId = Number(parts[3]);
+      const itemType = parts[4] === "video" ? "video" : "music";
       const playlist = await localDb.get<Playlist>("playlists", Number(id));
       if (playlist) {
-        playlist.songs = playlist.songs.filter(
-          (s: PlaylistSong) => s.music_id !== Number(musicId)
-        );
+        playlist.songs = playlist.songs.filter((s: PlaylistSong) => {
+          if (itemType === "video") {
+            return !(s.type === "video" && s.video_id === itemId);
+          }
+          return s.music_id !== itemId;
+        });
         await localDb.store("playlists", playlist);
       }
       return playlist as T;
@@ -403,7 +429,7 @@ export class LocalProvider extends DataProvider {
       const video = await localDb.get<Video>("videos", Number(id));
       if (video) {
         await localDb.delete("videos", Number(id));
-        const file = await localDb.getFile(video.video_id);
+        const file = await localDb.getFile(`video_${video.video_id}`);
         if (file) {
           try {
             await FileSystem.deleteAsync(file.file_path, {
@@ -411,6 +437,16 @@ export class LocalProvider extends DataProvider {
             });
           } catch {}
           await localDb.delete("files", file.id);
+        }
+        const allPl = await localDb.getAll<Playlist>("playlists");
+        for (const pl of allPl) {
+          const filtered = pl.songs.filter(
+            (s: any) => !(s.type === "video" && s.video_id === video.id)
+          );
+          if (filtered.length !== pl.songs.length) {
+            pl.songs = filtered;
+            await localDb.store("playlists", pl);
+          }
         }
       }
       return true as T;
@@ -448,16 +484,63 @@ export class LocalProvider extends DataProvider {
     return true;
   }
 
-  getVideoUrl(video: Video): string {
-    const existingUrl = this._fileUrls.get(`video_${video.id}`);
-    if (existingUrl) return existingUrl;
-    return `/api/local/video/${video.id}/file`;
+  async getVideoUrl(video: Video): Promise<string | null> {
+    const key = `video_${video.id}`;
+    const cached = this._fileUrls.get(key);
+    if (cached) return cached;
+
+    const byId = await localDb.getFile(key);
+    if (byId) {
+      this._fileUrls.set(key, byId.file_path);
+      return byId.file_path;
+    }
+
+    const byVideoId = await localDb.getFile(`video_${video.video_id}`);
+    if (byVideoId?.file_path) {
+      this._fileUrls.set(key, byVideoId.file_path);
+      return byVideoId.file_path;
+    }
+
+    return null;
   }
 
-  getMusicUrl(song: Music): string {
-    const existingUrl = this._fileUrls.get(`music_${song.id}`);
-    if (existingUrl) return existingUrl;
-    return `/api/local/music/${song.id}/file`;
+  async getMusicUrl(song: Music): Promise<string | null> {
+    const fileKey = `music_${song.id}`;
+    const cached = this._fileUrls.get(fileKey);
+    if (cached) return cached;
+
+    const byId = await localDb.getFile(fileKey);
+    if (byId) {
+      this._fileUrls.set(fileKey, byId.file_path);
+      return byId.file_path;
+    }
+
+    if (song.filename) {
+      const byName = await localDb.getFile(`music_${song.filename}`);
+      if (byName?.file_path) {
+        this._fileUrls.set(fileKey, byName.file_path);
+        return byName.file_path;
+      }
+      const filePath = `${FileSystem.documentDirectory}hometube_files/${song.filename}`;
+      const exists = await FileSystem.getInfoAsync(filePath);
+      if (exists.exists) {
+        this._fileUrls.set(fileKey, filePath);
+        return filePath;
+      }
+    }
+
+    if (song.video_id) {
+      const files = await localDb.getFilesByType("music");
+      const match = files.find((f: any) =>
+        f.id.includes(`${song.video_id}`)
+      );
+      if (match?.file_path) {
+        this._fileUrls.set(fileKey, match.file_path);
+        return match.file_path;
+      }
+    }
+
+    return null;
   }
 
   releaseUrl(url: string): void {
@@ -471,43 +554,6 @@ export class LocalProvider extends DataProvider {
 
   releaseAllUrls(): void {
     this._fileUrls.clear();
-  }
-
-  async _resolveLocalFileUrl(
-    type: "music" | "video",
-    id: number
-  ): Promise<string | null> {
-    const fileKey = `${type}_${id}`;
-    const cached = this._fileUrls.get(fileKey);
-    if (cached) return cached;
-
-    const fileRecord = await localDb.getFile(`${type}_${id}`);
-    if (fileRecord) {
-      const fileUri = fileRecord.file_path;
-      this._fileUrls.set(fileKey, fileUri);
-      return fileUri;
-    }
-
-    if (type === "music") {
-      const music = await localDb.get<Music>("music", id);
-      if (music?.filename) {
-        const fileRecord2 = await localDb.getFile(
-          `music_${music.filename}`
-        );
-        if (fileRecord2) {
-          this._fileUrls.set(fileKey, fileRecord2.file_path);
-          return fileRecord2.file_path;
-        }
-        const filePath = `${FileSystem.documentDirectory}hometube_files/${music.filename}`;
-        const exists = await FileSystem.getInfoAsync(filePath);
-        if (exists.exists) {
-          this._fileUrls.set(fileKey, filePath);
-          return filePath;
-        }
-      }
-    }
-
-    return null;
   }
 
   async cache(path: string, options?: Partial<CacheRule>): Promise<any> {
@@ -706,7 +752,15 @@ export class LocalProvider extends DataProvider {
         id: Date.now() + Math.random(),
         user_id: idMap.users[playlist.user_id] || playlist.user_id,
         songs: (playlist.songs || []).map((s: PlaylistSong) => ({
-          music_id: idMap.music[s.music_id] || s.music_id,
+          ...(s.music_id != null
+            ? { music_id: idMap.music[s.music_id] || s.music_id }
+            : {}),
+          ...(s.video_id != null
+            ? {
+                video_id: idMap.videos[s.video_id] || s.video_id,
+                type: "video" as const,
+              }
+            : {}),
           position: s.position,
         })),
       });

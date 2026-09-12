@@ -80,7 +80,7 @@ function fullShuffle(list: Music[]): Music[] {
 }
 
 async function trackFor(song: Music, url?: string): Promise<Track> {
-  const resolved = url || (await API.getMusicUrl(song));
+  const resolved = url || (await API.getMusicUrl(song)) || "";
   return {
     id: String(song.id),
     url: resolved,
@@ -139,7 +139,9 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
     position = 0,
     shouldPlay = true
   ): Promise<number> => {
-    const urls = await Promise.all(queue.map((song) => API.getMusicUrl(song)));
+    const urls = (await Promise.all(queue.map((song) => API.getMusicUrl(song)))).map(
+      (u) => u || ""
+    );
     const urlById = new Map<number, string>();
     queue.forEach((song, i) => urlById.set(song.id, urls[i]));
 

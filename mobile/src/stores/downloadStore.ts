@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { API } from "../api";
+import { waitForServerDownload } from "../downloads";
 import { useLibraryStore } from "./libraryStore";
 import { useMusicStore } from "./musicStore";
 import type { Music } from "../types";
@@ -66,6 +67,7 @@ export const useDownloadStore = create<DownloadState>((set) => ({
     await runBatched(undownloaded, 8, async (song) => {
       try {
         await API.post(`/music/${song.id}/download`, {});
+        await waitForServerDownload("music", song.id);
         setSongDownloaded(song.id);
       } catch (err: any) {
         console.log(`Download error for song ${song.id}: ${err.message}`);

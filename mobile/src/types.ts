@@ -41,6 +41,9 @@ export interface Video {
   created_at: string;
   channel_name?: string;
   filename?: string;
+  thumbnail?: string;
+  duration?: number;
+  position?: number;
 }
 
 export interface Music {
@@ -64,13 +67,15 @@ export interface Playlist {
   id: number;
   name: string;
   user_id: number;
-  kind?: "music" | "podcast";
+  kind?: "music" | "video" | "podcast";
   created_at: string;
   songs: PlaylistSong[];
 }
 
 export interface PlaylistSong {
-  music_id: number;
+  music_id?: number;
+  video_id?: number;
+  type?: "video";
   position: number;
 }
 

@@ -28,8 +28,8 @@ export abstract class DataProvider {
     return null;
   }
 
-  abstract getVideoUrl(video: Video): string;
-  abstract getMusicUrl(song: Music): string;
+  abstract getVideoUrl(video: Video): string | Promise<string | null>;
+  abstract getMusicUrl(song: Music): string | Promise<string | null>;
   abstract releaseUrl(url: string): void;
   abstract releaseAllUrls(): void;
 

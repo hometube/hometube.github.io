@@ -335,10 +335,7 @@ export class ServerProvider extends DataProvider {
   }
 
   getVideoUrl(video: Video): string {
-    if (video.filename) {
-      return this._apiUrl(`files/videos/${video.filename}`);
-    }
-    return this._apiUrl(`files/videos/${video.video_id}.mp4`);
+    return this._apiUrl(`videos/${video.id}/file`);
   }
 
   getMusicUrl(song: Music): string {
