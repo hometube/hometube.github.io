@@ -138,6 +138,44 @@ npm run dev        # Dev server
 npm run build      # Production build
 ```
 
+## Running as a systemd service (Linux)
+
+The backend is the whole server: FastAPI + background scheduler (`services/scheduler.py`) + the async download queue (`services/downloader.py`). Playwright is not required; only the Python venv + `yt-dlp` CLI binary (installed by pip). On a headless Linux box:
+
+```ini
+# /etc/systemd/system/hometube.service
+[Unit]
+Description=HomeTube backend server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hometube
+WorkingDirectory=/opt/hometube/backend
+ExecStart=/opt/hometube/backend/.venv/bin/python main.py
+# Restart on transient failure so the server self-heals
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload && systemctl enable --now hometube
+# Tail logs / check health
+journalctl -u hometube -f
+curl -s http://localhost:8000/api/status
+```
+
+Notes:
+- All paths resolve from `data_dir` in `~/.config/hometube/config.json` (`ht init`) — point `User=` so `~` resolves to the right home, or override with `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars.
+- The scheduler + downloader use **threads inside the one process**, so don't run more than one systemd instance of `main.py` (SQLite + port conflict). One unit = the full server.
+- `install.sh`/`cli.sh` require `#!/bin/bash` (Debian/Ubuntu ships `/bin/bash`); Alpine/busybox boxes need `bash` installed.
+- If you need ngrok tunneling (mobile access from outside), run `main.py --dev` under the service instead — or keep the domain/reverse-proxy outside systemd.
+
 ### Mobile (React Native / Expo)
 ```bash
 cd mobile
@@ -154,7 +192,7 @@ npx tsc --noEmit   # TypeScript type check
 - **Frontend (PWA)**: Vue 3 Composition API, Tailwind CSS for styling
 - **Mobile App**: React Native with Expo SDK 56, TypeScript, expo-router
 - **Icons**: Font Awesome via @fortawesome/vue-fontawesome (PWA) / @expo/vector-icons (Mobile)
-- **Video Player**: Plyr.js (PWA) / expo-video (Mobile)
+- **Video Player**: expo-video (Mobile); PWA uses a persistent custom `<video>` element (see `components/VideoPlayer.vue`)
 - **Audio Player**: HTML5 + MSE + Wake Lock (PWA) / react-native-track-player (Mobile)
 - **API**: REST endpoints defined in `backend/main.py`; both frontends call through an API proxy (`api.js`) that delegates to the active provider
 - **Downloads**: Handled via yt-dlp in `backend/services/ytdlp.py`
@@ -166,7 +204,7 @@ npx tsc --noEmit   # TypeScript type check
 
 ### General
 - `GET /api/status` - Health check / server status
-- `GET /api/downloads` - List download status for active user
+- `GET /api/downloads` - List background download jobs for active user: `[{id, type, item_id, user_id, status, progress, message, filename, error, created_at}]`. `status`: queued/running/done/error
 - `GET /api/users` - List all users
 - `POST /api/users` - Create user (body: name, image)
 
@@ -174,21 +212,22 @@ npx tsc --noEmit   # TypeScript type check
 - `POST /api/auth/exchange` - Exchange token for backend auth
 
 ### Videos
-- `GET /api/videos?user_id=&filter=` - List videos (filter: all/my-feed/unwatched)
-- `POST /api/videos/add` - Add video (body: url, user_id, quality)
+- `GET /api/videos?user_id=&filter=` - List videos (filter: all/my-feed/unwatched/keep)
+- `POST /api/videos/add` - Add video (body: url, user_id, quality, playlist_id). YouTube playlist URLs bulk-add each entry; auto-creates a `kind:"video"` playlist and stores thumbnail/duration/filename
 - `GET /api/videos/info?url=` - Get available formats for URL
 - `GET /api/videos/{id}/qualities` - Get available qualities for a video
-- `POST /api/videos/{id}/watch` - Mark as watched
-- `POST /api/videos/{id}/keep` - Toggle keep flag
-- `POST /api/videos/{id}/download` - Download video
-- `PUT /api/videos/{id}` - Update video metadata
-- `DELETE /api/videos/{id}` - Delete video
+- `POST /api/videos/{id}/watch` - body: `{watched?: bool, position?: float}`. `watched:true` sets `watched_at` (clears `watched_at` on `false`); a bare POST no longer marks watched. Position-only body persists resume position
+- `POST /api/videos/{id}/keep` - body: `{keep?: bool}` (defaults to true)
+- `POST /api/videos/{id}/download` - Kick off async server download (body: quality). Returns `202 {job_id, queued}`; poll `GET /api/downloads`. De-duplicated: re-posting while a job runs returns the existing job
+- `GET /api/videos/{id}/file` - Serve video file by DB id; if the file isn't on disk it waits for a running background job or lazy-downloads synchronously on first request. Correct MIME per extension, no-cache for Range streaming. Preferred over `/api/files/videos/...`
+- `PUT /api/videos/{id}` - Update video metadata (channel_id, added_by, thumbnail, duration, position, quality)
+- `DELETE /api/videos/{id}` - Delete video; also purges it from all video playlists and removes its server file
 
 ### Music
 - `GET /api/music?user_id=` - List music
 - `POST /api/music/add` - Add music (body: url, user_id, playlist_id)
 - `GET /api/music/info?url=` - Get music info
-- `POST /api/music/{id}/download` - Download music (returns filename)
+- `POST /api/music/{id}/download` - Kick off async server download. Returns `202 {job_id, queued}`; poll `GET /api/downloads`
 - `GET /api/music/{id}/file` - Serve music file with correct MIME type
 - `PUT /api/music/{id}` - Update music metadata
 - `DELETE /api/music/{id}` - Delete music
@@ -200,9 +239,9 @@ npx tsc --noEmit   # TypeScript type check
 ### Playlists
 - `GET /api/playlists?user_id=` - List playlists
 - `POST /api/playlists` - Create playlist
-- `PUT /api/playlists/{id}` - Update playlist
-- `POST /api/playlists/{id}/add` - Add song to playlist
-- `DELETE /api/playlists/{id}/remove/{song_id}` - Remove song from playlist
+- `PUT /api/playlists/{id}` - Update playlist (name, user_id, songs — songs body used for reordering)
+- `POST /api/playlists/{id}/add` - Add item to playlist (body: `{music_id}` or `{video_id, position, item_type:"video"}`). Video membership is `{video_id, position, type:"video"}`; music membership stays `{music_id, position}`
+- `DELETE /api/playlists/{id}/remove/{item_id}?item_type=` - Remove item from playlist (item_type: music default, video)
 - `DELETE /api/playlists/{id}` - Delete playlist
 
 ### Channels
@@ -220,6 +259,7 @@ npx tsc --noEmit   # TypeScript type check
 - **One library, one data dir**: all paths (DB, downloads, file serving) are resolved by `backend/paths.py` from `data_dir` in `~/.config/hometube/config.json` (see `ht init`); `ht serve`, `ht download`/`ht` CLI commands, `main.py`, `ytdlp.py`, `import_music.py`, and `scheduler.py` all share the same data dir by default. `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars override it.
 - Backend serves the built frontend from `frontend/dist/`
 - Scheduler runs in background checking subscriptions every 60 seconds
+- **Background downloads**: server-side downloads run on a thread pool (`backend/services/downloader.py`, 2 workers) using `yt_dlp`'s Python API with progress hook → job registry. API endpoints return `202 {job_id}`; clients poll `GET /api/downloads` (status + 0-100 progress) via `frontend/src/utils/downloads.js` / `mobile/src/downloads.ts` (`waitForServerDownload`). Completed jobs write `filename`/`downloaded` back to the DB row. The lazy `/videos/{id}/file` path single-flights off an existing job (waits for it) instead of starting a duplicate download
 - Auto-delete: Videos watched >7 days ago without keep_flag are deleted
 - PWA support via `vite-plugin-pwa`
 - Audio mode uses Wake Lock API to allow screen-off listening
@@ -238,7 +278,15 @@ npx tsc --noEmit   # TypeScript type check
   - App state: active tab, sub-pages, selected playlist ID
   - Virtual playlist view ("My Songs"/"All Songs") persisted
   - Per-playlist shuffle state (key: `playlist_{id}_shuffled`)
+  - Video player state (key: `videoPlayerState`): queue ids, index, shuffle/repeat, position; restored on reload
   - State restores automatically on page refresh
+- **Video experience**: equals the music/podcast model
+  - Videos carry `thumbnail`, `duration`, `filename`, and `position` (resume point, seconds) alongside `watched_at` (binomial watched flag). Auto-watch at ~95% / ended
+  - `kind:"video"` playlists (generalized Playlist model). Membership JSON: `{music_id, position}` for music, `{video_id, position, type:"video"}` for video
+  - Watch API semantic: `POST /api/videos/{id}/watch` with `{watched:true}` marks watched; `{position}` only persists resume position (bare POST is a no-op)
+  - PWA: single persistent `<video>` element in `VideoPlayer.vue` (always mounted in App.vue so playback survives navigation); queue/shuffle/repeat in `stores/video.js`; `VideoHome.vue` (Playlists/Feed segments) + `VideoPlaylistView.vue`; lazy play via `GET /api/videos/{id}/file` (auto-downloads on first play)
+  - Mobile: feed thumbnails + resume badges + keep filter, player resumes from `position` and flushes progress (30s), auto-watches on `playToEnd`, and video playlists screens (`app/(tabs)/videos/playlists.tsx`, `playlist/[id].tsx`). Local-mode resolution fixed in `LocalProvider.getVideoUrl` (uses `video_{video_id}` file keys)
+  - Offline: PWA caches `/api/videos` metadata; device cache/download flags marked on the video row
 
 ### Server Mode vs Local Mode
 
