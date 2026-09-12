@@ -80,6 +80,7 @@ export class ServerProvider extends DataProvider {
     ServiceWorkerInternal.sendCacheRule('/api/music', { ttl: Infinity, refetch: true })
     ServiceWorkerInternal.sendCacheRule('/api/playlists', { ttl: Infinity, refetch: true })
     ServiceWorkerInternal.sendCacheRule('/api/podcasts', { ttl: Infinity, refetch: true })
+    ServiceWorkerInternal.sendCacheRule('/api/videos', { ttl: Infinity, refetch: true })
   }
 
   _getJWT() {
@@ -189,8 +190,7 @@ export class ServerProvider extends DataProvider {
   }
 
   async getVideoUrl(video) {
-    const filename = `${video.video_id}.mp4`
-    return `/api/files/videos/${filename}`
+    return `/api/videos/${video.id}/file`
   }
 
   async getMusicUrl(song) {

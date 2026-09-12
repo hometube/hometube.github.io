@@ -3,6 +3,7 @@ import UserPage from './pages/UserPage.vue'
 import VideoHome from './pages/VideoHome.vue'
 import AddVideo from './pages/AddVideo.vue'
 import AddChannel from './pages/AddChannel.vue'
+import VideoPlaylistView from './pages/VideoPlaylistView.vue'
 import MusicHome from './pages/MusicHome.vue'
 import AddMusic from './pages/AddMusic.vue'
 import PlaylistView from './pages/PlaylistView.vue'
@@ -26,6 +27,7 @@ const routes = [
   { path: '/video', name: 'video', component: VideoHome, meta: { requiresUser: true } },
   { path: '/video/add', name: 'video-add', component: AddVideo, meta: { requiresUser: true } },
   { path: '/video/channel', name: 'video-channel', component: AddChannel, meta: { requiresUser: true } },
+  { path: '/video/playlist/:id', name: 'video-playlist', component: VideoPlaylistView, props: true, meta: { requiresUser: true } },
   { path: '/music', name: 'music', component: MusicHome, meta: { requiresUser: true } },
   { path: '/music/add', name: 'music-add', component: AddMusic, meta: { requiresUser: true } },
   { path: '/music/playlist/:id', name: 'playlist', component: PlaylistView, props: true, meta: { requiresUser: true } },

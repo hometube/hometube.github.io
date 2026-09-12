@@ -230,9 +230,39 @@ export class LocalProvider extends DataProvider {
       const playlist = await this._get('playlists', match.id)
       if (!playlist) throw new Error('Playlist not found')
       const songs = playlist.songs || []
-      songs.push({ music_id: body.music_id, position: body.position || null })
+      if (body.video_id !== undefined) {
+        songs.push({ video_id: body.video_id, position: body.position || 0, type: 'video' })
+      } else {
+        songs.push({ music_id: body.music_id, position: body.position || null })
+      }
       playlist.songs = songs
       await this._store('playlists', playlist)
+      return { ok: true }
+    }
+
+    if (match.action === 'watch') {
+      const video = await this._get('videos', match.id)
+      if (!video) throw new Error('Video not found')
+      if (body.watched !== undefined) {
+        if (body.watched) {
+          video.watched_at = new Date().toISOString()
+          video.position = body.position || 0
+        } else {
+          video.watched_at = null
+        }
+      }
+      if (body.position !== undefined && video.position !== undefined) {
+        video.position = body.position
+      }
+      await this._store('videos', video)
+      return { ok: true }
+    }
+
+    if (match.action === 'keep') {
+      const video = await this._get('videos', match.id)
+      if (!video) throw new Error('Video not found')
+      video.keep_flag = body.keep !== false
+      await this._store('videos', video)
       return { ok: true }
     }
 
@@ -267,6 +297,7 @@ export class LocalProvider extends DataProvider {
       if (!playlist) throw new Error('Playlist not found')
       if (body.name !== undefined) playlist.name = body.name
       if (body.user_id !== undefined) playlist.user_id = body.user_id
+      if (body.songs !== undefined) playlist.songs = body.songs
       await this._store('playlists', playlist)
       return playlist
     }
@@ -303,7 +334,10 @@ export class LocalProvider extends DataProvider {
     if (match.action === 'remove_song') {
       const playlist = await this._get('playlists', match.id)
       if (!playlist) throw new Error('Playlist not found')
-      playlist.songs = (playlist.songs || []).filter(s => s.music_id !== match.extraId)
+      playlist.songs = (playlist.songs || []).filter(s => {
+        if (s && s.type === 'video') return s.video_id !== match.extraId
+        return s.music_id !== match.extraId
+      })
       await this._store('playlists', playlist)
       return { ok: true }
     }

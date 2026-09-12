@@ -4,7 +4,9 @@ import { useRouter, useRoute } from 'vue-router'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { useUserStore } from './stores/user.js'
 import { useMusicStore } from './stores/music.js'
+import { useVideoStore } from './stores/video.js'
 import GlobalMusicPlayer from './components/GlobalMusicPlayer.vue'
+import VideoPlayer from './components/VideoPlayer.vue'
 import BackendMenu from './components/BackendMenu.vue'
 import { isLocalMode } from './api.js'
 import './icons.js'
@@ -13,6 +15,7 @@ const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const musicStore = useMusicStore()
+const videoStore = useVideoStore()
 
 const {
   currentIndex,
@@ -88,6 +91,10 @@ onMounted(async () => {
   if (window.matchMedia('(display-mode: standalone)').matches) showInstall.value = false
   init()
   await restoreState()
+  const videoState = localStorage.getItem('videoPlayerState')
+  if (videoState && JSON.parse(videoState).queueIds?.length) {
+    await videoStore.restoreState()
+  }
   if (userStore.hasUser) {
     userStore.startPinging()
   }
@@ -195,6 +202,9 @@ onUnmounted(() => {
 
     <!-- Global Music Player (hidden on settings/debug) -->
     <GlobalMusicPlayer v-if="mode !== 'settings'" />
+
+    <!-- Global Video Player (always mounted so playback survives navigation) -->
+    <VideoPlayer />
 
     <!-- Backend Configuration -->
     <BackendMenu ref="backendMenu" />

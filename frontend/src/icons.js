@@ -12,6 +12,7 @@ import {
   faBug, faRotate,
   faTimesCircle, faInfoCircle, faCheckCircle,
   faUserEdit, faRss, faTowerBroadcast, faClock,
+  faHeadphones, faList, faChevronUp, faChevronDown,
 } from '@fortawesome/free-solid-svg-icons'
 
 library.add(
@@ -27,4 +28,5 @@ library.add(
   faBug, faRotate,
   faTimesCircle, faInfoCircle, faCheckCircle,
   faUserEdit, faRss, faTowerBroadcast, faClock,
+  faHeadphones, faList, faChevronUp, faChevronDown,
 )

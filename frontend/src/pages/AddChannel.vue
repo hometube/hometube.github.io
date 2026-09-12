@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { API } from '../api.js'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { useUserStore } from '../stores/user.js'
+import { waitForServerDownload } from '../utils/downloads.js'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -42,12 +43,26 @@ const toggleSelect = (vid) => {
 
 const downloadSelected = async () => {
   loading.value = true
+  const added = []
   for (const vid of selectedVideos.value) {
     const vidUrl = vid.url || 'https://youtube.com/watch?v=' + vid.id
-    await API.post('/videos/add', { url: vidUrl, user_id: userStore.user.id, quality: quality.value })
-    const vids = await API.get('/videos', { user_id: userStore.user.id })
-    const newVid = vids[0]
-    if (newVid) await API.post('/videos/' + newVid.id + '/download', { quality: quality.value })
+    const created = await API.post('/videos/add', { url: vidUrl, user_id: userStore.user.id, quality: quality.value })
+    const newVid = Array.isArray(created) ? created[0] : created
+    if (newVid && newVid.id) {
+      added.push(newVid.id)
+      try {
+        await API.post('/videos/' + newVid.id + '/download', { quality: quality.value })
+      } catch (err) {
+        console.error('[AddChannel] download kickoff failed:', err)
+      }
+    }
+  }
+  if (added.length) {
+    try {
+      await Promise.all(added.map(itemId => waitForServerDownload({ type: 'video', itemId })))
+    } catch (err) {
+      console.error('[AddChannel] background download failed:', err)
+    }
   }
   selectedVideos.value = []
   loading.value = false
