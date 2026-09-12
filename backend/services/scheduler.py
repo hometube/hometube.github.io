@@ -57,6 +57,8 @@ async def check_subscriptions():
                                 title=title,
                                 channel_id=channel.id,
                                 url=v.get("url"),
+                                thumbnail=pick_album_art(v),
+                                duration=v.get("duration"),
                                 added_by=sub.user_id,
                                 quality=criteria.get("quality", "best")
                             )
@@ -73,7 +75,7 @@ async def check_subscriptions():
             for vid in old_videos:
                 import os
                 from paths import downloads_dir
-                vid_path = os.path.join(downloads_dir(), "videos", f"{vid.video_id}.mp4")
+                vid_path = os.path.join(downloads_dir(), "videos", vid.filename or f"{vid.video_id}.mp4")
                 if os.path.exists(vid_path):
                     os.remove(vid_path)
                 db.delete(vid)

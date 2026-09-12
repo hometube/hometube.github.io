@@ -1,6 +1,8 @@
 import subprocess, json, os, re
 from paths import downloads_dir
 
+import yt_dlp
+
 DL_DIR = downloads_dir()
 
 # YouTube has been blocking the android_vr client (HTTP 403). Exclude it so
@@ -80,12 +82,24 @@ def pick_album_art(info):
         return jpgs[-1]
     return info.get("thumbnail")
 
+def pick_video_thumbnail(info):
+    """Best thumbnail URL for a video (same jpg-preference rules as music)."""
+    return pick_album_art(info)
+
 def download_video(url, video_id, quality="best"):
     os.makedirs(f"{DL_DIR}/videos", exist_ok=True)
     fmt = quality if quality != "best" else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+    out = run_ytdlp(["--get-filename", "-o", "%(id)s.%(ext)s", "-f", fmt, url])
+    expected_name = out.strip()
     cmd = ["yt-dlp"] + YTDLP_YT_ARGS + ["-f", fmt, "-o", f"{DL_DIR}/videos/%(id)s.%(ext)s", url]
     subprocess.run(cmd)
-    return True
+    if expected_name:
+        import glob
+        base = expected_name.rsplit(".", 1)[0]
+        matches = glob.glob(f"{DL_DIR}/videos/{base}.*")
+        if matches:
+            return matches[0].split("/")[-1]
+    return expected_name or True
 
 def download_music(url, music_id):
     os.makedirs(f"{DL_DIR}/music", exist_ok=True)
@@ -108,3 +122,76 @@ def download_music(url, music_id):
     if matches:
         return matches[0].split("/")[-1]
     return expected_name
+
+def _ytdlp_params(**extra):
+    params = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "extractor_args": {"youtube": ["player_client=default,-android_vr"]},
+    }
+    params.update(extra)
+    return params
+
+def _progress_hook(on_progress, kind):
+    def hook(d):
+        if on_progress is None:
+            return
+        if d.get("status") == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            if total:
+                pct = min(99, int(100 * d.get("downloaded_bytes", 0) / total))
+                on_progress(pct, f"Downloading {kind} {pct}%")
+            else:
+                on_progress(0, f"Downloading {kind} (unknown size)")
+        elif d.get("status") == "finished":
+            on_progress(99, "Processing / merging")
+    return hook
+
+def download_video_with_progress(url, video_id, quality="best", on_progress=None):
+    """Download a video with progress reporting. Returns the stored filename."""
+    os.makedirs(f"{DL_DIR}/videos", exist_ok=True)
+    fmt = quality if quality != "best" else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+    with yt_dlp.YoutubeDL(_ytdlp_params(
+        format=fmt,
+        outtmpl=f"{DL_DIR}/videos/%(id)s.%(ext)s",
+        progress_hooks=[_progress_hook(on_progress, "video")],
+    )) as ydl:
+        info = ydl.extract_info(url, download=True)
+    if on_progress:
+        on_progress(99, "Finalizing")
+    import glob
+    base = (info or {}).get("id") or video_id
+    matches = sorted(glob.glob(f"{DL_DIR}/videos/{base}.*"), key=os.path.getmtime)
+    if matches:
+        return os.path.basename(matches[-1])
+    path = ydl.prepare_filename(info)
+    if path and os.path.exists(path):
+        return os.path.basename(path)
+    return base
+
+def download_music_with_progress(url, music_id, on_progress=None):
+    """Download music with progress reporting. Returns the stored filename."""
+    os.makedirs(f"{DL_DIR}/music", exist_ok=True)
+    with yt_dlp.YoutubeDL(_ytdlp_params(
+        outtmpl=f"{DL_DIR}/music/%(id)s.%(ext)s",
+        progress_hooks=[_progress_hook(on_progress, "music")],
+        postprocessors=[
+            {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "0"},
+            {"key": "EmbedThumbnail"},
+        ],
+        convert_thumbnails="jpg",
+        writethumbnail=True,
+    )) as ydl:
+        info = ydl.extract_info(url, download=True)
+    if on_progress:
+        on_progress(99, "Finalizing")
+    import glob
+    base = (info or {}).get("id") or music_id
+    matches = glob.glob(f"{DL_DIR}/music/{base}.mp3") or glob.glob(f"{DL_DIR}/music/{base}.*")
+    if matches:
+        return os.path.basename(sorted(matches, key=os.path.getmtime)[-1])
+    path = ydl.prepare_filename(info)
+    if path and os.path.exists(path):
+        return os.path.basename(path)
+    return base

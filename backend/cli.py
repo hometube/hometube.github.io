@@ -329,22 +329,54 @@ def cmd_download(args):
 
             if content_type == "video":
                 print(f"Adding {len(entries)} videos...")
+                video_playlist = None
+                created_ids = []
                 for entry in entries:
                     entry_url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id')}"
                     existing = db.query(Video).filter(Video.video_id == entry["id"]).first()
+                    title = entry.get("title", entry["id"])
                     if existing:
-                        print(f"  Exists: {entry.get('title', entry['id'])}")
+                        print(f"  Exists: {title}")
+                        created_ids.append(existing.id)
                         continue
-                    vid = Video(video_id=entry["id"], title=entry.get("title"), url=entry_url, added_by=user.id, quality=args.quality)
+                    vid = Video(
+                        video_id=entry["id"],
+                        title=title,
+                        url=entry_url,
+                        thumbnail=ytdlp.pick_video_thumbnail(entry) or ytdlp.pick_video_thumbnail(info),
+                        duration=entry.get("duration"),
+                        added_by=user.id,
+                        quality=args.quality,
+                    )
                     db.add(vid)
                     db.flush()
-                    print(f"  Added: {entry.get('title', entry['id'])}")
+                    created_ids.append(vid.id)
+                    print(f"  Added: {title}")
                     if args.download:
-                        ytdlp.download_video(entry_url, vid.id, args.quality)
+                        filename = ytdlp.download_video(entry_url, vid.id, args.quality)
                         vid.downloaded = True
-                        print(f"  Downloaded: {entry.get('title', entry['id'])}")
+                        if filename and filename is not True:
+                            vid.filename = filename
+                        print(f"  Downloaded: {title}")
+                if created_ids and args.playlist:
+                    video_playlist = db.query(Playlist).filter(
+                        Playlist.name == args.playlist, Playlist.user_id == user.id, Playlist.kind == "video"
+                    ).first()
+                    if not video_playlist:
+                        video_playlist = Playlist(name=args.playlist, user_id=user.id, kind="video")
+                        db.add(video_playlist)
+                        db.flush()
+                    songs = list(video_playlist.songs or [])
+                    existing_ids = {s.get("video_id") for s in songs if s.get("type") == "video"}
+                    for cid in created_ids:
+                        if cid in existing_ids:
+                            continue
+                        songs.append({"video_id": cid, "position": len(songs), "type": "video"})
+                    video_playlist.songs = songs
                 db.commit()
                 print(f"\nAdded {len(entries)} videos.")
+                if video_playlist:
+                    print(f"Saved to video playlist: {video_playlist.name}")
             else:
                 playlist_name = args.playlist or info.get("title", "").strip() or "New Playlist"
                 kind = content_type if content_type in ("music", "podcast") else "music"
@@ -413,17 +445,42 @@ def cmd_download(args):
 
             if content_type == "video":
                 existing = db.query(Video).filter(Video.video_id == info.get("id")).first()
+                url = info.get("webpage_url") or args.url
                 if existing:
                     print(f"Video already exists: {existing.title}")
                 else:
-                    vid = Video(video_id=info.get("id"), title=info.get("title"), url=info.get("webpage_url") or args.url, added_by=user.id, quality=args.quality)
+                    vid = Video(
+                        video_id=info.get("id"),
+                        title=info.get("title"),
+                        url=url,
+                        thumbnail=ytdlp.pick_video_thumbnail(info),
+                        duration=info.get("duration"),
+                        added_by=user.id,
+                        quality=args.quality,
+                    )
                     db.add(vid)
                     db.flush()
                     if args.download:
-                        ytdlp.download_video(args.url, vid.id, args.quality)
+                        filename = ytdlp.download_video(url, vid.id, args.quality)
                         vid.downloaded = True
+                        if filename and filename is not True:
+                            vid.filename = filename
                     db.commit()
                     print(f"Added video: {vid.title}")
+                if args.playlist:
+                    playlist_q = db.query(Playlist).filter(Playlist.name == args.playlist, Playlist.user_id == user.id, Playlist.kind == "video")
+                    playlist = playlist_q.first()
+                    if not playlist:
+                        playlist = Playlist(name=args.playlist, user_id=user.id, kind="video")
+                        db.add(playlist)
+                        db.flush()
+                    vid = db.query(Video).filter(Video.video_id == info.get("id")).first()
+                    songs = list(playlist.songs or [])
+                    if vid and not any(s.get("type") == "video" and s.get("video_id") == vid.id for s in songs):
+                        songs.append({"video_id": vid.id, "position": len(songs), "type": "video"})
+                        playlist.songs = songs
+                    db.commit()
+                    print(f"Added to video playlist: {playlist.name}")
             else:
                 kind = content_type if content_type in ("music", "podcast") else "music"
                 title = clean_title(info.get("title"))
@@ -560,7 +617,7 @@ def cmd_export(args):
         elif args.month:
             date_from = now - timedelta(days=30)
 
-        metadata = {"version": 1, "exported_at": now.isoformat()}
+        metadata = {"version": 2, "exported_at": now.isoformat()}
 
         metadata["users"] = [serialize_row(u) for u in db.query(User).filter(User.id == user.id).all()]
 
@@ -587,9 +644,14 @@ def cmd_export(args):
             if not playlist:
                 print(f"Error: Playlist not found: {args.playlist}", file=sys.stderr)
                 sys.exit(1)
-            song_ids = {s["music_id"] for s in (playlist.songs or [])}
-            metadata["music"] = [m for m in metadata["music"] if m["id"] in song_ids]
-            metadata["playlists"] = [serialize_row(playlist)]
+            if playlist.kind == "video":
+                video_ids = {s["video_id"] for s in (playlist.songs or []) if s.get("type") == "video"}
+                metadata["videos"] = [v for v in metadata["videos"] if v["id"] in video_ids]
+                metadata["playlists"] = [serialize_row(playlist)]
+            else:
+                song_ids = {s["music_id"] for s in (playlist.songs or [])}
+                metadata["music"] = [m for m in metadata["music"] if m["id"] in song_ids]
+                metadata["playlists"] = [serialize_row(playlist)]
 
         metadata["settings"] = [serialize_row(s) for s in db.query(Setting).all()]
 
@@ -597,11 +659,12 @@ def cmd_export(args):
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("metadata.json", json.dumps(metadata, default=str, indent=2))
             for v in metadata["videos"]:
-                if v.get("downloaded") and v.get("video_id"):
-                    fname = f"{v['video_id']}.mp4"
-                    fpath = os.path.join(DL_DIR, "videos", fname)
-                    if os.path.isfile(fpath):
-                        zf.write(fpath, f"videos/{fname}")
+                if not (v.get("downloaded") and (v.get("filename") or v.get("video_id"))):
+                    continue
+                fname = v.get("filename") or f"{v['video_id']}.mp4"
+                fpath = os.path.join(DL_DIR, "videos", fname)
+                if os.path.isfile(fpath):
+                    zf.write(fpath, f"videos/{fname}")
             for m in metadata["music"]:
                 fname = m.get("filename")
                 if fname:
@@ -941,8 +1004,12 @@ def cmd_videos(args):
 
         rows = []
         for v in videos:
-            rows.append((v.id, (v.title or "")[:55], "y" if v.watched_at else "n", "y" if v.downloaded else "n", "y" if v.keep_flag else "", v.created_at.strftime("%Y-%m-%d") if v.created_at else ""))
-        print_table(rows, ["ID", "Title", "Watched", "DL", "Keep", "Date"])
+            pos = ""
+            if v.position:
+                m, s = divmod(int(v.position), 60)
+                pos = f"{m}:{s:02d}"
+            rows.append((v.id, (v.title or "")[:55], "y" if v.watched_at else "n", "y" if v.downloaded else "n", "y" if v.keep_flag else "", pos, v.created_at.strftime("%Y-%m-%d") if v.created_at else ""))
+        print_table(rows, ["ID", "Title", "Watched", "DL", "Keep", "Resume", "Date"])
     finally:
         db.close()
 
@@ -1009,7 +1076,7 @@ def cmd_song_remove(args):
         db.close()
 
 
-def cmd_video_remove(args):
+def cmd_video_keep(args):
     db = get_db()
     try:
         from models import Video
@@ -1021,7 +1088,52 @@ def cmd_video_remove(args):
         if not video:
             print(f"Error: Video not found: {args.id_or_name}", file=sys.stderr)
             sys.exit(1)
-        if video.downloaded and video.video_id:
+        video.keep_flag = not args.unkeep
+        db.commit()
+        print(f"{'Kept' if video.keep_flag else 'Unkept'} video: {video.title}")
+    finally:
+        db.close()
+
+
+def cmd_video_watched(args):
+    db = get_db()
+    try:
+        from models import Video
+        user = get_active_user(db)
+        if not user:
+            print("Error: No active user. Use 'ht login <username>' first.", file=sys.stderr)
+            sys.exit(1)
+        video = _resolve_video(db, user.id, args.id_or_name)
+        if not video:
+            print(f"Error: Video not found: {args.id_or_name}", file=sys.stderr)
+            sys.exit(1)
+        video.watched_at = None if args.unwatch else datetime.utcnow()
+        db.commit()
+        print(f"{'Unmarked' if args.unwatch else 'Marked watched'}: {video.title}")
+    finally:
+        db.close()
+
+
+def cmd_video_remove(args):
+    db = get_db()
+    try:
+        from models import Video, Playlist
+        user = get_active_user(db)
+        if not user:
+            print("Error: No active user. Use 'ht login <username>' first.", file=sys.stderr)
+            sys.exit(1)
+        video = _resolve_video(db, user.id, args.id_or_name)
+        if not video:
+            print(f"Error: Video not found: {args.id_or_name}", file=sys.stderr)
+            sys.exit(1)
+        for pl in db.query(Playlist).filter(Playlist.user_id == user.id).all():
+            if pl.songs:
+                pl.songs = [s for s in pl.songs if not (s.get("type") == "video" and s.get("video_id") == video.id)]
+        if video.filename:
+            fpath = os.path.join(DL_DIR, "videos", video.filename)
+            if os.path.isfile(fpath):
+                os.remove(fpath)
+        elif video.video_id:
             fpath = os.path.join(DL_DIR, "videos", f"{video.video_id}.mp4")
             if os.path.isfile(fpath):
                 os.remove(fpath)
@@ -1427,6 +1539,14 @@ def main():
     videos_remove_p = videos_sub.add_parser("remove", help="Remove a video by ID or name")
     videos_remove_p.add_argument("id_or_name", help="Video ID or name")
     videos_remove_p.set_defaults(func=cmd_video_remove)
+    videos_watch_p = videos_sub.add_parser("watched", help="Toggle or set watched state")
+    videos_watch_p.add_argument("id_or_name", help="Video ID or name")
+    videos_watch_p.add_argument("--unwatch", action="store_true", help="Mark as unwatched")
+    videos_watch_p.set_defaults(func=cmd_video_watched)
+    videos_keep_p = videos_sub.add_parser("keep", help="Toggle or set keep flag")
+    videos_keep_p.add_argument("id_or_name", help="Video ID or name")
+    videos_keep_p.add_argument("--unkeep", action="store_true", help="Unset keep flag")
+    videos_keep_p.set_defaults(func=cmd_video_keep)
 
     podcasts_p = sub.add_parser("podcasts", help="List subscribed podcast feeds")
     podcasts_p.set_defaults(func=cmd_podcasts)

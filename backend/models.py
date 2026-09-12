@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, JSON, Table
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON, Table
 from sqlalchemy.sql import func
 from database import Base
 
@@ -47,6 +47,10 @@ class Video(Base):
     title = Column(String(300))
     channel_id = Column(Integer, ForeignKey("channels.id"))
     url = Column(String(500))
+    thumbnail = Column(String(500))
+    filename = Column(String(500))
+    position = Column(Float, nullable=True)
+    duration = Column(Integer, nullable=True)
     downloaded = Column(Boolean, default=False)
     added_by = Column(Integer, ForeignKey("users.id"))
     watched_at = Column(DateTime, nullable=True)

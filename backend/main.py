@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -12,6 +13,7 @@ import secrets
 import zipfile
 import io
 import json
+import time
 from contextlib import asynccontextmanager
 import sys
 import urllib.parse
@@ -20,7 +22,7 @@ from datetime import datetime, timedelta
 
 from database import engine, get_db, Base, ensure_schema
 import models
-from services import ytdlp, scheduler
+from services import ytdlp, scheduler, downloader
 from paths import downloads_dir
 
 VIDEOS_DIR = os.path.join(downloads_dir(), "videos")
@@ -147,6 +149,7 @@ class VideoAdd(BaseModel):
     url: str
     user_id: int
     quality: str = "best"
+    playlist_id: Optional[int] = None
 
 class ChannelAdd(BaseModel):
     url: str
@@ -180,12 +183,15 @@ class PlaylistCreate(BaseModel):
 class PlaylistRename(BaseModel):
     name: str
 
-class PlaylistAddSong(BaseModel):
-    music_id: int
+class PlaylistAddItem(BaseModel):
+    music_id: Optional[int] = None
+    video_id: Optional[int] = None
+    item_type: str = "music"
     position: int = 0
 
 class VideoWatch(BaseModel):
-    watched: bool = True
+    watched: Optional[bool] = None
+    position: Optional[float] = None
 
 class VideoKeep(BaseModel):
     keep: bool = True
@@ -193,6 +199,10 @@ class VideoKeep(BaseModel):
 class VideoUpdate(BaseModel):
     channel_id: Optional[int] = None
     added_by: Optional[int] = None
+    thumbnail: Optional[str] = None
+    duration: Optional[int] = None
+    position: Optional[float] = None
+    quality: Optional[str] = None
 
 class MusicUpdate(BaseModel):
     added_by: Optional[int] = None
@@ -479,10 +489,66 @@ def add_video(data: VideoAdd, token_valid: bool = Depends(verify_token), db: Ses
     info = ytdlp.get_video_info(data.url)
     if not info:
         raise HTTPException(400, "Invalid video URL")
-    vid = models.Video(video_id=info.get("id"), title=info.get("title"), url=data.url, added_by=data.user_id, quality=data.quality)
+
+    # Playlist / channel URLs: add every entry, then place them in a video playlist
+    if "entries" in info:
+        entries = info.get("entries") or []
+        if not entries:
+            raise HTTPException(400, "Empty playlist")
+        video_ids = []
+        for entry in entries:
+            if not entry or not entry.get("id"):
+                continue
+            entry_url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={entry['id']}"
+            vid = models.Video(
+                video_id=entry.get("id"),
+                title=entry.get("title") or "Unknown",
+                url=entry_url,
+                added_by=data.user_id,
+                quality=data.quality,
+                thumbnail=ytdlp.pick_video_thumbnail(entry) or ytdlp.pick_video_thumbnail(info),
+                duration=entry.get("duration"),
+            )
+            db.add(vid)
+            db.flush()
+            video_ids.append(vid.id)
+
+        if data.playlist_id:
+            playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
+            if playlist:
+                songs = playlist.songs or []
+                for vid_id in video_ids:
+                    songs.append({"video_id": vid_id, "position": 0, "type": "video"})
+                playlist.songs = songs
+        else:
+            playlist_name = (info.get("title") or "New Playlist").strip()
+            playlist = models.Playlist(name=playlist_name, user_id=data.user_id, kind="video")
+            db.add(playlist)
+            db.flush()
+            playlist.songs = [{"video_id": vid_id, "position": i, "type": "video"} for i, vid_id in enumerate(video_ids)]
+
+        db.commit()
+        return {"ok": True, "count": len(video_ids), "is_playlist": True, "playlist_id": playlist.id}
+
+    vid = models.Video(
+        video_id=info.get("id"),
+        title=info.get("title") or "Unknown",
+        url=data.url,
+        added_by=data.user_id,
+        quality=data.quality,
+        thumbnail=ytdlp.pick_video_thumbnail(info),
+        duration=info.get("duration"),
+    )
     db.add(vid)
     db.commit()
     db.refresh(vid)
+    if data.playlist_id:
+        playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
+        if playlist:
+            songs = playlist.songs or []
+            songs.append({"video_id": vid.id, "position": 0, "type": "video"})
+            playlist.songs = songs
+            db.commit()
     return vid
 
 @app.get("/api/videos")
@@ -492,6 +558,8 @@ def list_videos(user_id: int = None, filter: str = "all", token_valid: bool = De
         q = q.filter(models.Video.added_by == user_id)
     if filter == "unwatched":
         q = q.filter(models.Video.watched_at == None)
+    if filter == "keep":
+        q = q.filter(models.Video.keep_flag == True)
     return q.order_by(models.Video.created_at.desc()).all()
 
 @app.post("/api/videos/{vid_id}/watch")
@@ -499,8 +567,12 @@ def watch_video(vid_id: int, data: VideoWatch, token_valid: bool = Depends(verif
     vid = db.query(models.Video).filter(models.Video.id == vid_id).first()
     if not vid:
         raise HTTPException(404)
-    from datetime import datetime
-    vid.watched_at = datetime.utcnow() if data.watched else None
+    if data.watched is True:
+        vid.watched_at = datetime.utcnow()
+    elif data.watched is False:
+        vid.watched_at = None
+    if data.position is not None:
+        vid.position = data.position
     db.commit()
     return {"ok": True}
 
@@ -518,11 +590,12 @@ def download_video(vid_id: int, data: dict, token_valid: bool = Depends(verify_t
     vid = db.query(models.Video).filter(models.Video.id == vid_id).first()
     if not vid:
         raise HTTPException(404)
+    active = downloader.active_for("video", vid.id)
+    if active and active["status"] in ("queued", "running"):
+        return JSONResponse(status_code=202, content={"ok": True, "job_id": active["id"], "queued": True})
     quality = data.get("quality", vid.quality or "best")
-    ytdlp.download_video(vid.url, vid.id, quality)
-    vid.downloaded = True
-    db.commit()
-    return {"ok": True}
+    job_id = downloader.start_video_download(vid.id, vid.added_by, quality)
+    return JSONResponse(status_code=202, content={"ok": True, "job_id": job_id, "queued": False})
 
 @app.get("/api/videos/{vid_id}/qualities")
 def get_video_qualities(vid_id: int, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
@@ -534,6 +607,67 @@ def get_video_qualities(vid_id: int, token_valid: bool = Depends(verify_token), 
 @app.get("/api/videos/info")
 def get_video_info_by_url(url: str, token_valid: bool = Depends(verify_token)):
     return ytdlp.get_available_formats(url)
+
+VIDEO_MEDIA_TYPES = {
+    "mp4": "video/mp4", "m4v": "video/mp4",
+    "webm": "video/webm", "mkv": "video/x-matroska",
+    "mov": "video/quicktime", "avi": "video/x-msvideo",
+    "flv": "video/x-flv", "3gp": "video/3gpp", "mpeg": "video/mpeg",
+}
+
+@app.get("/api/videos/{vid_id}/file")
+def serve_video_by_id(vid_id: int, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    vid = db.query(models.Video).filter(models.Video.id == vid_id).first()
+    if not vid:
+        raise HTTPException(404)
+
+    def _load_file(filename):
+        path = os.path.join(VIDEOS_DIR, filename)
+        if os.path.exists(path):
+            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            media_type = VIDEO_MEDIA_TYPES.get(ext, "video/mp4")
+            response = FileResponse(path, media_type=media_type, filename=filename)
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
+        return None
+
+    # Auto-download on first play if the file isn't on disk yet. If a
+    # background job already covers it, wait for that job instead of
+    # starting a duplicate download.
+    if not vid.downloaded or not vid.filename or not os.path.exists(os.path.join(VIDEOS_DIR, vid.filename or "")):
+        active = downloader.active_for("video", vid.id)
+        if active:
+            done = downloader.wait_for("video", vid.id)
+            if done and done["status"] == "error":
+                raise HTTPException(500, f"Download failed: {done.get('error')}")
+            db.refresh(vid)
+        if not vid.downloaded or not vid.filename or not os.path.exists(os.path.join(VIDEOS_DIR, vid.filename or "")):
+            filename = ytdlp.download_video(vid.url, vid.id, vid.quality or "best")
+            if filename and filename is not True:
+                vid.filename = filename
+                vid.downloaded = True
+                db.commit()
+
+    if vid.filename:
+        response = _load_file(vid.filename)
+        if response:
+            return response
+
+    # Fallback: find any file matching the video_id
+    import glob
+    video_id = vid.video_id or str(vid.id)
+    matches = glob.glob(os.path.join(VIDEOS_DIR, f"*{video_id}*"))
+    if not matches:
+        raise HTTPException(404)
+    filename = os.path.basename(matches[0])
+    vid.filename = filename
+    db.commit()
+    response = _load_file(filename)
+    if response:
+        return response
+    raise HTTPException(404)
 
 @app.put("/api/videos/{vid_id}")
 def update_video(vid_id: int, data: VideoUpdate, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
@@ -550,6 +684,14 @@ def update_video(vid_id: int, data: VideoUpdate, token_valid: bool = Depends(ver
         if not user:
             raise HTTPException(400, "User not found")
         vid.added_by = data.added_by
+    if data.thumbnail is not None:
+        vid.thumbnail = data.thumbnail
+    if data.duration is not None:
+        vid.duration = data.duration
+    if data.position is not None:
+        vid.position = data.position
+    if data.quality is not None:
+        vid.quality = data.quality
     db.commit()
     return vid
 
@@ -558,7 +700,17 @@ def delete_video(vid_id: int, token_valid: bool = Depends(verify_token), db: Ses
     vid = db.query(models.Video).filter(models.Video.id == vid_id).first()
     if not vid:
         raise HTTPException(404)
-    if vid.downloaded and vid.video_id:
+    # Remove from all playlists
+    playlists = db.query(models.Playlist).all()
+    for pl in playlists:
+        if pl.songs:
+            pl.songs = [s for s in pl.songs if not (s.get("type") == "video" and s.get("video_id") == vid_id)]
+    # Delete file from disk
+    if vid.filename:
+        fpath = os.path.join(VIDEOS_DIR, vid.filename)
+        if os.path.exists(fpath):
+            os.remove(fpath)
+    elif vid.video_id:
         fname = os.path.join(VIDEOS_DIR, f"{vid.video_id}.mp4")
         if os.path.exists(fname):
             os.remove(fname)
@@ -585,22 +737,33 @@ def create_playlist(data: PlaylistCreate, token_valid: bool = Depends(verify_tok
     return playlist
 
 @app.post("/api/playlists/{playlist_id}/add")
-def add_to_playlist(playlist_id: int, data: PlaylistAddSong, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+def add_to_playlist(playlist_id: int, data: PlaylistAddItem, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
     playlist = db.query(models.Playlist).filter(models.Playlist.id == playlist_id).first()
     if not playlist:
         raise HTTPException(404)
     songs = playlist.songs or []
-    songs.append({"music_id": data.music_id, "position": data.position})
+    if data.video_id is not None:
+        vid = db.query(models.Video).filter(models.Video.id == data.video_id).first()
+        if not vid:
+            raise HTTPException(400, "Video not found")
+        songs.append({"video_id": data.video_id, "position": data.position, "type": "video"})
+    else:
+        if data.music_id is None:
+            raise HTTPException(400, "music_id or video_id required")
+        songs.append({"music_id": data.music_id, "position": data.position})
     playlist.songs = songs
     db.commit()
     return {"ok": True}
 
-@app.delete("/api/playlists/{playlist_id}/remove/{music_id}")
-def remove_from_playlist(playlist_id: int, music_id: int, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+@app.delete("/api/playlists/{playlist_id}/remove/{item_id}")
+def remove_from_playlist(playlist_id: int, item_id: int, item_type: str = "music", token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
     playlist = db.query(models.Playlist).filter(models.Playlist.id == playlist_id).first()
     if not playlist:
         raise HTTPException(404)
-    playlist.songs = [s for s in (playlist.songs or []) if s.get("music_id") != music_id]
+    if item_type == "video":
+        playlist.songs = [s for s in (playlist.songs or []) if not (s.get("type") == "video" and s.get("video_id") == item_id)]
+    else:
+        playlist.songs = [s for s in (playlist.songs or []) if s.get("music_id") != item_id]
     db.commit()
     return {"ok": True}
 
@@ -748,11 +911,11 @@ def download_music(music_id: int, data: MusicDownload, token_valid: bool = Depen
     music = db.query(models.Music).filter(models.Music.id == music_id).first()
     if not music:
         raise HTTPException(404)
-    filename = ytdlp.download_music(music.url, music.id)
-    music.filename = filename
-    music.downloaded = True
-    db.commit()
-    return {"ok": True, "filename": filename}
+    active = downloader.active_for("music", music.id)
+    if active and active["status"] in ("queued", "running"):
+        return JSONResponse(status_code=202, content={"ok": True, "job_id": active["id"], "queued": True})
+    job_id = downloader.start_music_download(music.id, music.added_by)
+    return JSONResponse(status_code=202, content={"ok": True, "job_id": job_id, "queued": False})
 
 @app.get("/api/music/{music_id}/file")
 def serve_music_by_id(music_id: int, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
@@ -1002,7 +1165,7 @@ def export_data(data: ExportRequest, token_valid: bool = Depends(verify_token), 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
 
-        metadata = {"version": 1, "exported_at": datetime.utcnow().isoformat()}
+        metadata = {"version": 2, "exported_at": datetime.utcnow().isoformat()}
 
         q = db.query(models.User)
         if data.user_id:
@@ -1056,11 +1219,12 @@ def export_data(data: ExportRequest, token_valid: bool = Depends(verify_token), 
         zf.writestr("metadata.json", json.dumps(metadata, default=str, indent=2))
 
         for v in metadata["videos"]:
-            if v.get("downloaded") and v.get("video_id"):
-                fname = f"{v['video_id']}.mp4"
-                fpath = os.path.join(VIDEOS_DIR, fname)
-                if os.path.isfile(fpath):
-                    zf.write(fpath, f"videos/{fname}")
+            if not (v.get("downloaded") and (v.get("filename") or v.get("video_id"))):
+                continue
+            fname = v.get("filename") or f"{v['video_id']}.mp4"
+            fpath = os.path.join(VIDEOS_DIR, fname)
+            if os.path.isfile(fpath):
+                zf.write(fpath, f"videos/{fname}")
 
         for m in metadata["music"]:
             fname = m.get("filename")
@@ -1190,6 +1354,8 @@ async def import_data(file: UploadFile = File(...), token_valid: bool = Depends(
                             s = dict(song)
                             if s.get("music_id") and s["music_id"] in id_map.get("music", {}):
                                 s["music_id"] = id_map["music"][s["music_id"]]
+                            if s.get("video_id") and s["video_id"] in id_map.get("videos", {}):
+                                s["video_id"] = id_map["videos"][s["video_id"]]
                             new_songs.append(s)
                         p["songs"] = new_songs
                     if p.get("created_at"):
@@ -1227,13 +1393,10 @@ async def import_data(file: UploadFile = File(...), token_valid: bool = Depends(
 
     return {"ok": True, "summary": summary}
 
-# Downloads status
+# Downloads status (in-memory background download jobs)
 @app.get("/api/downloads")
-def list_downloads(user_id: int = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
-    q = db.query(models.Download)
-    if user_id:
-        q = q.filter(models.Download.user_id == user_id)
-    return q.order_by(models.Download.created_at.desc()).all()
+def list_downloads(user_id: int = None, token_valid: bool = Depends(verify_token)):
+    return downloader.list_jobs(user_id=user_id)
 
 # Serve downloaded files
 import os
@@ -1244,7 +1407,9 @@ def serve_video(filename: str, token_valid: bool = Depends(verify_token)):
     path = os.path.join(VIDEOS_DIR, filename)
     if not os.path.exists(path):
         raise HTTPException(404)
-    return FileResponse(path, media_type="video/mp4", filename=filename)
+    ext = filename.split(".")[-1].lower() if "." in filename else ""
+    media_type = VIDEO_MEDIA_TYPES.get(ext, "video/mp4")
+    return FileResponse(path, media_type=media_type, filename=filename)
 
 @app.get("/api/files/music/{filename:path}")
 def serve_music(filename: str, token_valid: bool = Depends(verify_token)):

@@ -28,6 +28,10 @@ def _ensure_columns(db):
     _ensure_column(db, "music", "channel_id", "channel_id INTEGER")
     _ensure_column(db, "subscriptions", "kind", "kind VARCHAR(20) DEFAULT 'video'")
     _ensure_column(db, "playlists", "kind", "kind VARCHAR(20) DEFAULT 'music'")
+    _ensure_column(db, "videos", "thumbnail", "thumbnail VARCHAR(500)")
+    _ensure_column(db, "videos", "filename", "filename VARCHAR(500)")
+    _ensure_column(db, "videos", "position", "position FLOAT")
+    _ensure_column(db, "videos", "duration", "duration INTEGER")
     db.commit()
 
 def ensure_schema():
