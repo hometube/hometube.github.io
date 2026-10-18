@@ -67,6 +67,10 @@ export class LocalProvider extends DataProvider {
         return { store: pathToStore[table], id: parseInt(generic[2]), action: 'by_id' }
       }
     }
+    // /podcasts/episodes
+    if (basePath === '/podcasts/episodes') {
+      return { store: null, id: null, action: 'podcast_standalone_episodes' }
+    }
     // /podcasts
     if (basePath === '/podcasts') {
       return { store: null, id: null, action: 'podcasts' }
@@ -171,6 +175,24 @@ export class LocalProvider extends DataProvider {
         })
       }
       return feeds
+    }
+
+    if (match.action === 'podcast_standalone_episodes') {
+      const subs = await this._getAll('subscriptions')
+      const allMusic = await this._getAll('music')
+      const uid = query.user_id ? parseInt(query.user_id) : null
+      const subChannelIds = new Set(
+        subs
+          .filter(s => (s.kind || 'video') === 'podcast' && (!uid || s.user_id === uid))
+          .map(s => s.channel_id)
+      )
+      let episodes = allMusic.filter(m =>
+        m.kind === 'podcast' &&
+        (!uid || m.added_by === uid) &&
+        (m.channel_id == null || !subChannelIds.has(m.channel_id))
+      )
+      episodes = await this._musicWithDownloaded(episodes)
+      return episodes
     }
 
     if (match.action === 'podcast_episodes') {

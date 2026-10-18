@@ -5,6 +5,7 @@ import { useUserStore } from './user.js'
 
 export const usePodcastStore = defineStore('podcast', () => {
   const feeds = ref([])
+  const standaloneEpisodes = ref([])
   const playlists = ref([])
   const loading = ref(false)
   const feedEpisodes = ref(null)
@@ -14,12 +15,14 @@ export const usePodcastStore = defineStore('podcast', () => {
     if (!userStore.user) return
     loading.value = true
     try {
-      const [fds, pls] = await Promise.all([
+      const [fds, pls, eps] = await Promise.all([
         API.get('/podcasts', { user_id: userStore.user.id }),
-        API.get('/playlists', { user_id: userStore.user.id, kind: 'podcast' })
+        API.get('/playlists', { user_id: userStore.user.id, kind: 'podcast' }),
+        API.get('/podcasts/episodes', { user_id: userStore.user.id })
       ])
       feeds.value = fds || []
       playlists.value = pls || []
+      standaloneEpisodes.value = eps || []
     } catch (e) {
       console.error('Failed to load podcast data:', e)
     } finally {
@@ -74,6 +77,7 @@ export const usePodcastStore = defineStore('podcast', () => {
 
   return {
     feeds,
+    standaloneEpisodes,
     playlists,
     loading,
     feedEpisodes,

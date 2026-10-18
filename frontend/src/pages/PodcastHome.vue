@@ -1,14 +1,16 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { usePodcastStore } from '../stores/podcast.js'
 import { useUserStore } from '../stores/user.js'
+import { useMusicStore } from '../stores/music.js'
 import { API, isLocalMode } from '../api.js'
 
 const router = useRouter()
 const podcastStore = usePodcastStore()
 const userStore = useUserStore()
+const musicStore = useMusicStore()
 
 const searchQuery = ref('')
 const episodeTitles = ref({})
@@ -49,6 +51,21 @@ const filteredPlaylists = computed(() => {
   if (!query.value) return podcastStore.playlists
   return podcastStore.playlists.filter(p => (p.name || '').toLowerCase().includes(query.value))
 })
+
+const filteredStandaloneEpisodes = computed(() => {
+  if (!query.value) return podcastStore.standaloneEpisodes
+  return podcastStore.standaloneEpisodes.filter(e =>
+    (e.title || '').toLowerCase().includes(query.value) ||
+    (e.artist || '').toLowerCase().includes(query.value)
+  )
+})
+
+const playStandalone = async (ep) => {
+  musicStore.loadPlaylistSongs(podcastStore.standaloneEpisodes, { type: 'standalone', name: 'Standalone Episodes', kind: 'podcast' }, 'standalone-podcasts')
+  await nextTick()
+  const idx = musicStore.displaySongs.findIndex(s => s.id === ep.id)
+  musicStore.playSong(idx >= 0 ? idx : 0)
+}
 
 const computing = ref(null)
 
@@ -149,6 +166,25 @@ onMounted(() => podcastStore.load())
           </div>
         </TransitionGroup>
       </Transition>
+    </div>
+
+    <div v-if="filteredStandaloneEpisodes.length > 0" class="mb-4">
+      <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">Standalone Episodes</h2>
+      <TransitionGroup name="stagger" tag="div">
+        <div v-for="(e, idx) in filteredStandaloneEpisodes" :key="e.id"
+          :style="{ '--i': idx }"
+          class="flex items-center gap-3 p-3 bg-gray-800/60 rounded-lg hover:bg-gray-800 cursor-pointer mb-1"
+          @click="playStandalone(e)">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm truncate">{{ e.title }}</div>
+            <div v-if="e.artist" class="text-xs text-gray-400 truncate">{{ e.artist }}</div>
+          </div>
+          <div v-if="e.downloaded" class="text-xs text-gray-400 mr-1">
+            <FontAwesomeIcon :icon="['fas', 'download']" />
+          </div>
+          <FontAwesomeIcon :icon="['fas', 'play-circle']" class="text-gray-500" />
+        </div>
+      </TransitionGroup>
     </div>
 
     <div class="mb-4">
