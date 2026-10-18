@@ -5,6 +5,7 @@ immediately (202 + job id) while yt-dlp works in the background.
 Clients poll GET /api/downloads for job status/progress and receive the
 final filename in the persisted DB row once the job completes.
 """
+import os
 import threading
 import time
 import uuid
@@ -14,6 +15,7 @@ from datetime import datetime, timezone
 import services.ytdlp as ytdlp
 from database import SessionLocal
 from models import Music, Video
+from paths import downloads_dir
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="hometube-dl")
 _REGISTRY: dict[str, dict] = {}
@@ -43,6 +45,12 @@ def _fetch_url(kind, item_id):
 
 
 def _apply_to_db(kind, item_id, filename):
+    if not filename or filename is True:
+        raise FileNotFoundError("Download finished but produced no file")
+    subdir = "videos" if kind == "video" else "music"
+    path = os.path.join(downloads_dir(), subdir, str(filename))
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        raise FileNotFoundError(f"Downloaded file is missing or empty: {filename}")
     db = SessionLocal()
     try:
         row = db.query(Video if kind == "video" else Music).filter(
@@ -50,8 +58,7 @@ def _apply_to_db(kind, item_id, filename):
         ).first()
         if row:
             row.downloaded = True
-            if filename and filename is not True:
-                row.filename = filename
+            row.filename = filename
             db.commit()
     finally:
         db.close()
@@ -99,6 +106,40 @@ def start_video_download(video_id, user_id, quality="best"):
 
 def start_music_download(music_id, user_id):
     return _start("music", music_id, user_id)
+
+
+def auto_downloads(db):
+    """Server setting `auto_download` (default on) toggles pre-downloading on add."""
+    from models import Setting
+    setting = db.query(Setting).filter(Setting.key == "auto_download").first()
+    value = setting.value if setting else "1"
+    return str(value).strip().lower() not in ("0", "false", "off", "no", "")
+
+
+def ensure_download(kind, item_id, user_id, quality=None):
+    """Queue a background download only if the item isn't already downloaded
+    and no job is queued/running for it. Returns the job id or None if skipped."""
+    job_id = _start_if_inactive(kind, item_id, user_id, quality)
+    if job_id is not None:
+        return job_id
+    return None
+
+
+def _start_if_inactive(kind, item_id, user_id, quality=None):
+    with _LOCK:
+        for job in _REGISTRY.values():
+            if job["type"] == kind and job["item_id"] == item_id and job["status"] in ("queued", "running"):
+                return None
+    db = SessionLocal()
+    try:
+        row = db.query(Video if kind == "video" else Music).filter(
+            (Video if kind == "video" else Music).id == item_id
+        ).first()
+        if row and row.downloaded:
+            return None
+    finally:
+        db.close()
+    return _start(kind, item_id, user_id, quality=quality)
 
 
 def _start(kind, item_id, user_id, quality=None):

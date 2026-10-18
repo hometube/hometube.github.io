@@ -52,6 +52,32 @@ def get_jwt_secret(db: Session):
     return jwt_secret
 
 
+def get_setting(db: Session, key: str, default=None):
+    """Read a Setting row from the database, or return the default."""
+    setting = db.query(models.Setting).filter(models.Setting.key == key).first()
+    return setting.value if setting else default
+
+
+def set_setting(db: Session, key: str, value: str):
+    """Upsert a Setting row into the database."""
+    setting = db.query(models.Setting).filter(models.Setting.key == key).first()
+    if setting:
+        setting.value = value
+    else:
+        db.add(models.Setting(key=key, value=value))
+    db.commit()
+    return value
+
+
+def prewarm_download(db: Session, kind: str, item_id: int, user_id: int, quality=None):
+    """Queue a background download for a freshly added/created item when the
+    `auto_download` server setting is enabled (default). The item row must
+    already be committed so the downloader's own session can resolve it."""
+    if not downloader.auto_downloads(db):
+        return None
+    return downloader.ensure_download(kind, item_id, user_id, quality=quality)
+
+
 def create_jwt_token(user_id: int, db: Session) -> str:
     """Create a JWT token for a user"""
     secret = get_jwt_secret(db)
@@ -105,6 +131,7 @@ def resolve_channel_from_info(db, info):
 def backfill_podcast_episodes(db, channel, user_id, criteria=None, limit=100):
     entries = ytdlp.get_channel_videos(channel.url)
     count = 0
+    new_ids = []
     for entry in entries[:limit]:
         if not entry or not entry.get("id"):
             continue
@@ -138,8 +165,14 @@ def backfill_podcast_episodes(db, channel, user_id, criteria=None, limit=100):
             channel_id=channel.id
         )
         db.add(episode)
+        db.flush()
+        new_ids.append(episode.id)
         count += 1
     db.commit()
+    # Pre-warm only the newest few episodes so the latest one plays instantly
+    # without mass-downloading the whole backfilled backlog.
+    for ep_id in new_ids[:3]:
+        prewarm_download(db, "music", ep_id, user_id)
     return count
 
 class UserCreate(BaseModel):
@@ -206,6 +239,10 @@ class VideoUpdate(BaseModel):
 
 class MusicUpdate(BaseModel):
     added_by: Optional[int] = None
+
+class SettingUpdate(BaseModel):
+    key: str
+    value: str
 
 class PlaylistUpdate(BaseModel):
     name: Optional[str] = None
@@ -447,6 +484,19 @@ def create_user(data: UserCreate, token_valid: bool = Depends(verify_token), db:
         db.refresh(user)
     return user
 
+@app.get("/api/settings")
+def list_settings(token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    """List all server settings as a key/value map."""
+    return {s.key: s.value for s in db.query(models.Setting).all()}
+
+
+@app.put("/api/settings")
+def update_setting(data: SettingUpdate, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    """Set a single server setting (e.g. `auto_download`)."""
+    set_setting(db, data.key, data.value)
+    return {"ok": True, "key": data.key, "value": data.value}
+
+
 # Channels
 @app.post("/api/channels/add")
 def add_channel(data: ChannelAdd, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
@@ -528,6 +578,8 @@ def add_video(data: VideoAdd, token_valid: bool = Depends(verify_token), db: Ses
             playlist.songs = [{"video_id": vid_id, "position": i, "type": "video"} for i, vid_id in enumerate(video_ids)]
 
         db.commit()
+        for vid_id in video_ids:
+            prewarm_download(db, "video", vid_id, data.user_id, quality=data.quality)
         return {"ok": True, "count": len(video_ids), "is_playlist": True, "playlist_id": playlist.id}
 
     vid = models.Video(
@@ -549,6 +601,7 @@ def add_video(data: VideoAdd, token_valid: bool = Depends(verify_token), db: Ses
             songs.append({"video_id": vid.id, "position": 0, "type": "video"})
             playlist.songs = songs
             db.commit()
+    prewarm_download(db, "video", vid.id, data.user_id, quality=data.quality)
     return vid
 
 @app.get("/api/videos")
@@ -644,11 +697,13 @@ def serve_video_by_id(vid_id: int, token_valid: bool = Depends(verify_token), db
                 raise HTTPException(500, f"Download failed: {done.get('error')}")
             db.refresh(vid)
         if not vid.downloaded or not vid.filename or not os.path.exists(os.path.join(VIDEOS_DIR, vid.filename or "")):
-            filename = ytdlp.download_video(vid.url, vid.id, vid.quality or "best")
-            if filename and filename is not True:
-                vid.filename = filename
-                vid.downloaded = True
-                db.commit()
+            try:
+                filename = ytdlp.download_video(vid.url, vid.id, vid.quality or "best")
+            except Exception as exc:
+                raise HTTPException(502, f"Download failed: {exc}")
+            vid.filename = filename
+            vid.downloaded = True
+            db.commit()
 
     if vid.filename:
         response = _load_file(vid.filename)
@@ -840,11 +895,6 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
             )
             db.add(music)
             db.flush()
-            if not is_podcast:
-                filename = ytdlp.download_music(entry_url, music.id)
-                music.filename = filename
-                music.downloaded = True
-            db.flush()
             music_ids.append(music.id)
 
         if data.playlist_id:
@@ -863,6 +913,8 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
             playlist.songs = songs
 
         db.commit()
+        for mid in music_ids:
+            prewarm_download(db, "music", mid, data.user_id)
         return {"ok": True, "count": len(music_ids), "is_playlist": True, "playlist_id": playlist.id}
 
     title = clean_title(info.get("title"))
@@ -883,11 +935,6 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
     db.add(music)
     db.commit()
     db.refresh(music)
-    if not is_podcast:
-        filename = ytdlp.download_music(music.url, music.id)
-        music.filename = filename
-        music.downloaded = True
-        db.commit()
     if data.playlist_id:
         playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
         if playlist:
@@ -895,6 +942,7 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
             songs.append({"music_id": music.id, "position": 0})
             playlist.songs = songs
             db.commit()
+    prewarm_download(db, "music", music.id, data.user_id)
     return music
 
 @app.get("/api/music")
@@ -925,14 +973,25 @@ def serve_music_by_id(music_id: int, token_valid: bool = Depends(verify_token), 
 
     print(f"[DEBUG] Serving music {music_id}: filename={music.filename}, video_id={music.video_id}, url={music.url}, title={music.title}")
 
-    # Auto-download if not already downloaded
+    # Auto-download if not already downloaded. If a background job already
+    # covers it, wait for that job instead of starting a duplicate download.
     if not music.downloaded or not music.filename or not os.path.exists(os.path.join(MUSIC_DIR, music.filename or "")):
         print(f"[DEBUG] Music not downloaded, triggering download...")
-        filename = ytdlp.download_music(music.url, music.id)
-        if filename:
-            music.filename = filename
-            music.downloaded = True
-            db.commit()
+        active = downloader.active_for("music", music.id)
+        if active:
+            done = downloader.wait_for("music", music.id)
+            if done and done["status"] == "error":
+                raise HTTPException(500, f"Download failed: {done.get('error')}")
+            db.refresh(music)
+    if not music.downloaded or not music.filename or not os.path.exists(os.path.join(MUSIC_DIR, music.filename or "")):
+        print(f"[DEBUG] Music not downloaded, triggering download...")
+        try:
+            filename = ytdlp.download_music(music.url, music.id)
+        except Exception as exc:
+            raise HTTPException(502, f"Download failed: {exc}")
+        music.filename = filename
+        music.downloaded = True
+        db.commit()
 
     # Use stored filename if available
     if music.filename:
@@ -1149,6 +1208,24 @@ def unsubscribe_podcast(sub_id: int, token_valid: bool = Depends(verify_token), 
     db.delete(sub)
     db.commit()
     return {"ok": True}
+
+@app.get("/api/podcasts/episodes")
+def list_standalone_podcast_episodes(user_id: int = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    """List podcast episodes not tied to any subscribed feed (single downloads)."""
+    from sqlalchemy import or_
+
+    sub_channel_ids = [
+        sub.channel_id
+        for sub in db.query(models.Subscription)
+        .filter(models.Subscription.kind == "podcast", models.Subscription.user_id == user_id)
+        .all()
+    ]
+    q = db.query(models.Music).filter(models.Music.kind == "podcast")
+    if user_id:
+        q = q.filter(models.Music.added_by == user_id)
+    if sub_channel_ids:
+        q = q.filter(or_(models.Music.channel_id.is_(None), models.Music.channel_id.notin_(sub_channel_ids)))
+    return q.order_by(models.Music.created_at.desc()).all()
 
 # Export / Import
 def serialize_row(obj):

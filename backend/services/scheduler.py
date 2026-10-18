@@ -3,10 +3,13 @@ from datetime import datetime, timedelta
 from database import SessionLocal
 from models import Subscription, Video, Music, Channel
 from .ytdlp import get_channel_videos, pick_album_art
+from . import downloader
 
 async def check_subscriptions():
     while True:
         db = SessionLocal()
+        new_video_ids = []
+        new_episode_ids = []
         try:
             subs = db.query(Subscription).all()
             for sub in subs:
@@ -51,6 +54,8 @@ async def check_subscriptions():
                                 kind="podcast"
                             )
                             db.add(ep)
+                            db.flush()
+                            new_episode_ids.append((ep.id, sub.user_id))
                         else:
                             vid = Video(
                                 video_id=v_id,
@@ -63,8 +68,17 @@ async def check_subscriptions():
                                 quality=criteria.get("quality", "best")
                             )
                             db.add(vid)
+                            db.flush()
+                            new_video_ids.append((vid.id, sub.user_id))
                 sub.last_checked = datetime.utcnow()
                 db.commit()
+            # Pre-warm downloads for newly-detected subscription items so they
+            # are ready to play before the user taps them (auto_download setting).
+            if downloader.auto_downloads(db) and (new_video_ids or new_episode_ids):
+                for vid_id, user_id in new_video_ids:
+                    downloader.ensure_download("video", vid_id, user_id)
+                for ep_id, user_id in new_episode_ids:
+                    downloader.ensure_download("music", ep_id, user_id)
             # Auto-delete watched videos older than 7 days without keep flag
             cutoff = datetime.utcnow() - timedelta(days=7)
             old_videos = db.query(Video).filter(

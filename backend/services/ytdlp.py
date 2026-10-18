@@ -86,22 +86,35 @@ def pick_video_thumbnail(info):
     """Best thumbnail URL for a video (same jpg-preference rules as music)."""
     return pick_album_art(info)
 
+def _file_ready(path):
+    return bool(path) and os.path.exists(path) and os.path.getsize(path) > 0
+
+def _ytdlp_error(result, url):
+    detail = ""
+    if result is not None:
+        lines = (result.stderr or result.stdout or "").strip().splitlines()
+        detail = lines[-1] if lines else ""
+    return f"yt-dlp download failed for {url}" + (f": {detail}" if detail else "")
+
 def download_video(url, video_id, quality="best"):
+    import glob
     os.makedirs(f"{DL_DIR}/videos", exist_ok=True)
     fmt = quality if quality != "best" else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
     out = run_ytdlp(["--get-filename", "-o", "%(id)s.%(ext)s", "-f", fmt, url])
     expected_name = out.strip()
     cmd = ["yt-dlp"] + YTDLP_YT_ARGS + ["-f", fmt, "-o", f"{DL_DIR}/videos/%(id)s.%(ext)s", url]
-    subprocess.run(cmd)
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if expected_name:
-        import glob
         base = expected_name.rsplit(".", 1)[0]
-        matches = glob.glob(f"{DL_DIR}/videos/{base}.*")
+        matches = [m for m in glob.glob(f"{DL_DIR}/videos/{base}.*") if _file_ready(m)]
         if matches:
             return matches[0].split("/")[-1]
-    return expected_name or True
+    if result.returncode != 0:
+        raise RuntimeError(_ytdlp_error(result, url))
+    raise RuntimeError(f"No video file produced for {url}")
 
 def download_music(url, music_id):
+    import glob
     os.makedirs(f"{DL_DIR}/music", exist_ok=True)
     out = run_ytdlp(["--get-filename", "-o", f"%(id)s.%(ext)s", url])
     expected_name = out.strip()
@@ -116,12 +129,14 @@ def download_music(url, music_id):
         "-o", f"{DL_DIR}/music/%(id)s.%(ext)s",
         url,
     ]
-    subprocess.run(cmd)
-    import glob
-    matches = glob.glob(f"{DL_DIR}/music/{expected_name.split('.')[0]}.*")
-    if matches:
-        return matches[0].split("/")[-1]
-    return expected_name
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if expected_name:
+        matches = [m for m in glob.glob(f"{DL_DIR}/music/{expected_name.split('.')[0]}.*") if _file_ready(m)]
+        if matches:
+            return matches[0].split("/")[-1]
+    if result.returncode != 0:
+        raise RuntimeError(_ytdlp_error(result, url))
+    raise RuntimeError(f"No audio file produced for {url}")
 
 def _ytdlp_params(**extra):
     params = {
@@ -162,13 +177,16 @@ def download_video_with_progress(url, video_id, quality="best", on_progress=None
         on_progress(99, "Finalizing")
     import glob
     base = (info or {}).get("id") or video_id
-    matches = sorted(glob.glob(f"{DL_DIR}/videos/{base}.*"), key=os.path.getmtime)
+    matches = sorted(
+        (m for m in glob.glob(f"{DL_DIR}/videos/{base}.*") if _file_ready(m)),
+        key=os.path.getmtime,
+    )
     if matches:
         return os.path.basename(matches[-1])
-    path = ydl.prepare_filename(info)
-    if path and os.path.exists(path):
+    path = ydl.prepare_filename(info) if info else None
+    if _file_ready(path):
         return os.path.basename(path)
-    return base
+    raise RuntimeError(f"No video file produced for {url}")
 
 def download_music_with_progress(url, music_id, on_progress=None):
     """Download music with progress reporting. Returns the stored filename."""
@@ -188,10 +206,10 @@ def download_music_with_progress(url, music_id, on_progress=None):
         on_progress(99, "Finalizing")
     import glob
     base = (info or {}).get("id") or music_id
-    matches = glob.glob(f"{DL_DIR}/music/{base}.mp3") or glob.glob(f"{DL_DIR}/music/{base}.*")
+    matches = [m for m in (glob.glob(f"{DL_DIR}/music/{base}.mp3") or glob.glob(f"{DL_DIR}/music/{base}.*")) if _file_ready(m)]
     if matches:
         return os.path.basename(sorted(matches, key=os.path.getmtime)[-1])
-    path = ydl.prepare_filename(info)
-    if path and os.path.exists(path):
+    path = ydl.prepare_filename(info) if info else None
+    if _file_ready(path):
         return os.path.basename(path)
-    return base
+    raise RuntimeError(f"No audio file produced for {url}")

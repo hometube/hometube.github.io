@@ -14,6 +14,9 @@ Usage:
 ht songs                List music for active user
   ht playlists            List playlists for active user
   ht videos               List videos for active user
+  ht podcasts             List podcast feeds and standalone episodes
+  ht settings get         Show server settings (e.g. auto_download)
+  ht settings set <key> <value>  Set a server setting
   ht serve                Start the HomeTube server
   ht build                Build the Android app (release by default)
   ht deploy               Install the built app onto a connected device
@@ -353,11 +356,12 @@ def cmd_download(args):
                     created_ids.append(vid.id)
                     print(f"  Added: {title}")
                     if args.download:
-                        filename = ytdlp.download_video(entry_url, vid.id, args.quality)
-                        vid.downloaded = True
-                        if filename and filename is not True:
-                            vid.filename = filename
-                        print(f"  Downloaded: {title}")
+                        try:
+                            vid.filename = ytdlp.download_video(entry_url, vid.id, args.quality)
+                            vid.downloaded = True
+                            print(f"  Downloaded: {title}")
+                        except Exception as exc:
+                            print(f"  Download failed: {title}: {exc}", file=sys.stderr)
                 if created_ids and args.playlist:
                     video_playlist = db.query(Playlist).filter(
                         Playlist.name == args.playlist, Playlist.user_id == user.id, Playlist.kind == "video"
@@ -393,7 +397,7 @@ def cmd_download(args):
                     print(f"Adding to playlist: {playlist.name}")
 
                 channel = resolve_music_channel(info) if kind == "podcast" else None
-                print(f"Adding {len(entries)} tracks..." if kind == "podcast" else f"Downloading {len(entries)} tracks...")
+                print(f"{'Downloading' if args.download else 'Adding'} {len(entries)} tracks...")
                 for entry in entries:
                     if not entry.get("id"):
                         continue
@@ -403,6 +407,13 @@ def cmd_download(args):
                     entry_url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id')}"
                     existing = db.query(Music).filter(Music.video_id == entry["id"]).first()
                     if existing:
+                        if args.download and not existing.downloaded:
+                            try:
+                                existing.filename = ytdlp.download_music(existing.url or entry_url, existing.id)
+                                existing.downloaded = True
+                                print(f"  Downloaded: {title}")
+                            except Exception as exc:
+                                print(f"  Download failed: {title}: {exc}", file=sys.stderr)
                         playlist_ids = [s["music_id"] for s in (playlist.songs or [])]
                         if existing.id not in playlist_ids:
                             songs = list(playlist.songs or [])
@@ -427,17 +438,19 @@ def cmd_download(args):
                     )
                     db.add(music)
                     db.flush()
-                    if kind != "podcast":
-                        filename = ytdlp.download_music(entry_url, music.id)
-                        music.filename = filename
-                        music.downloaded = True
-                        db.flush()
+                    if args.download:
+                        try:
+                            music.filename = ytdlp.download_music(entry_url, music.id)
+                            music.downloaded = True
+                            db.flush()
+                        except Exception as exc:
+                            print(f"  Download failed: {title}: {exc}", file=sys.stderr)
                     songs = list(playlist.songs or [])
                     songs.append({"music_id": music.id, "position": len(songs)})
                     playlist.songs = songs
                     print(f"  Added: {title}")
                 db.commit()
-                verb = "Added" if kind == "podcast" else "Downloaded"
+                verb = "Downloaded" if args.download else "Added"
                 print(f"\n{verb} {len(entries)} tracks to '{playlist.name}'.")
         else:
             is_ytmusic = "music.youtube.com" in args.url
@@ -461,10 +474,11 @@ def cmd_download(args):
                     db.add(vid)
                     db.flush()
                     if args.download:
-                        filename = ytdlp.download_video(url, vid.id, args.quality)
-                        vid.downloaded = True
-                        if filename and filename is not True:
-                            vid.filename = filename
+                        try:
+                            vid.filename = ytdlp.download_video(url, vid.id, args.quality)
+                            vid.downloaded = True
+                        except Exception as exc:
+                            print(f"Download failed: {vid.title}: {exc}", file=sys.stderr)
                     db.commit()
                     print(f"Added video: {vid.title}")
                 if args.playlist:
@@ -488,6 +502,14 @@ def cmd_download(args):
                 existing = db.query(Music).filter(Music.video_id == info.get("id")).first()
                 if existing:
                     print(f"Music already exists: {title}")
+                    if args.download and not existing.downloaded:
+                        try:
+                            existing.filename = ytdlp.download_music(existing.url or args.url, existing.id)
+                            existing.downloaded = True
+                            db.commit()
+                            print(f"Downloaded: {title}")
+                        except Exception as exc:
+                            print(f"Download failed: {title}: {exc}", file=sys.stderr)
                 else:
                     channel = resolve_music_channel(info) if kind == "podcast" else None
                     music = Music(
@@ -502,12 +524,16 @@ def cmd_download(args):
                     )
                     db.add(music)
                     db.flush()
-                    if kind != "podcast":
-                        filename = ytdlp.download_music(args.url, music.id)
-                        music.filename = filename
-                        music.downloaded = True
+                    ok = False
+                    if args.download:
+                        try:
+                            music.filename = ytdlp.download_music(args.url, music.id)
+                            music.downloaded = True
+                            ok = True
+                        except Exception as exc:
+                            print(f"Download failed: {title}: {exc}", file=sys.stderr)
                     db.commit()
-                    print(f"Downloaded: {title}" if kind != "podcast" else f"Added: {title}")
+                    print(f"Downloaded: {title}" if ok else f"Added: {title}")
 
                     if args.playlist:
                         playlist_q = db.query(Playlist).filter(Playlist.name == args.playlist, Playlist.user_id == user.id)
@@ -1015,9 +1041,10 @@ def cmd_videos(args):
 
 
 def cmd_podcasts(args):
-    """List subscribed podcast feeds for active user."""
+    """List subscribed podcast feeds and standalone episodes for active user."""
     db = get_db()
     try:
+        from sqlalchemy import or_
         from models import Subscription, Channel, Music
 
         user = get_active_user(db)
@@ -1029,9 +1056,6 @@ def cmd_podcasts(args):
             Subscription.kind == "podcast",
             Subscription.user_id == user.id
         ).order_by(Subscription.created_at.desc()).all()
-        if not subs:
-            print("No podcast feeds found.")
-            return
 
         rows = []
         for sub in subs:
@@ -1043,7 +1067,56 @@ def cmd_podcasts(args):
                 Music.channel_id == channel.id
             ).count()
             rows.append((sub.id, (channel.name or channel.url)[:50], count, sub.created_at.strftime("%Y-%m-%d") if sub.created_at else ""))
-        print_table(rows, ["SubID", "Feed", "Episodes", "Subscribed"])
+
+        sub_channel_ids = {sub.channel_id for sub in subs}
+        orphan_q = db.query(Music).filter(
+            Music.kind == "podcast",
+            Music.added_by == user.id
+        )
+        if sub_channel_ids:
+            orphan_q = orphan_q.filter(or_(Music.channel_id.is_(None), Music.channel_id.notin_(sub_channel_ids)))
+        orphans = orphan_q.order_by(Music.created_at.desc()).all()
+
+        if not rows and not orphans:
+            print("No podcast feeds found.")
+            return
+
+        if rows:
+            print("Feeds:")
+            print_table(rows, ["SubID", "Feed", "Episodes", "Subscribed"])
+        if orphans:
+            if rows:
+                print()
+            print("Standalone episodes (not in a feed):")
+            orows = [(m.id, (m.title or "")[:50], m.artist or "", "y" if m.downloaded else "n", m.created_at.strftime("%Y-%m-%d") if m.created_at else "") for m in orphans]
+            print_table(orows, ["ID", "Title", "Artist", "DL", "Date"])
+    finally:
+        db.close()
+
+
+def cmd_settings(args):
+    """Get or set a server setting (e.g. `auto_download`)."""
+    db = get_db()
+    try:
+        from models import Setting
+        if args.settings_subcommand == "get":
+            for key in (args.key or []):
+                setting = db.query(Setting).filter(Setting.key == key).first()
+                if setting:
+                    print(f"{setting.key} = {setting.value}")
+                else:
+                    print(f"{key} = (unset)")
+            if not args.key:
+                for setting in db.query(Setting).order_by(Setting.key).all():
+                    print(f"{setting.key} = {setting.value}")
+        elif args.settings_subcommand == "set":
+            setting = db.query(Setting).filter(Setting.key == args.key).first()
+            if setting:
+                setting.value = args.value
+            else:
+                db.add(Setting(key=args.key, value=args.value))
+            db.commit()
+            print(f"{args.key} = {args.value}")
     finally:
         db.close()
 
@@ -1550,6 +1623,16 @@ def main():
 
     podcasts_p = sub.add_parser("podcasts", help="List subscribed podcast feeds")
     podcasts_p.set_defaults(func=cmd_podcasts)
+
+    settings_p = sub.add_parser("settings", help="Get or set server settings (e.g. auto_download)")
+    settings_sub = settings_p.add_subparsers(dest="settings_subcommand")
+    settings_get_p = settings_sub.add_parser("get", help="Show server settings")
+    settings_get_p.add_argument("key", nargs="*", help="Setting key(s) to show (default: all)")
+    settings_get_p.set_defaults(func=cmd_settings)
+    settings_set_p = settings_sub.add_parser("set", help="Set a server setting")
+    settings_set_p.add_argument("key", help="Setting key (e.g. auto_download)")
+    settings_set_p.add_argument("value", help="Setting value (on/off)")
+    settings_set_p.set_defaults(func=cmd_settings)
 
     sub.add_parser("update", help="Pull latest from git and install dependencies")
 
