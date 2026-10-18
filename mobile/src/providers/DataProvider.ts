@@ -41,6 +41,10 @@ export abstract class DataProvider {
   abstract checkCache(paths: string[]): Promise<SwCacheStatus>;
   abstract downloadFile(url: string, filename: string): Promise<void>;
 
+  async uncache(_path: string): Promise<void> {
+    // No-op for providers that do not keep a device cache.
+  }
+
   setRequestTimeout(_seconds: number): void {
     // No-op for providers that do not make server requests.
   }

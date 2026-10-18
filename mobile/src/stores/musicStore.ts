@@ -15,6 +15,7 @@ import type { Music, Playlist } from "../types";
 type ShuffleMode = "off" | "on";
 
 const STATE_KEY = "musicPlayerState";
+const RATE_KEY = "playbackRate";
 
 export function cleanTitle(title?: string | null): string {
   if (!title) return title ?? "";
@@ -29,7 +30,10 @@ interface PlaybackState {
   isPlaying: boolean;
   shuffle: ShuffleMode;
   repeat: boolean;
+  rate: number;
+  error: string | null;
 
+  setPlaybackError: (msg: string | null) => void;
   loadPlaylistSongs: (songs: Music[], playlistId: string | null) => Promise<void>;
   playSong: (index: number) => Promise<void>;
   playFirst: () => Promise<void>;
@@ -40,6 +44,7 @@ interface PlaybackState {
   toggleShuffle: () => Promise<void>;
   toggleRepeat: () => Promise<void>;
   seekTo: (position: number) => Promise<void>;
+  setRate: (rate: number) => Promise<void>;
   clearQueue: () => Promise<void>;
 
   hasActiveQueue: () => boolean;
@@ -52,7 +57,7 @@ interface PlaybackState {
   addToQueueSongs: (songs: Music[]) => Promise<void>;
   shuffleAndAddToQueue: (songs: Music[]) => Promise<void>;
 
-  markSongDownloaded: (songId: number) => void;
+  markSongDownloaded: (songId: number, downloaded?: boolean) => void;
   markSongsDownloaded: (ids: number[]) => void;
 
   restorePlaybackState: () => Promise<boolean>;
@@ -208,6 +213,9 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
     } else {
       await TrackPlayer.pause();
     }
+    try {
+      await TrackPlayer.setRate(get().rate);
+    } catch {}
     return activeIndex;
   };
 
@@ -259,6 +267,10 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
     isPlaying: false,
     shuffle: "off",
     repeat: false,
+    rate: 1,
+    error: null,
+
+    setPlaybackError: (msg) => set({ error: msg }),
 
     loadPlaylistSongs: async (songs, playlistId) => {
       const state = get();
@@ -298,6 +310,7 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       const state = get();
       const song = state.queue[index];
       if (!song) return;
+      set({ error: null });
       const target = await _loadQueueToPlayer(state.queue, index, 0, true);
       set({ currentIndex: target, isPlaying: true });
       if (target >= 0) {
@@ -346,8 +359,9 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
     },
 
     previous: async () => {
-      const position = await TrackPlayer.getProgress();
-      if (position.position > 3) {
+      const progress = await TrackPlayer.getProgress();
+      const position = Number.isFinite(progress.position) ? progress.position : 0;
+      if (position >= 1) {
         await TrackPlayer.seekTo(0);
       } else {
         await TrackPlayer.skipToPrevious();
@@ -395,6 +409,14 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
 
     seekTo: async (position) => {
       await TrackPlayer.seekTo(position);
+    },
+
+    setRate: async (rate) => {
+      set({ rate });
+      try {
+        await TrackPlayer.setRate(rate);
+      } catch {}
+      await SecureStore.setItemAsync(RATE_KEY, String(rate));
     },
 
     clearQueue: async () => {
@@ -499,10 +521,10 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       await get().addToQueueSongs(fullShuffle(songs));
     },
 
-    markSongDownloaded: (songId) => {
+    markSongDownloaded: (songId, downloaded = true) => {
       set((s) => ({
         queue: s.queue.map((q) =>
-          q.id === songId ? { ...q, downloaded: true } : q
+          q.id === songId ? { ...q, downloaded } : q
         ),
       }));
     },
@@ -601,6 +623,9 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
         if (index < 0) index = 0;
       }
 
+      const storedRateRaw = await SecureStore.getItemAsync(RATE_KEY);
+      const restoredRate = storedRateRaw ? parseFloat(storedRateRaw) : 1;
+
       set({
         originalOrder: originalOrder || [...songs],
         queue,
@@ -608,6 +633,7 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
         shuffle: shuff,
         repeat: !!saved.repeat,
         currentIndex: index,
+        rate: restoredRate,
       });
 
       await _loadQueueToPlayer(queue, index, saved.position || 0, !!saved.playing);

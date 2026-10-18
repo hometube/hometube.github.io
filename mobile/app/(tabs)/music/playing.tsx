@@ -79,8 +79,12 @@ export default function PlayingView() {
   const toggleRepeat = useMusicStore((s) => s.toggleRepeat);
   const removeFromQueue = useMusicStore((s) => s.removeFromQueue);
   const clearQueue = useMusicStore((s) => s.clearQueue);
+  const error = useMusicStore((s) => s.error);
+  const setPlaybackError = useMusicStore((s) => s.setPlaybackError);
   const music = useLibraryStore((s) => s.music);
+  const isDownloading = useDownloadStore((s) => s.isDownloading);
   const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
+  const removeOfflineDownload = useDownloadStore((s) => s.removeOfflineDownload);
 
   const [isLocal, setIsLocal] = useState(false);
   const [menuSong, setMenuSong] = useState<Music | null>(null);
@@ -135,16 +139,25 @@ export default function PlayingView() {
           destructive: true,
         },
       ];
-      if (!isLocal && !song.downloaded) {
-        items.push({
-          icon: "download",
-          label: "Download",
-          onPress: () => downloadForOffline([song]),
-        });
+      if (!isLocal) {
+        if (!song.downloaded && !isDownloading) {
+          items.push({
+            icon: "download",
+            label: "Download",
+            onPress: () => downloadForOffline([song]),
+          });
+        } else if (song.downloaded) {
+          items.push({
+            icon: "trash",
+            label: "Remove Download",
+            onPress: () => removeOfflineDownload([song]),
+            destructive: true,
+          });
+        }
       }
       return items;
     },
-    [isLocal, removeFromQueue, downloadForOffline]
+    [isLocal, isDownloading, removeFromQueue, downloadForOffline, removeOfflineDownload]
   );
 
   return (
@@ -179,6 +192,15 @@ export default function PlayingView() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {error && (
+        <TouchableOpacity style={styles.errorBanner} onPress={() => setPlaybackError(null)}>
+          <Ionicons name="alert-circle" size={16} color="#ff6b6b" />
+          <Text style={styles.errorBannerText} numberOfLines={2}>
+            {error}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {queue.length === 0 ? (
         <EmptyState
@@ -245,6 +267,23 @@ export default function PlayingView() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#1a1a2e" },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "rgba(233, 69, 96, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(233, 69, 96, 0.4)",
+  },
+  errorBannerText: {
+    flex: 1,
+    color: "#ff6b6b",
+    fontSize: 13,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -144,6 +144,7 @@ export default function PlaylistView() {
 
   const isDownloading = useDownloadStore((s) => s.isDownloading);
   const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
+  const removeOfflineDownload = useDownloadStore((s) => s.removeOfflineDownload);
 
   const connectionStatus = useConnectionStore((s) => s.status);
   const checkConnection = useConnectionStore((s) => s.checkConnection);
@@ -388,6 +389,18 @@ export default function PlaylistView() {
     [isLocal, downloadForOffline]
   );
 
+  const handleRemoveDownload = useCallback(
+    async (song: Music) => {
+      if (isLocal) return;
+      try {
+        await removeOfflineDownload([song]);
+      } catch (err: any) {
+        Alert.alert("Error", err.message);
+      }
+    },
+    [isLocal, removeOfflineDownload]
+  );
+
   const handleSongAction = async (action: string, song: Music) => {
     switch (action) {
       case "play_now":
@@ -404,6 +417,9 @@ export default function PlaylistView() {
         break;
       case "download":
         handleDownloadSong(song);
+        break;
+      case "remove_download":
+        handleRemoveDownload(song);
         break;
       case "add_to_playlist":
         setMenuSong(null);
@@ -433,12 +449,21 @@ export default function PlaylistView() {
         onPress: () => handleSongAction("remove_from_queue", song),
       });
     }
-    if (!isLocal && !song.downloaded) {
-      items.push({
-        icon: "download",
-        label: "Download",
-        onPress: () => handleSongAction("download", song),
-      });
+    if (!isLocal) {
+      if (!song.downloaded && !isDownloading) {
+        items.push({
+          icon: "download",
+          label: "Download",
+          onPress: () => handleSongAction("download", song),
+        });
+      } else if (song.downloaded) {
+        items.push({
+          icon: "trash",
+          label: "Remove Download",
+          onPress: () => handleSongAction("remove_download", song),
+          destructive: true,
+        });
+      }
     }
     items.push({
       icon: "list",

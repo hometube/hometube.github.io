@@ -1,6 +1,5 @@
 import TrackPlayer, { Event } from "react-native-track-player";
-
-let lastErrorAt = 0;
+import { useMusicStore } from "../stores/musicStore";
 
 export async function TrackPlayerService() {
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
@@ -19,18 +18,28 @@ export async function TrackPlayerService() {
     TrackPlayer.skipToNext();
   });
 
-  TrackPlayer.addEventListener(Event.RemotePrevious, () => {
-    TrackPlayer.skipToPrevious();
+  TrackPlayer.addEventListener(Event.RemotePrevious, async () => {
+    const progress = await TrackPlayer.getProgress();
+    const position = Number.isFinite(progress.position) ? progress.position : 0;
+    if (position >= 1) {
+      await TrackPlayer.seekTo(0);
+    } else {
+      await TrackPlayer.skipToPrevious();
+    }
   });
 
   TrackPlayer.addEventListener(Event.RemoteSeek, (event) => {
     TrackPlayer.seekTo(event.position);
   });
 
-  TrackPlayer.addEventListener(Event.PlaybackError, () => {
-    const now = Date.now();
-    if (now - lastErrorAt < 3000) return;
-    lastErrorAt = now;
-    TrackPlayer.skipToNext().catch(() => {});
+  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, () => {
+    useMusicStore.getState().setPlaybackError(null);
+  });
+
+  TrackPlayer.addEventListener(Event.PlaybackError, (event: any) => {
+    const detail = event?.error || "";
+    useMusicStore.getState().setPlaybackError(
+      `Playback failed — file not available on the server${detail ? `: ${detail}` : ""}. Download it first or skip this track.`
+    );
   });
 }

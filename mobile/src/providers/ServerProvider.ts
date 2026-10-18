@@ -223,14 +223,39 @@ export class ServerProvider extends DataProvider {
       result = await this._fetch<T>("GET", path, query);
     }
 
-    if (parsed.store === "music" && !parsed.id) {
-      return (result as Music[]).map((m) => ({
-        ...m,
-        downloaded: this._cachedMusicUrls.has(m.id),
-      })) as T;
+    if (
+      parsed.store === "music" ||
+      parsed.store === "podcasts"
+    ) {
+      return this._markDeviceCache(result) as T;
     }
 
     return result;
+  }
+
+  private _isMusicRow(item: any): boolean {
+    return (
+      typeof item === "object" &&
+      item !== null &&
+      typeof item.id === "number" &&
+      (typeof item.title === "string" || typeof item.url === "string")
+    );
+  }
+
+  private _markDeviceCache(data: any): any {
+    const mark = (rows: any[]) =>
+      rows.map((m) =>
+        this._isMusicRow(m)
+          ? { ...m, downloaded: this._cachedMusicUrls.has(m.id) }
+          : m
+      );
+    if (Array.isArray(data)) {
+      return mark(data);
+    }
+    if (data && Array.isArray(data.episodes)) {
+      return { ...data, episodes: mark(data.episodes) };
+    }
+    return data;
   }
 
   private _cacheKey(path: string, query?: Record<string, any>): string {
@@ -294,6 +319,21 @@ export class ServerProvider extends DataProvider {
 
   isMusicCached(songId: number): boolean {
     return this._cachedMusicUrls.has(songId);
+  }
+
+  async uncache(path: string): Promise<void> {
+    const parsed = this.parsePath(path);
+    if (parsed.store !== "music") return;
+    const songId = parseInt(parsed.id!, 10);
+    if (isNaN(songId)) return;
+    const cached = this._cachedMusicUrls.get(songId);
+    if (!cached) return;
+    try {
+      await FileSystem.deleteAsync(cached, { idempotent: true });
+    } catch (e) {
+      console.log(`Uncache failed for music ${songId}:`, e);
+    }
+    this._cachedMusicUrls.delete(songId);
   }
 
   async post<T = any>(path: string, body?: any): Promise<T> {

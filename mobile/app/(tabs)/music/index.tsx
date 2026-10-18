@@ -47,7 +47,9 @@ export default function MusicHome() {
   const playNow = useMusicStore((s) => s.playNow);
   const addToQueue = useMusicStore((s) => s.addToQueue);
   const addToQueueNext = useMusicStore((s) => s.addToQueueNext);
+  const isDownloading = useDownloadStore((s) => s.isDownloading);
   const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
+  const removeOfflineDownload = useDownloadStore((s) => s.removeOfflineDownload);
 
   const [menuSong, setMenuSong] = useState<Music | null>(null);
   const [playlistPickerSong, setPlaylistPickerSong] = useState<Music | null>(
@@ -240,6 +242,7 @@ export default function MusicHome() {
         label: string;
         onPress: () => void;
         disabled?: boolean;
+        destructive?: boolean;
       }[] = [
         {
           icon: "play",
@@ -274,16 +277,33 @@ export default function MusicHome() {
           },
         },
       ];
-      if (!isLocal && !song.downloaded) {
-        items.push({
-          icon: "download",
-          label: "Download",
-          onPress: () => downloadForOffline([song]),
-        });
+      if (!isLocal) {
+        if (!song.downloaded && !isDownloading) {
+          items.push({
+            icon: "download",
+            label: "Download",
+            onPress: () => downloadForOffline([song]),
+          });
+        } else if (song.downloaded) {
+          items.push({
+            icon: "trash",
+            label: "Remove Download",
+            onPress: () => removeOfflineDownload([song]),
+            destructive: true,
+          });
+        }
       }
       return items;
     },
-    [isLocal, playNow, addToQueueNext, addToQueue, downloadForOffline]
+    [
+      isLocal,
+      isDownloading,
+      playNow,
+      addToQueueNext,
+      addToQueue,
+      downloadForOffline,
+      removeOfflineDownload,
+    ]
   );
 
   const renderPlaylist = useCallback(
@@ -443,12 +463,13 @@ export default function MusicHome() {
                   <Ionicons
                     name={item.icon as any}
                     size={22}
-                    color={item.disabled ? "#555" : "#fff"}
+                    color={item.disabled ? "#555" : item.destructive ? "#e94560" : "#fff"}
                   />
                   <Text
                     style={[
                       styles.sheetLabel,
                       item.disabled && { color: "#555" },
+                      item.destructive && !item.disabled && { color: "#e94560" },
                     ]}
                   >
                     {item.label}

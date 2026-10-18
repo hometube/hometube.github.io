@@ -12,7 +12,7 @@ interface LibraryState {
   loadMusic: (userId: number, force?: boolean) => Promise<void>;
   loadPlaylists: (userId: number, force?: boolean) => Promise<void>;
   addToPlaylist: (playlistId: number, song: Music) => Promise<void>;
-  setSongDownloaded: (songId: number) => void;
+  setSongDownloaded: (songId: number, downloaded?: boolean) => void;
   setSongsDownloaded: (ids: number[]) => void;
 }
 
@@ -63,10 +63,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
-  setSongDownloaded: (songId) => {
+  setSongDownloaded: (songId, downloaded = true) => {
     set((s) => ({
       music: s.music.map((m) =>
-        m.id === songId ? { ...m, downloaded: true } : m
+        m.id === songId ? { ...m, downloaded } : m
       ),
     }));
   },

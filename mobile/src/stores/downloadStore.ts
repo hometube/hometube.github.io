@@ -3,6 +3,7 @@ import { API } from "../api";
 import { waitForServerDownload } from "../downloads";
 import { useLibraryStore } from "./libraryStore";
 import { useMusicStore } from "./musicStore";
+import { usePodcastStore } from "./podcastStore";
 import type { Music } from "../types";
 
 interface DownloadState {
@@ -10,12 +11,14 @@ interface DownloadState {
   downloadingIds: number[];
 
   downloadForOffline: (songs: Music[]) => Promise<void>;
+  removeOfflineDownload: (songs: Music[]) => Promise<void>;
   ensureSongsDownloaded: (songs: Music[]) => Promise<void>;
 }
 
-const setSongDownloaded = (songId: number) => {
-  useLibraryStore.getState().setSongDownloaded(songId);
-  useMusicStore.getState().markSongDownloaded(songId);
+const setSongDownloaded = (songId: number, downloaded = true) => {
+  useLibraryStore.getState().setSongDownloaded(songId, downloaded);
+  useMusicStore.getState().markSongDownloaded(songId, downloaded);
+  usePodcastStore.getState().markEpisodeDownloaded(songId, downloaded);
 };
 
 const setSongDownloading = (songId: number, downloading: boolean) => {
@@ -57,6 +60,24 @@ const runBatched = async (
 export const useDownloadStore = create<DownloadState>((set) => ({
   isDownloading: false,
   downloadingIds: [],
+
+  removeOfflineDownload: async (songs) => {
+    const cached = songs.filter((s) => s.downloaded);
+    if (cached.length === 0) return;
+
+    set({ isDownloading: true });
+
+    await runBatched(cached, 8, async (song) => {
+      try {
+        await API.uncache(`/music/${song.id}/file`);
+        setSongDownloaded(song.id, false);
+      } catch (err: any) {
+        console.log(`Remove offline error for song ${song.id}: ${err.message}`);
+      }
+    });
+
+    set({ isDownloading: false });
+  },
 
   ensureSongsDownloaded: async (songs: Music[]) => {
     const undownloaded = songs.filter((s) => !s.downloaded);
