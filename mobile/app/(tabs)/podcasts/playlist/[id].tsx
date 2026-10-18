@@ -39,6 +39,7 @@ export default function PodcastPlaylistView() {
 
   const isDownloading = useDownloadStore((s) => s.isDownloading);
   const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
+  const removeOfflineDownload = useDownloadStore((s) => s.removeOfflineDownload);
 
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [songs, setSongs] = useState<Music[]>([]);
@@ -85,7 +86,7 @@ export default function PodcastPlaylistView() {
     const wasEmpty = useMusicStore.getState().queue.length === 0;
     await loadPlaylistSongs(playableSongs, playlistId);
     await playFirst();
-    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
+    if (wasEmpty) router.navigate("/(tabs)/podcasts/playing" as any);
   };
 
   const handleShuffle = async () => {
@@ -93,7 +94,7 @@ export default function PodcastPlaylistView() {
     const wasEmpty = useMusicStore.getState().queue.length === 0;
     await loadPlaylistSongs(playableSongs, playlistId);
     await shufflePlay();
-    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
+    if (wasEmpty) router.navigate("/(tabs)/podcasts/playing" as any);
   };
 
   const handleSongPress = async (index: number) => {
@@ -163,12 +164,21 @@ export default function PodcastPlaylistView() {
         onPress: () => removeFromQueue(song.id),
       });
     }
-    if (!isLocal && !song.downloaded && !isDownloading) {
-      items.push({
-        icon: "download",
-        label: "Download",
-        onPress: () => downloadForOffline([song]),
-      });
+    if (!isLocal) {
+      if (!song.downloaded && !isDownloading) {
+        items.push({
+          icon: "download",
+          label: "Download",
+          onPress: () => downloadForOffline([song]),
+        });
+      } else if (song.downloaded) {
+        items.push({
+          icon: "trash",
+          label: "Remove Download",
+          onPress: () => removeOfflineDownload([song]),
+          destructive: true,
+        });
+      }
     }
     items.push({
       icon: "trash",

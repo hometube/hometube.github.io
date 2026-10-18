@@ -43,6 +43,7 @@ export default function PodcastFeedScreen() {
 
   const isDownloading = useDownloadStore((s) => s.isDownloading);
   const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
+  const removeOfflineDownload = useDownloadStore((s) => s.removeOfflineDownload);
 
   const [isLocal, setIsLocal] = useState(false);
   const [menuEpisode, setMenuEpisode] = useState<Music | null>(null);
@@ -71,7 +72,7 @@ export default function PodcastFeedScreen() {
     const wasEmpty = useMusicStore.getState().queue.length === 0;
     await loadPlaylistSongs(playableEpisodes, playlistId);
     await playFirst();
-    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
+    if (wasEmpty) router.navigate("/(tabs)/podcasts/playing" as any);
   };
 
   const handleShuffle = async () => {
@@ -79,7 +80,7 @@ export default function PodcastFeedScreen() {
     const wasEmpty = useMusicStore.getState().queue.length === 0;
     await loadPlaylistSongs(playableEpisodes, playlistId);
     await shufflePlay();
-    if (wasEmpty) router.navigate("/(tabs)/music/playing" as any);
+    if (wasEmpty) router.navigate("/(tabs)/podcasts/playing" as any);
   };
 
   const handleEpisodePress = async (index: number) => {
@@ -122,13 +123,43 @@ export default function PodcastFeedScreen() {
     }
   };
 
-  const episodeMenuItems = (episode: Music) => [
-    { icon: "play", label: "Play Now", color: "#fff", onPress: () => playNow(episode) },
-    { icon: "add", label: "Add to Queue", color: "#fff", onPress: () => addToQueue(episode) },
-    ...(!isLocal && !episode.downloaded
-      ? [{ icon: "download", label: "Download", color: "#fff", onPress: () => handleDownload(episode) }]
-      : []),
-  ];
+  const handleRemoveDownload = async (episode: Music) => {
+    try {
+      await removeOfflineDownload([episode]);
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    }
+  };
+
+  const episodeMenuItems = (episode: Music) => {
+    const items: {
+      icon: string;
+      label: string;
+      color: string;
+      onPress: () => void;
+    }[] = [
+      { icon: "play", label: "Play Now", color: "#fff", onPress: () => playNow(episode) },
+      { icon: "add", label: "Add to Queue", color: "#fff", onPress: () => addToQueue(episode) },
+    ];
+    if (!isLocal) {
+      if (!episode.downloaded && !isDownloading) {
+        items.push({
+          icon: "download",
+          label: "Download",
+          color: "#fff",
+          onPress: () => handleDownload(episode),
+        });
+      } else if (episode.downloaded) {
+        items.push({
+          icon: "trash",
+          label: "Remove Download",
+          color: "#e94560",
+          onPress: () => handleRemoveDownload(episode),
+        });
+      }
+    }
+    return items;
+  };
 
   const renderEpisode = useCallback(
     ({ item, index }: { item: Music; index: number }) => {

@@ -128,7 +128,11 @@ export default function MiniPlayer() {
   seekToRef.current = seekTo;
 
   const goToCurrentPlaylist = () => {
-    router.navigate("/(tabs)/music/playing" as any);
+    if (currentSong.kind === "podcast") {
+      router.navigate("/(tabs)/podcasts/playing" as any);
+    } else {
+      router.navigate("/(tabs)/music/playing" as any);
+    }
   };
 
   return (

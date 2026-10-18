@@ -189,6 +189,29 @@ export class LocalProvider extends DataProvider {
         } as T;
       }
 
+      if (parsed.id === "episodes") {
+        const subChannelIds = new Set(
+          podcastSubs.map((s) => s.channel_id)
+        );
+        const list = episodes
+          .filter(
+            (m) =>
+              (m.kind || "music") === "podcast" &&
+              (userId == null || m.added_by === userId) &&
+              (m.channel_id == null || !subChannelIds.has(m.channel_id))
+          )
+          .map((m) => ({
+            ...m,
+            downloaded: fileIds.has(`${m.id}`),
+          }))
+          .sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime()
+          );
+        return list as T;
+      }
+
       const feeds = podcastSubs.map((sub) => {
         const channel = channelById.get(sub.channel_id);
         const subEpisodes = episodes.filter(

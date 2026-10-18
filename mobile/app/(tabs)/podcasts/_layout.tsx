@@ -1,10 +1,13 @@
 import { View } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import ModeButton from "../../../src/components/ModeButton";
 import SettingsButton from "../../../src/components/SettingsButton";
 import MiniPlayer from "../../../src/components/MiniPlayer";
 
 export default function PodcastsLayout() {
+  const pathname = usePathname();
+  const hideMini = pathname.endsWith("/podcasts/playing");
+
   return (
     <View style={{ flex: 1 }}>
       <Stack
@@ -24,8 +27,17 @@ export default function PodcastsLayout() {
         <Stack.Screen name="add" options={{ title: "Add Podcast" }} />
         <Stack.Screen name="[id]" options={{ title: "Podcast Feed" }} />
         <Stack.Screen name="playlist/[id]" options={{ title: "Playlist" }} />
+        <Stack.Screen
+          name="playing"
+          options={{
+            headerShown: false,
+            presentation: "modal",
+            animation: "slide_from_bottom",
+            gestureEnabled: true,
+          }}
+        />
       </Stack>
-      <MiniPlayer />
+      {!hideMini && <MiniPlayer />}
     </View>
   );
 }

@@ -13,18 +13,25 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { API } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { useLibraryStore } from "@/stores/libraryStore";
+import { usePodcastStore } from "@/stores/podcastStore";
 import type { Music, Playlist } from "@/types";
 
 interface Props {
   song: Music | null;
   onClose: () => void;
+  kind?: "music" | "podcast";
 }
 
-export function AddToPlaylistSheet({ song, onClose }: Props) {
+export function AddToPlaylistSheet({ song, onClose, kind = "music" }: Props) {
   const { user } = useUserStore();
-  const playlists = useLibraryStore((s) => s.playlists);
+  const libraryPlaylists = useLibraryStore((s) => s.playlists);
   const loadPlaylists = useLibraryStore((s) => s.loadPlaylists);
   const addToPlaylist = useLibraryStore((s) => s.addToPlaylist);
+  const podcastPlaylists = usePodcastStore((s) => s.playlists);
+  const addToPodcastPlaylist = usePodcastStore((s) => s.addToPlaylist);
+  const reloadPodcasts = usePodcastStore((s) => s.load);
+
+  const playlists = kind === "podcast" ? podcastPlaylists : libraryPlaylists;
 
   const [createMode, setCreateMode] = useState(false);
   const [name, setName] = useState("");
@@ -43,7 +50,11 @@ export function AddToPlaylistSheet({ song, onClose }: Props) {
   const handlePick = (playlistId: number) => {
     if (!song) return;
     handleClose();
-    addToPlaylist(playlistId, song);
+    if (kind === "podcast") {
+      addToPodcastPlaylist(playlistId, song);
+    } else {
+      addToPlaylist(playlistId, song);
+    }
   };
 
   const handleCreate = async () => {
@@ -53,11 +64,19 @@ export function AddToPlaylistSheet({ song, onClose }: Props) {
       const created = (await API.post("/playlists", {
         name: name.trim(),
         user_id: user.id,
-        kind: "music",
+        kind,
       })) as Playlist;
-      await loadPlaylists(user.id, true);
+      if (kind === "podcast" && user) {
+        await reloadPodcasts(user.id, true);
+      } else {
+        await loadPlaylists(user.id, true);
+      }
       handleClose();
-      addToPlaylist(created.id, song);
+      if (kind === "podcast") {
+        addToPodcastPlaylist(created.id, song);
+      } else {
+        addToPlaylist(created.id, song);
+      }
     } catch {}
     setCreating(false);
   };

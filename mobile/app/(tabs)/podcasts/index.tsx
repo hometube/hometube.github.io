@@ -13,16 +13,19 @@ import {
 } from "react-native";
 import { FlatList } from "react-native";
 import { router } from "expo-router";
-import { API } from "@/api";
+import { API, isLocalModeAsync } from "@/api";
 import { useUserStore } from "@/stores/userStore";
 import { usePodcastStore } from "@/stores/podcastStore";
 import { useMusicStore } from "@/stores/musicStore";
+import { useDownloadStore } from "@/stores/downloadStore";
+import { AddToPlaylistSheet } from "@/components";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Music, PodcastFeed, Playlist } from "@/types";
 
 export default function PodcastsHome() {
   const { user } = useUserStore();
   const feeds = usePodcastStore((s) => s.feeds);
+  const standaloneEpisodes = usePodcastStore((s) => s.standaloneEpisodes);
   const playlists = usePodcastStore((s) => s.playlists);
   const isLoading = usePodcastStore((s) => s.isLoading);
   const isChecking = usePodcastStore((s) => s.isChecking);
@@ -31,6 +34,9 @@ export default function PodcastsHome() {
   const unsubscribe = usePodcastStore((s) => s.unsubscribe);
   const [refreshing, setRefreshing] = useState(false);
   const [menuFeed, setMenuFeed] = useState<PodcastFeed | null>(null);
+  const [menuEpisode, setMenuEpisode] = useState<Music | null>(null);
+  const [playlistPickerEpisode, setPlaylistPickerEpisode] = useState<Music | null>(null);
+  const [isLocal, setIsLocal] = useState(false);
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
   const [episodeCache, setEpisodeCache] = useState<Record<number, Music[]>>({});
@@ -38,6 +44,16 @@ export default function PodcastsHome() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const playNow = useMusicStore((s) => s.playNow);
+  const addToQueue = useMusicStore((s) => s.addToQueue);
+  const addToQueueNext = useMusicStore((s) => s.addToQueueNext);
+
+  const isDownloading = useDownloadStore((s) => s.isDownloading);
+  const downloadForOffline = useDownloadStore((s) => s.downloadForOffline);
+  const removeOfflineDownload = useDownloadStore((s) => s.removeOfflineDownload);
+
+  useEffect(() => {
+    isLocalModeAsync().then(setIsLocal);
+  }, []);
 
   const searching = focused || query.trim().length > 0;
 
@@ -91,8 +107,18 @@ export default function PodcastsHome() {
         }
       }
     }
+    for (const e of standaloneEpisodes) {
+      if (
+        !seen.has(e.id) &&
+        ((e.title || "").toLowerCase().includes(q) ||
+          (e.artist || "").toLowerCase().includes(q))
+      ) {
+        seen.add(e.id);
+        out.push(e);
+      }
+    }
     return out;
-  }, [query, feeds, episodeCache]);
+  }, [query, feeds, episodeCache, standaloneEpisodes]);
 
   useEffect(() => {
     if (user) load(user.id);
@@ -149,32 +175,130 @@ export default function PodcastsHome() {
     },
   ];
 
+  const playEpisode = async (episode: Music) => {
+    if (isLocal && !episode.downloaded) return;
+    const wasEmpty = useMusicStore.getState().queue.length === 0;
+    await playNow(episode);
+    if (wasEmpty) router.navigate("/(tabs)/podcasts/playing" as any);
+  };
+
+  const markEpisodeInCache = useCallback((episode: Music, downloaded: boolean) => {
+    setEpisodeCache((prev) => {
+      const next: Record<number, Music[]> = {};
+      for (const [k, eps] of Object.entries(prev)) {
+        next[Number(k)] = eps.map((e) =>
+          e.id === episode.id ? { ...e, downloaded } : e
+        );
+      }
+      return next;
+    });
+  }, []);
+
+  const episodeMenuItems = (episode: Music) => {
+    const disabled = isLocal && !episode.downloaded;
+    const onDevice = episode.downloaded;
+    const items: {
+      icon: string;
+      label: string;
+      onPress: () => void;
+      disabled?: boolean;
+      destructive?: boolean;
+    }[] = [
+      {
+        icon: "play",
+        label: "Play",
+        onPress: () => {
+          if (!disabled) playEpisode(episode);
+        },
+        disabled,
+      },
+      {
+        icon: "play-forward",
+        label: "Play Next",
+        onPress: () => {
+          if (!disabled) addToQueueNext(episode);
+        },
+        disabled,
+      },
+      {
+        icon: "add",
+        label: "Add to Queue",
+        onPress: () => {
+          if (!disabled) addToQueue(episode);
+        },
+        disabled,
+      },
+      {
+        icon: "list",
+        label: "Add to Playlist",
+        onPress: () => {
+          setMenuEpisode(null);
+          setPlaylistPickerEpisode(episode);
+        },
+      },
+    ];
+    if (!isLocal) {
+      if (!onDevice && !isDownloading) {
+        items.push({
+          icon: "download",
+          label: "Download",
+          onPress: () => {
+            downloadForOffline([episode]).then(() =>
+              markEpisodeInCache(episode, true)
+            );
+          },
+        });
+      } else if (onDevice) {
+        items.push({
+          icon: "trash",
+          label: "Remove Download",
+          onPress: () => {
+            removeOfflineDownload([episode]).then(() =>
+              markEpisodeInCache(episode, false)
+            );
+          },
+          destructive: true,
+        });
+      }
+    }
+    return items;
+  };
+
   const renderEpisode = useCallback(
-    ({ item }: { item: Music }) => (
-      <TouchableOpacity
-        style={styles.episodeItem}
-        onPress={() => playNow(item)}
-      >
-        <View style={styles.episodeIcon}>
-          <Ionicons name="radio" size={20} color="#9070e9" />
-        </View>
-        <View style={styles.feedInfo}>
-          <Text style={styles.episodeTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          {item.artist ? (
-            <Text style={styles.feedMeta} numberOfLines={1}>
-              {item.artist}
+    ({ item }: { item: Music }) => {
+      const disabled = isLocal && !item.downloaded;
+      return (
+        <TouchableOpacity
+          style={[styles.episodeItem, disabled && styles.episodeItemDisabled]}
+          onPress={() => playEpisode(item)}
+        >
+          <View style={styles.episodeIcon}>
+            <Ionicons name="radio" size={20} color="#9070e9" />
+          </View>
+          <View style={styles.feedInfo}>
+            <Text style={styles.episodeTitle} numberOfLines={2}>
+              {item.title}
             </Text>
-          ) : null}
-        </View>
-        {item.downloaded && (
-          <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
-        )}
-        <Ionicons name="play-circle-outline" size={22} color="#666" />
-      </TouchableOpacity>
-    ),
-    [playNow]
+            {item.artist ? (
+              <Text style={styles.feedMeta} numberOfLines={1}>
+                {item.artist}
+              </Text>
+            ) : null}
+          </View>
+          {item.downloaded && (
+            <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+          )}
+          <TouchableOpacity
+            style={styles.rowMenuBtn}
+            onPress={() => setMenuEpisode(item)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color="#666" />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    },
+    [isLocal, playEpisode]
   );
 
   return (
@@ -261,9 +385,9 @@ export default function PodcastsHome() {
         }
         contentContainerStyle={{ paddingBottom: 120 }}
       >
-        {isLoading && feeds.length === 0 && playlists.length === 0 ? (
+        {isLoading && feeds.length === 0 && playlists.length === 0 && standaloneEpisodes.length === 0 ? (
           <ActivityIndicator size="large" color="#9070e9" style={{ marginTop: 40 }} />
-        ) : feeds.length === 0 && playlists.length === 0 ? (
+        ) : feeds.length === 0 && playlists.length === 0 && standaloneEpisodes.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="radio-outline" size={48} color="#444" />
             <Text style={styles.emptyText}>No podcasts yet</Text>
@@ -317,6 +441,46 @@ export default function PodcastsHome() {
                     )}
                   </TouchableOpacity>
                 ))}
+              </>
+            )}
+
+            {standaloneEpisodes.length > 0 && (
+              <>
+                <Text style={styles.sectionLabel}>Standalone Episodes</Text>
+                {standaloneEpisodes.map((ep) => {
+                  const disabled = isLocal && !ep.downloaded;
+                  return (
+                    <TouchableOpacity
+                      key={ep.id}
+                      style={[styles.episodeItem, disabled && styles.episodeItemDisabled]}
+                      onPress={() => playEpisode(ep)}
+                    >
+                      <View style={styles.episodeIcon}>
+                        <Ionicons name="radio" size={20} color="#9070e9" />
+                      </View>
+                      <View style={styles.feedInfo}>
+                        <Text style={styles.episodeTitle} numberOfLines={2}>
+                          {ep.title}
+                        </Text>
+                        {ep.artist ? (
+                          <Text style={styles.feedMeta} numberOfLines={1}>
+                            {ep.artist}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {ep.downloaded && (
+                        <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+                      )}
+                      <TouchableOpacity
+                        style={styles.rowMenuBtn}
+                        onPress={() => setMenuEpisode(ep)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="ellipsis-horizontal" size={18} color="#666" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })}
               </>
             )}
 
@@ -382,6 +546,58 @@ export default function PodcastsHome() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={!!menuEpisode}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setMenuEpisode(null)}
+      >
+        <TouchableOpacity
+          style={styles.overlay}
+          activeOpacity={1}
+          onPress={() => setMenuEpisode(null)}
+        >
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle} numberOfLines={1}>
+              {menuEpisode?.title || ""}
+            </Text>
+            {menuEpisode &&
+              episodeMenuItems(menuEpisode).map((item, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.sheetItem, item.disabled && styles.sheetItemDisabled]}
+                  onPress={() => {
+                    setMenuEpisode(null);
+                    item.onPress();
+                  }}
+                >
+                  <Ionicons
+                    name={item.icon as any}
+                    size={22}
+                    color={item.disabled ? "#555" : item.destructive ? "#e94560" : "#fff"}
+                  />
+                  <Text
+                    style={[
+                      styles.sheetLabel,
+                      item.disabled && { color: "#555" },
+                      item.destructive && !item.disabled && { color: "#e94560" },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <AddToPlaylistSheet
+        kind="podcast"
+        song={playlistPickerEpisode}
+        onClose={() => setPlaylistPickerEpisode(null)}
+      />
     </View>
   );
 }
@@ -417,6 +633,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   episodeTitle: { color: "#fff", fontSize: 14, fontWeight: "500", marginBottom: 2 },
+  episodeItemDisabled: { opacity: 0.45 },
+  rowMenuBtn: { padding: 6 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -516,5 +734,6 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingVertical: 14,
   },
-  sheetLabel: { fontSize: 16 },
+  sheetItemDisabled: { opacity: 0.5 },
+  sheetLabel: { color: "#fff", fontSize: 16 },
 });

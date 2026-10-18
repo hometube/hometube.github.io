@@ -17,6 +17,7 @@ interface SubscribeInput {
 
 interface PodcastState {
   feeds: PodcastFeed[];
+  standaloneEpisodes: Music[];
   episodes: Music[];
   playlists: Playlist[];
   isLoading: boolean;
@@ -38,10 +39,12 @@ interface PodcastState {
   unsubscribe: (subscriptionId: number) => Promise<void>;
   createPlaylist: (name: string, userId: number) => Promise<Playlist>;
   addToPlaylist: (playlistId: number, episode: Music) => Promise<void>;
+  markEpisodeDownloaded: (episodeId: number, downloaded: boolean) => void;
 }
 
 export const usePodcastStore = create<PodcastState>((set, get) => ({
   feeds: [],
+  standaloneEpisodes: [],
   episodes: [],
   playlists: [],
   isLoading: false,
@@ -53,13 +56,15 @@ export const usePodcastStore = create<PodcastState>((set, get) => ({
     if (!force && get().loadedForUserId === userId) return;
     set({ isLoading: true, error: null });
     try {
-      const [feeds, playlists] = await Promise.all([
+      const [feeds, playlists, standalone] = await Promise.all([
         API.get("/podcasts", { user_id: userId }),
         API.get("/playlists", { user_id: userId, kind: "podcast" }),
+        API.get("/podcasts/episodes", { user_id: userId }).catch(() => []),
       ]);
       set({
-        feeds: feeds as PodcastFeed[],
-        playlists: playlists as Playlist[],
+        feeds: (feeds as PodcastFeed[]) || [],
+        standaloneEpisodes: (standalone as Music[]) || [],
+        playlists: (playlists as Playlist[]) || [],
         loadedForUserId: userId,
       });
     } catch (err: any) {
@@ -132,5 +137,16 @@ export const usePodcastStore = create<PodcastState>((set, get) => ({
     });
     const uid = get().loadedForUserId;
     if (uid != null) get().load(uid, true);
+  },
+
+  markEpisodeDownloaded: (episodeId, downloaded) => {
+    set((s) => ({
+      episodes: s.episodes.map((e) =>
+        e.id === episodeId ? { ...e, downloaded } : e
+      ),
+      standaloneEpisodes: s.standaloneEpisodes.map((e) =>
+        e.id === episodeId ? { ...e, downloaded } : e
+      ),
+    }));
   },
 }));
