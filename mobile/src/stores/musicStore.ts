@@ -15,7 +15,17 @@ import type { Music, Playlist } from "../types";
 type ShuffleMode = "off" | "on";
 
 const STATE_KEY = "musicPlayerState";
-const RATE_KEY = "playbackRate";
+const PODCAST_RATE_KEY = "podcastPlaybackRate";
+
+async function getStoredPodcastRate(): Promise<number> {
+  try {
+    const raw = await SecureStore.getItemAsync(PODCAST_RATE_KEY);
+    const rate = raw ? parseFloat(raw) : 1;
+    return Number.isFinite(rate) && rate > 0 ? rate : 1;
+  } catch {
+    return 1;
+  }
+}
 
 export function cleanTitle(title?: string | null): string {
   if (!title) return title ?? "";
@@ -103,11 +113,17 @@ export function setupMusicPlayback(): void {
 
   TrackPlayer.addEventListener(
     Event.PlaybackActiveTrackChanged,
-    (payload: any) => {
+    async (payload: any) => {
       const idx = typeof payload.index === "number" ? payload.index : -1;
       if (idx < 0) return;
       useMusicStore.setState({ currentIndex: idx });
       useMusicStore.getState().savePlaybackState();
+      const song = useMusicStore.getState().queue[idx];
+      const targetRate = song?.kind === "podcast" ? await getStoredPodcastRate() : 1;
+      useMusicStore.setState({ rate: targetRate });
+      try {
+        await TrackPlayer.setRate(targetRate);
+      } catch {}
     }
   );
 
@@ -213,8 +229,13 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
     } else {
       await TrackPlayer.pause();
     }
+    const targetRate =
+      playable[activeIndex]?.kind === "podcast"
+        ? await getStoredPodcastRate()
+        : 1;
+    set({ rate: targetRate });
     try {
-      await TrackPlayer.setRate(get().rate);
+      await TrackPlayer.setRate(targetRate);
     } catch {}
     return activeIndex;
   };
@@ -416,7 +437,10 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
       try {
         await TrackPlayer.setRate(rate);
       } catch {}
-      await SecureStore.setItemAsync(RATE_KEY, String(rate));
+      const { queue, currentIndex } = get();
+      if (queue[currentIndex]?.kind === "podcast") {
+        await SecureStore.setItemAsync(PODCAST_RATE_KEY, String(rate));
+      }
     },
 
     clearQueue: async () => {
@@ -623,9 +647,6 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
         if (index < 0) index = 0;
       }
 
-      const storedRateRaw = await SecureStore.getItemAsync(RATE_KEY);
-      const restoredRate = storedRateRaw ? parseFloat(storedRateRaw) : 1;
-
       set({
         originalOrder: originalOrder || [...songs],
         queue,
@@ -633,7 +654,6 @@ export const useMusicStore = create<PlaybackState>((set, get) => {
         shuffle: shuff,
         repeat: !!saved.repeat,
         currentIndex: index,
-        rate: restoredRate,
       });
 
       await _loadQueueToPlayer(queue, index, saved.position || 0, !!saved.playing);

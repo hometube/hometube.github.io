@@ -14,7 +14,11 @@ import { usePlaybackState, useProgress, State } from "react-native-track-player"
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMusicStore, cleanTitle } from "@/stores/musicStore";
 
-export default function MiniPlayer() {
+interface Props {
+  scope?: "music" | "podcast";
+}
+
+export default function MiniPlayer({ scope = "music" }: Props) {
   const playbackState = usePlaybackState();
   const progress = useProgress(1000);
   const queue = useMusicStore((s) => s.queue);
@@ -109,6 +113,7 @@ export default function MiniPlayer() {
   }, [position, pendingSeek]);
 
   if (!currentSong) return null;
+  if ((scope === "podcast") !== (currentSong.kind === "podcast")) return null;
 
   const buffering =
     playbackState.state === State.Buffering ||

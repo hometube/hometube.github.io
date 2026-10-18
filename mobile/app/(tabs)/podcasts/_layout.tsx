@@ -37,7 +37,7 @@ export default function PodcastsLayout() {
           }}
         />
       </Stack>
-      {!hideMini && <MiniPlayer />}
+      {!hideMini && <MiniPlayer scope="podcast" />}
     </View>
   );
 }
