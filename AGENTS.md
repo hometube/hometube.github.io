@@ -126,6 +126,9 @@ ht import backup.ht           # Import .ht file
 ht songs                      # List music for active user
 ht playlists                  # List playlists for active user
 ht videos                     # List videos for active user
+ht podcasts                   # List podcast feeds and standalone (unsubscribed) episodes
+ht settings get               # Show server settings (e.g. auto_download)
+ht settings set <key> <value> # Set a server setting (e.g. ht settings set auto_download off)
 ht build                      # Build the Android app (release by default)
 ht deploy                     # Install the built app onto a connected device
 ```
@@ -204,6 +207,8 @@ npx tsc --noEmit   # TypeScript type check
 
 ### General
 - `GET /api/status` - Health check / server status
+- `GET /api/settings` - List server settings as key/value map
+- `PUT /api/settings` - Set a server setting (body: key, value)
 - `GET /api/downloads` - List background download jobs for active user: `[{id, type, item_id, user_id, status, progress, message, filename, error, created_at}]`. `status`: queued/running/done/error
 - `GET /api/users` - List all users
 - `POST /api/users` - Create user (body: name, image)
@@ -250,6 +255,14 @@ npx tsc --noEmit   # TypeScript type check
 - `POST /api/channels/{id}/subscribe` - Subscribe with criteria
 - `DELETE /api/subscriptions/{id}` - Unsubscribe
 
+### Podcasts
+- `GET /api/podcasts?user_id=` - List subscribed podcast feeds (subscription-backed only)
+- `GET /api/podcasts/episodes?user_id=` - List standalone podcast episodes not tied to a subscription feed (single downloads)
+- `POST /api/podcasts/subscribe` - Subscribe to a podcast feed
+- `GET /api/podcasts/{sub_id}/episodes` - List episodes for a subscribed feed
+- `POST /api/podcasts/{sub_id}/check` - Force a manual feed refresh
+- `DELETE /api/podcasts/{sub_id}` - Unsubscribe
+
 ### Export / Import
 - `POST /api/export` - Export database as .ht file (body: type, user_id, date_from, date_to, video_ids, music_ids)
 - `POST /api/import` - Import .ht file into database (multipart file upload)
@@ -259,7 +272,8 @@ npx tsc --noEmit   # TypeScript type check
 - **One library, one data dir**: all paths (DB, downloads, file serving) are resolved by `backend/paths.py` from `data_dir` in `~/.config/hometube/config.json` (see `ht init`); `ht serve`, `ht download`/`ht` CLI commands, `main.py`, `ytdlp.py`, `import_music.py`, and `scheduler.py` all share the same data dir by default. `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars override it.
 - Backend serves the built frontend from `frontend/dist/`
 - Scheduler runs in background checking subscriptions every 60 seconds
-- **Background downloads**: server-side downloads run on a thread pool (`backend/services/downloader.py`, 2 workers) using `yt_dlp`'s Python API with progress hook → job registry. API endpoints return `202 {job_id}`; clients poll `GET /api/downloads` (status + 0-100 progress) via `frontend/src/utils/downloads.js` / `mobile/src/downloads.ts` (`waitForServerDownload`). Completed jobs write `filename`/`downloaded` back to the DB row. The lazy `/videos/{id}/file` path single-flights off an existing job (waits for it) instead of starting a duplicate download
+- **Background downloads**: server-side downloads run on a thread pool (`backend/services/downloader.py`, 2 workers) using `yt_dlp`'s Python API with progress hook → job registry. API endpoints return `202 {job_id}`; clients poll `GET /api/downloads` (status + 0-100 progress) via `frontend/src/utils/downloads.js` / `mobile/src/downloads.ts` (`waitForServerDownload`). Completed jobs write `filename`/`downloaded` back to the DB row. The lazy `/videos/{id}/file` and `/music/{id}/file` paths single-flight off an existing job (wait for it) instead of starting a duplicate download
+- **Pre-download on add**: the `auto_download` server setting (default on) makes add endpoints queue a background download for every added video/music/podcast (`add_video`, `add_music`), so items are usually ready to play instantly. The scheduler also pre-warms newly-detected subscription items, and podcast feed backfill pre-warms only the newest 3 episodes (avoiding mass downloads on subscribe). Turn off with `ht settings set auto_download off` or `PUT /api/settings` `{key:"auto_download", value:"off"}` — lazy on-play downloads remain as fallback
 - Auto-delete: Videos watched >7 days ago without keep_flag are deleted
 - PWA support via `vite-plugin-pwa`
 - Audio mode uses Wake Lock API to allow screen-off listening
