@@ -1,3 +1,4 @@
 frontend/docs/
 data
 .venv
+.DS_Store
