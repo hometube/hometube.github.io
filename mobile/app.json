@@ -53,7 +53,8 @@
       ],
       "expo-sharing",
       "expo-splash-screen",
-      "expo-video"
+      "expo-video",
+      "./plugins/withReleaseSigning"
     ],
     "experiments": {
       "typedRoutes": true

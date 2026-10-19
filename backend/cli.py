@@ -18,8 +18,9 @@ ht songs                List music for active user
   ht settings get         Show server settings (e.g. auto_download)
   ht settings set <key> <value>  Set a server setting
   ht serve                Start the HomeTube server
-  ht build                Build the Android app (release by default)
-  ht deploy               Install the built app onto a connected device
+  ht mobile --build       Build the Android APK (release by default)
+  ht mobile --release     Publish the built APK as a GitHub Release
+  ht mobile --deploy      Install the built APK onto a connected device
   ht fixart               Backfill missing album art for downloaded music
 """
 
@@ -1440,8 +1441,8 @@ def _apk_path(variant):
     )
 
 
-def cmd_build(args):
-    """Build the Android app (release by default)."""
+def _build_apk(variant):
+    """Run expo prebuild + gradle assemble for the Android app."""
     mobile_dir = os.path.join(REPO_ROOT, "mobile")
     if not os.path.isdir(mobile_dir):
         print(f"Error: mobile directory not found: {mobile_dir}", file=sys.stderr)
@@ -1457,7 +1458,6 @@ def cmd_build(args):
         print("Error: expo prebuild failed", file=sys.stderr)
         sys.exit(1)
 
-    variant = "debug" if args.debug else "release"
     task = f"assemble{variant.capitalize()}"
     print(f"Building Android app ({variant} variant)...")
     result = subprocess.run(["./gradlew", task], cwd=android_dir)
@@ -1467,7 +1467,55 @@ def cmd_build(args):
 
     apk = _apk_path(variant)
     print(f"Build complete: {apk}")
-    print("Install it onto a connected device with: ht deploy")
+
+
+def _app_version():
+    app_json = Path(REPO_ROOT) / "mobile" / "app.json"
+    try:
+        return json.loads(app_json.read_text())["expo"]["version"]
+    except Exception:
+        return "0.0.0"
+
+
+def _git_short_sha():
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+        return out.stdout.strip()
+    except FileNotFoundError:
+        return ""
+
+
+def _release_apk(args, variant):
+    """Publish the built APK to a GitHub Release via the gh CLI."""
+    apk = _apk_path(variant)
+    if not os.path.isfile(apk):
+        print(f"APK not found: {apk}", file=sys.stderr)
+        print("Build it first with: ht mobile --build", file=sys.stderr)
+        sys.exit(1)
+    if not shutil.which("gh"):
+        print("Error: GitHub CLI (gh) not found. Install it from https://cli.github.com/", file=sys.stderr)
+        sys.exit(1)
+
+    tag = args.tag or f"mobile-v{_app_version()}"
+    if subprocess.run(["gh", "release", "view", tag], capture_output=True).returncode == 0:
+        print(f"Release {tag} already exists — uploading/replacing APK asset...")
+        result = subprocess.run(["gh", "release", "upload", tag, apk, "--clobber"])
+    else:
+        sha = _git_short_sha()
+        notes = f"Android {variant} APK ({_app_version()}" + (f", commit {sha})" if sha else ")")
+        print(f"Creating GitHub release {tag}...")
+        result = subprocess.run([
+            "gh", "release", "create", tag, apk,
+            "--title", f"HomeTube Mobile {tag}",
+            "--notes", notes,
+        ])
+    if result.returncode != 0:
+        print("Error: GitHub release failed", file=sys.stderr)
+        sys.exit(1)
+    print(f"Released: {tag}")
 
 
 def _find_adb():
@@ -1494,13 +1542,12 @@ def _connected_devices(adb):
     return devices
 
 
-def cmd_deploy(args):
+def _deploy_apk(args, variant):
     """Install the built app onto a connected device via adb."""
-    variant = "debug" if args.debug else "release"
     apk = _apk_path(variant)
     if not os.path.isfile(apk):
         print(f"APK not found: {apk}", file=sys.stderr)
-        print("Build it first with: ht build", file=sys.stderr)
+        print("Build it first with: ht mobile --build", file=sys.stderr)
         sys.exit(1)
 
     adb = _find_adb()
@@ -1520,7 +1567,7 @@ def cmd_deploy(args):
         sys.exit(1)
     if not target and len(devices) > 1:
         print(f"Multiple devices connected: {', '.join(devices)}", file=sys.stderr)
-        print("Pick one with: ht deploy --device <serial>", file=sys.stderr)
+        print("Pick one with: ht mobile --deploy --device <serial>", file=sys.stderr)
         sys.exit(1)
 
     cmd = [adb, "install", "-r", apk]
@@ -1535,6 +1582,27 @@ def cmd_deploy(args):
         print("Error: install failed", file=sys.stderr)
         sys.exit(1)
     print("Installed successfully.")
+
+
+def cmd_mobile(args):
+    """Build, release, and/or deploy the Android app."""
+    if args.debug and args.release:
+        print("Error: --debug cannot be combined with --release (debug APKs are not published).", file=sys.stderr)
+        sys.exit(1)
+    if args.release and args.deploy:
+        print("Error: pick one action at a time: --release publishes to GitHub, --deploy installs to a device.", file=sys.stderr)
+        sys.exit(1)
+    if not (args.build or args.release or args.deploy):
+        print("Usage: ht mobile --build [--release] [--debug] | --deploy [--device <serial>]")
+        return
+
+    variant = "debug" if args.debug else "release"
+    if args.build:
+        _build_apk(variant)
+    if args.release:
+        _release_apk(args, variant)
+    if args.deploy:
+        _deploy_apk(args, variant)
 
 
 def cmd_fixart(args):
@@ -1697,14 +1765,14 @@ def main():
     serve_p.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
     serve_p.add_argument("--log-level", choices=["debug", "info", "warning", "error", "critical"], default="info", help="Log level (default: info)")
 
-    build_p = sub.add_parser("build", help="Build the Android app")
-    build_p.add_argument("--debug", action="store_true", help="Build debug variant (default: release)")
-    build_p.set_defaults(func=cmd_build)
-
-    deploy_p = sub.add_parser("deploy", help="Install the built app onto a connected device")
-    deploy_p.add_argument("--debug", action="store_true", help="Install the debug APK (default: release)")
-    deploy_p.add_argument("--device", help="Device serial to install onto (see: adb devices)")
-    deploy_p.set_defaults(func=cmd_deploy)
+    mobile_p = sub.add_parser("mobile", help="Build / release / deploy the Android app")
+    mobile_p.add_argument("--build", action="store_true", help="Build the APK (expo prebuild + gradle assemble)")
+    mobile_p.add_argument("--release", action="store_true", help="Publish the built APK as a GitHub Release")
+    mobile_p.add_argument("--deploy", action="store_true", help="Install the built APK onto a connected device")
+    mobile_p.add_argument("--debug", action="store_true", help="Use the debug variant (default: release)")
+    mobile_p.add_argument("--device", help="Device serial for --deploy (see: adb devices)")
+    mobile_p.add_argument("--tag", help="GitHub release tag for --release (default: mobile-v<app version>)")
+    mobile_p.set_defaults(func=cmd_mobile)
 
     fixart_p = sub.add_parser("fixart", help="Backfill missing album art for downloaded music")
     fixart_p.add_argument("--data-dir", help="Path to a data directory containing db.sqlite (default: configured data dir)")

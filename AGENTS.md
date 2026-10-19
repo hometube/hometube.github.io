@@ -131,8 +131,21 @@ ht videos                     # List videos for active user
 ht podcasts                   # List podcast feeds and standalone (unsubscribed) episodes
 ht settings get               # Show server settings (e.g. auto_download)
 ht settings set <key> <value> # Set a server setting (e.g. ht settings set auto_download off)
-ht build                      # Build the Android app (release by default)
-ht deploy                     # Install the built app onto a connected device
+ht mobile --build             # Build the Android APK (release by default)
+ht mobile --build --release   # Build, then publish the APK as a GitHub Release
+ht mobile --release           # Publish the newest built APK to a GitHub Release
+ht mobile --deploy            # Install the built APK onto a connected device
+
+# Release signing (optional, one-time). Without it, release builds fall back to
+# the debug keystore. The mobile/plugins/withReleaseSigning config plugin wires
+# these into the generated android/app/build.gradle; --release needs the gh CLI.
+#   keytool -genkeypair -v -keystore hometube.keystore -alias hometube \
+#       -keyalg RSA -keysize 2048 -validity 10000
+#   # ~/.gradle/gradle.properties:
+#   RELEASE_STORE_FILE=/abs/path/to/hometube.keystore
+#   RELEASE_STORE_PASSWORD=...
+#   RELEASE_KEY_ALIAS=hometube
+#   RELEASE_KEY_PASSWORD=...
 ```
 
 ### Frontend (Vue PWA)
