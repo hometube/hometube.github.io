@@ -7,6 +7,7 @@ Instructions for AI agents working on the HomeTube project.
 ```
 hometube/
 ├── install.sh                # One-shot install: venv, deps, frontend build, ht command
+├── install.ps1               # Windows one-shot install (PowerShell equivalent)
 ├── .github/workflows/
 │   └── deploy.yml            # GitHub Actions deploy workflow
 ├── backend/
@@ -16,6 +17,7 @@ hometube/
 │   ├── paths.py              # Single source of truth for data_dir/db/downloads (reads ~/.config/hometube/config.json)
 │   ├── cli.py                # CLI: install, init, login, download, export/import, songs, playlists, videos
 │   ├── cli.sh                # Helper script: manages venv and installs ht command
+│   ├── cli.ps1               # Windows PowerShell equivalent of cli.sh
 │   ├── run-dev.sh            # Dev runner with ngrok tunnel
 │   ├── import_music.py       # Import local music files (supports mp3, webm, flac, wav, m4a, ogg)
 │   ├── requirements.txt      # Python dependencies
@@ -143,7 +145,7 @@ npm run build      # Production build
 
 ## Running as a systemd service (Linux)
 
-The backend is the whole server: FastAPI + background scheduler (`services/scheduler.py`) + the async download queue (`services/downloader.py`). Playwright is not required; only the Python venv + `yt-dlp` CLI binary (installed by pip). On a headless Linux box:
+The backend is the whole server: FastAPI + background scheduler (`services/scheduler.py`) + the async download queue (`services/downloader.py`). Playwright is not required; only the Python venv (`yt-dlp` runs via `python -m yt_dlp`, no separate binary needed). On a headless Linux box:
 
 ```ini
 # /etc/systemd/system/hometube.service
@@ -176,8 +178,30 @@ curl -s http://localhost:8000/api/status
 Notes:
 - All paths resolve from `data_dir` in `~/.config/hometube/config.json` (`ht init`) — point `User=` so `~` resolves to the right home, or override with `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars.
 - The scheduler + downloader use **threads inside the one process**, so don't run more than one systemd instance of `main.py` (SQLite + port conflict). One unit = the full server.
-- `install.sh`/`cli.sh` require `#!/bin/bash` (Debian/Ubuntu ships `/bin/bash`); Alpine/busybox boxes need `bash` installed.
+- `install.sh`/`cli.sh` require `#!/bin/bash` (Debian/Ubuntu ships `/bin/bash`); Alpine/busybox boxes need `bash` installed. On Windows use `install.ps1`/`cli.ps1` instead.
 - If you need ngrok tunneling (mobile access from outside), run `main.py --dev` under the service instead — or keep the domain/reverse-proxy outside systemd.
+
+## Running on Windows
+
+Prerequisites (winget): Python 3.10+ (`Python.Python.3.12`), Node.js LTS (`OpenJS.NodeJS.LTS`), ffmpeg (`Gyan.FFmpeg`), and a JS runtime for YouTube (`DenoLand.Deno`). `yt-dlp` itself is installed by pip into the venv.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1   # venv + deps + frontend build + ht
+cd backend ; . .\cli.ps1                               # activate the venv in this shell
+python main.py                                         # run the server
+```
+
+`ht` installs to `%USERPROFILE%\.local\bin\ht.cmd` and `cli.py install` adds that folder to the user PATH automatically (restart the terminal to pick it up). Config lives at `%USERPROFILE%\.config\hometube\config.json`; same `DB_PATH`/`DATA_DIR`/`DL_DIR` env overrides apply.
+
+To run the server in the background, register a scheduled task (runs at logon, restarts on failure):
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "C:\hometube\backend\.venv\Scripts\python.exe" `
+    -Argument "main.py" -WorkingDirectory "C:\hometube\backend"
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName HomeTube -Action $action -Trigger $trigger -Settings $settings
+```
 
 ### Mobile (React Native / Expo)
 ```bash
