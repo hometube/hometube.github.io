@@ -32,6 +32,7 @@ import zipfile
 import io
 import re
 import shutil
+import importlib.util
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -164,14 +165,46 @@ def check_js_runtime():
 
 def check_ytdlp():
     """Check if yt-dlp is installed and warn if not."""
-    if not shutil.which("yt-dlp"):
+    module_ok = importlib.util.find_spec("yt_dlp") is not None
+    if not module_ok and not shutil.which("yt-dlp"):
         print("Warning: yt-dlp not found. Install it with:")
         print("  brew install yt-dlp          # macOS")
         print("  sudo apt install yt-dlp      # Linux")
+        print("  winget install yt-dlp.yt-dlp # Windows")
         print("  pip install yt-dlp           # pip")
         print()
         return False
     check_js_runtime()
+    return True
+
+
+def _add_to_user_path_windows(directory):
+    """Append a directory to the user PATH (registry). Returns True if added."""
+    import winreg
+
+    key = winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ | winreg.KEY_SET_VALUE
+    )
+    try:
+        try:
+            current, vtype = winreg.QueryValueEx(key, "Path")
+        except FileNotFoundError:
+            current, vtype = "", winreg.REG_EXPAND_SZ
+        parts = [p for p in (current or "").split(os.pathsep) if p]
+        if str(directory).lower() in [p.lower() for p in parts]:
+            return False
+        parts.append(str(directory))
+        winreg.SetValueEx(key, "Path", 0, vtype or winreg.REG_EXPAND_SZ, os.pathsep.join(parts))
+    finally:
+        winreg.CloseKey(key)
+
+    import ctypes
+
+    HWND_BROADCAST = 0xFFFF
+    WM_SETTINGCHANGE = 0x001A
+    ctypes.windll.user32.SendMessageTimeoutW(
+        HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", 0x0002, 5000, None
+    )
     return True
 
 
@@ -180,27 +213,49 @@ def cmd_install(args):
     cli_path = os.path.abspath(__file__)
     bin_dir = Path.home() / ".local" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
-    ht_path = bin_dir / "ht"
 
     # Detect if running inside a virtualenv so the wrapper uses the venv Python
-    venv_dir = os.environ.get("VIRTUAL_ENV")
-    if venv_dir:
-        python_path = os.path.join(venv_dir, "bin", "python3")
-        path_setup = f'PATH="{os.path.join(venv_dir, "bin")}:$PATH"'
-    else:
-        python_path = "python3"
-        path_setup = ""
+    venv_dir = os.environ.get("VIRTUAL_ENV") or (
+        sys.prefix if sys.prefix != sys.base_prefix else None
+    )
 
-    ht_path.write_text(f"""#!/bin/sh
+    if os.name == "nt":
+        ht_path = bin_dir / "ht.cmd"
+        if venv_dir:
+            scripts_dir = os.path.join(venv_dir, "Scripts")
+            python_path = os.path.join(scripts_dir, "python.exe")
+            path_setup = f'set "PATH={scripts_dir};%PATH%"'
+        else:
+            python_path = "python"
+            path_setup = ""
+
+        ht_path.write_text(f"@echo off\r\n{path_setup}\r\n\"{python_path}\" \"{cli_path}\" %*\r\n")
+        print(f"Installed ht to {ht_path}")
+        if venv_dir:
+            print(f"  Uses venv Python: {python_path}")
+        if _add_to_user_path_windows(bin_dir):
+            print(f"  Added {bin_dir} to your user PATH. Restart your terminal to use it.")
+        else:
+            print(f"Make sure {bin_dir} is in your PATH.")
+    else:
+        ht_path = bin_dir / "ht"
+        if venv_dir:
+            python_path = os.path.join(venv_dir, "bin", "python3")
+            path_setup = f'PATH="{os.path.join(venv_dir, "bin")}:$PATH"'
+        else:
+            python_path = "python3"
+            path_setup = ""
+
+        ht_path.write_text(f"""#!/bin/sh
 {path_setup}
 exec "{python_path}" "{cli_path}" "$@"
 """)
-    ht_path.chmod(0o755)
-    print(f"Installed ht to {ht_path}")
-    if venv_dir:
-        print(f"  Uses venv Python: {python_path}")
-    print(f"Make sure {bin_dir} is in your PATH:")
-    print(f"  export PATH=\"$PATH:{bin_dir}\"")
+        ht_path.chmod(0o755)
+        print(f"Installed ht to {ht_path}")
+        if venv_dir:
+            print(f"  Uses venv Python: {python_path}")
+        print(f"Make sure {bin_dir} is in your PATH:")
+        print(f"  export PATH=\"$PATH:{bin_dir}\"")
     print()
     check_ytdlp()
 
@@ -555,7 +610,7 @@ def cmd_download(args):
 
 def update_ytdlp():
     """Update yt-dlp using the package manager it was installed with."""
-    if not shutil.which("yt-dlp"):
+    if not shutil.which("yt-dlp") and importlib.util.find_spec("yt_dlp") is None:
         print("yt-dlp not found; skipped its update.")
         return
 
@@ -587,7 +642,8 @@ def update_ytdlp():
         return
 
     print("Updating yt-dlp...")
-    result = subprocess.run(["yt-dlp", "-U"])
+    update_cmd = ["yt-dlp", "-U"] if shutil.which("yt-dlp") else [sys.executable, "-m", "yt_dlp", "-U"]
+    result = subprocess.run(update_cmd)
     if result.returncode != 0:
         print("Error: yt-dlp self-update failed", file=sys.stderr)
 

@@ -1,16 +1,20 @@
-import subprocess, json, os, re
+import subprocess, json, os, re, sys
 from paths import downloads_dir
 
 import yt_dlp
 
 DL_DIR = downloads_dir()
 
+# Run yt-dlp as a module so no PATH/binary resolution is needed (works in
+# venvs on Windows, Linux, and macOS alike).
+YTDLP_CMD = [sys.executable, "-m", "yt_dlp"]
+
 # YouTube has been blocking the android_vr client (HTTP 403). Exclude it so
 # yt-dlp uses the JS-capable web/web_safari clients instead.
 YTDLP_YT_ARGS = ["--extractor-args", "youtube:player_client=default,-android_vr"]
 
 def run_ytdlp(args, capture=True, timeout=120):
-    cmd = ["yt-dlp", "--no-warnings"] + YTDLP_YT_ARGS + args
+    cmd = YTDLP_CMD + ["--no-warnings"] + YTDLP_YT_ARGS + args
     result = subprocess.run(cmd, capture_output=capture, text=True, timeout=timeout)
     return result.stdout if capture else result
 
@@ -102,7 +106,7 @@ def download_video(url, video_id, quality="best"):
     fmt = quality if quality != "best" else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
     out = run_ytdlp(["--get-filename", "-o", "%(id)s.%(ext)s", "-f", fmt, url])
     expected_name = out.strip()
-    cmd = ["yt-dlp"] + YTDLP_YT_ARGS + ["-f", fmt, "-o", f"{DL_DIR}/videos/%(id)s.%(ext)s", url]
+    cmd = YTDLP_CMD + YTDLP_YT_ARGS + ["-f", fmt, "-o", f"{DL_DIR}/videos/%(id)s.%(ext)s", url]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if expected_name:
         base = expected_name.rsplit(".", 1)[0]
@@ -120,7 +124,7 @@ def download_music(url, music_id):
     expected_name = out.strip()
     # -x --audio-format mp3: opus/webm can't hold embedded cover art, and
     # .opus serves badly as audio/mpeg. mp3 is embeddable and plays everywhere.
-    cmd = ["yt-dlp"] + YTDLP_YT_ARGS + [
+    cmd = YTDLP_CMD + YTDLP_YT_ARGS + [
         "-x",
         "--audio-format", "mp3",
         "--audio-quality", "0",
