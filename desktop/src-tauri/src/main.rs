@@ -199,21 +199,48 @@ fn backend_dir() -> Option<PathBuf> {
     None
 }
 
-/// Resolve the sidecar command: (executable, args).
-fn sidecar_command(backend: &PathBuf) -> (PathBuf, Vec<String>) {
+/// Resolve the sidecar launch spec: (executable, args, working-dir). A
+/// packaged HOMETUBE_SERVER binary wins over any source checkout; there is
+/// no working-dir to set for it (the bundle is self-contained), whereas a
+/// source checkout must run with cwd=backend so `import main`/siblings work.
+fn resolve_sidecar() -> Result<(PathBuf, Vec<String>, Option<PathBuf>), String> {
     if let Ok(bin) = env::var("HOMETUBE_SERVER") {
-        return (PathBuf::from(bin), vec![]);
+        let p = PathBuf::from(&bin);
+        if !p.exists() {
+            return Err(format!("HOMETUBE_SERVER not found: {bin}"));
+        }
+        let cwd = p.parent().map(|d| d.to_path_buf());
+        return Ok((p, vec![], cwd));
     }
+    let backend = backend_dir().ok_or(
+        "HomeTube backend not found (set HOMETUBE_SERVER to a packaged binary, or HOMETUBE_BACKEND to the directory containing main.py)",
+    )?;
+    let (exe, args) = python_for(&backend);
+    Ok((exe, args, Some(backend)))
+}
+
+/// (executable, args) for running main.py from a source checkout, preferring
+/// its venv python.
+fn python_for(backend: &PathBuf) -> (PathBuf, Vec<String>) {
     let venv_python = if cfg!(windows) {
         backend.join(".venv").join("Scripts").join("python.exe")
     } else {
         backend.join(".venv").join("bin").join("python")
     };
-    if venv_python.exists() {
-        return (venv_python, vec!["main.py".into()]);
+    let exe = if venv_python.exists() {
+        venv_python
+    } else {
+        PathBuf::from(if cfg!(windows) { "python" } else { "python3" })
+    };
+    (exe, vec!["main.py".into()])
+}
+
+/// Whether any sidecar (a packaged binary or a source backend) can launch.
+fn sidecar_available() -> bool {
+    match env::var("HOMETUBE_SERVER") {
+        Ok(bin) => PathBuf::from(bin).exists(),
+        Err(_) => backend_dir().is_some(),
     }
-    let fallback = if cfg!(windows) { "python" } else { "python3" };
-    (PathBuf::from(fallback), vec!["main.py".into()])
 }
 
 /// True when a HomeTube /api/status answers on this port (raw HTTP GET;
@@ -264,10 +291,7 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
             return Ok(()); // already running
         }
     }
-    let backend = backend_dir().ok_or(
-        "HomeTube backend not found (set HOMETUBE_BACKEND to the directory containing main.py)",
-    )?;
-    let (exe, args) = sidecar_command(&backend);
+    let (exe, args, cwd) = resolve_sidecar()?;
     let port = state.port.load(Ordering::SeqCst);
     // paths.py reads the same config.json, but pass DATA_DIR explicitly:
     // it beats a relative "data" resolved against the sidecar's cwd.
@@ -278,8 +302,10 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
         .map(String::from);
 
     let mut cmd = Command::new(&exe);
-    cmd.current_dir(&backend)
-        .args(&args)
+    if let Some(dir) = &cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.args(&args)
         .env("PORT", port.to_string())
         // The backend exits itself if this shell dies (covers hard kills;
         // ExitRequested below covers clean shutdowns).
@@ -344,7 +370,7 @@ fn status_of(state: &ServerState) -> ServerStatus {
         healthy: healthy(state),
         adopted,
         port: state.port.load(Ordering::SeqCst),
-        backend_found: backend_dir().is_some(),
+        backend_found: sidecar_available(),
     }
 }
 
