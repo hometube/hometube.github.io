@@ -243,7 +243,9 @@ tray + close-to-hide. Sidecar packaging landed: `ht build-server` builds a PyIns
 onedir bundle (`hometube-server.spec`), all yt-dlp access moved to its Python API so
 extraction/downloads work frozen, and the bundle is copied into the app as a Tauri
 resource with the shell resolving sidecar → env override → dev checkout → bundled.
-Remaining M1: bundled ffmpeg/node detection, Settings polish.
+ffmpeg/JS-runtime are detected (PATH widened for GUI launches, reported via
+/api/status tools, shown on the Server card) rather than bundled; decide whether to
+bundle binaries at M4. Remaining M1: Settings polish.
 
 - **M0 — De-risk (spike)** — ngrok purge PR (code, `requirements.txt`, `run-dev.sh`,
   `cli.py` prompts) and `verify_token`/`exchange` switched to pairing-only enforcement
