@@ -1,12 +1,23 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { api, currentUser, healthy, refreshUsers, setCurrentUser, state } from "../store";
+import {
+  api,
+  currentUser,
+  healthy,
+  openPlaylist,
+  refreshUsers,
+  setCurrentUser,
+  state,
+} from "../store";
+import { playList, player } from "../player";
 import FaceAvatar from "../components/FaceAvatar.vue";
+import AddMusicModal from "../components/AddMusicModal.vue";
 
 const music = ref([]);
 const playlists = ref([]);
 const jobs = ref([]);
 const adding = ref(false);
+const showAdd = ref(false);
 const name = ref("");
 const error = ref("");
 let timer = null;
@@ -15,6 +26,7 @@ const user = computed(() => currentUser());
 const activeJobs = computed(() =>
   jobs.value.filter((j) => j.status === "queued" || j.status === "running")
 );
+const recent = computed(() => music.value.slice(0, 8));
 
 async function load() {
   if (!healthy() || !user.value) {
@@ -76,12 +88,14 @@ onUnmounted(() => clearInterval(timer));
         :class="{ active: user && u.id === user.id }"
         @click="setCurrentUser(u.id)"
       >
-        <FaceAvatar :name="u.username" :size="46" />
+        <FaceAvatar :name="u.username" :size="38" />
         <span>{{ u.username }}</span>
       </button>
       <button class="face-btn add" title="Add a face" @click="adding = !adding">
         <span class="plus">+</span>
+        <span>Add</span>
       </button>
+      <button class="add-music" @click="showAdd = true">+ Add music</button>
     </section>
     <form v-if="adding" class="row" @submit.prevent="addFace">
       <input v-model="name" placeholder="Their name" maxlength="40" autofocus />
@@ -100,24 +114,38 @@ onUnmounted(() => clearInterval(timer));
     <template v-else>
       <section class="shelf">
         <h2>Recently added</h2>
-        <div v-if="music.length" class="rows">
-          <div v-for="m in music.slice(0, 8)" :key="m.id" class="row-item">
+        <div v-if="recent.length" class="rows">
+          <div
+            v-for="(m, i) in recent"
+            :key="m.id"
+            class="row-item"
+            :class="{ playing: player.queue[player.order[player.orderPos]]?.id === m.id }"
+            @click="playList(music, i)"
+          >
+            <span class="go">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"
+                ><path d="M8 5v14l11-7z" /></svg>
+            </span>
             <span class="title" :title="m.title">{{ m.title || "Untitled" }}</span>
             <span class="artist">{{ m.artist || "—" }}</span>
-            <span class="dot-state" :class="{ on: m.filename }" :title="m.filename ? 'On disk' : 'Not downloaded'" />
+            <span class="dot-state" :class="{ on: m.filename }" :title="m.filename ? 'On disk' : 'Downloading — playback waits for it'" />
           </div>
         </div>
         <p v-else class="hint">
-          Nothing yet for {{ user?.username }}. Add music with
-          <code>ht download &lt;url&gt;</code> or the mobile app — playback
-          here arrives in the next release.
+          Nothing yet for {{ user?.username }}. Hit
+          <strong>+ Add music</strong> above and paste a YouTube link.
         </p>
       </section>
 
       <section class="shelf">
         <h2>Your playlists</h2>
         <div v-if="playlists.length" class="cards">
-          <div v-for="p in playlists" :key="p.id" class="pl-card">
+          <div
+            v-for="p in playlists"
+            :key="p.id"
+            class="pl-card"
+            @click="openPlaylist(p.id)"
+          >
             <strong>{{ p.name }}</strong>
             <small class="hint">
               {{ (p.songs || []).length }}
@@ -139,24 +167,35 @@ onUnmounted(() => clearInterval(timer));
         </div>
       </section>
     </template>
+
+    <AddMusicModal v-if="showAdd" @close="showAdd = false" @added="load" />
   </div>
 </template>
 
 <style scoped>
-.faces { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 22px; }
+.faces { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin: -4px 0 20px; }
 .face-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  background: none; border: 0; padding: 4px 6px; cursor: pointer; color: var(--muted);
-  border-radius: 10px; font-size: 12px; max-width: 84px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  background: none; border: 0; padding: 2px 4px; cursor: pointer; color: var(--muted);
+  border-radius: 10px; font-size: 12px; width: 64px;
 }
-.face-btn span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.face-btn > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .face-btn.active { color: var(--text); }
 .face-btn.active :deep(.face) { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
 .plus {
-  width: 46px; height: 46px; border-radius: 50%; display: inline-flex;
-  align-items: center; justify-content: center; font-size: 22px;
+  width: 38px; height: 38px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 19px;
   border: 1px dashed var(--border); color: var(--muted); background: none;
 }
+.add-music { margin-left: auto; align-self: center; flex: none; }
+.row-item { cursor: pointer; }
+.row-item:hover { background: var(--inset); }
+.row-item .go { color: var(--muted); display: inline-flex; width: 16px; flex: none; opacity: 0; }
+.row-item:hover .go { opacity: 1; }
+.row-item.playing { color: var(--accent); }
+.row-item.playing .go { opacity: 1; color: var(--accent); }
+.pl-card { cursor: pointer; transition: border-color 0.15s ease; }
+.pl-card:hover { border-color: #4b3f5a; }
 .row { display: flex; gap: 10px; margin-bottom: 18px; }
 .row input {
   flex: 0 1 280px; background: var(--inset); border: 1px solid var(--border);

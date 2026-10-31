@@ -635,6 +635,32 @@ fn main() {
                 .paste()
                 .select_all()
                 .build()?;
+            let playpause_item = tauri::menu::MenuItem::with_id(
+                app,
+                "playpause",
+                "Play/Pause",
+                true,
+                Some("CmdOrCtrl+P"),
+            )?;
+            let prev_item = tauri::menu::MenuItem::with_id(
+                app,
+                "prev",
+                "Previous",
+                true,
+                Some("CmdOrCtrl+Alt+Left"),
+            )?;
+            let next_item = tauri::menu::MenuItem::with_id(
+                app,
+                "next",
+                "Next",
+                true,
+                Some("CmdOrCtrl+Alt+Right"),
+            )?;
+            let playback_submenu = tauri::menu::SubmenuBuilder::new(app, "Playback")
+                .item(&playpause_item)
+                .item(&prev_item)
+                .item(&next_item)
+                .build()?;
             let window_submenu = tauri::menu::SubmenuBuilder::new(app, "Window")
                 .minimize()
                 .maximize()
@@ -644,17 +670,22 @@ fn main() {
             let main_menu = tauri::menu::MenuBuilder::new(app)
                 .item(&app_submenu)
                 .item(&edit_submenu)
+                .item(&playback_submenu)
                 .item(&window_submenu)
                 .build()?;
             app.set_menu(main_menu)?;
-            app.on_menu_event(|app, event| {
-                if event.id() == "settings" {
+            app.on_menu_event(|app, event| match event.id().as_ref() {
+                "settings" => {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
                     let _ = tauri::Emitter::emit(app, "menu-settings", ());
                 }
+                "playpause" | "next" | "prev" => {
+                    let _ = tauri::Emitter::emit(app, "menu-player", event.id().as_ref());
+                }
+                _ => {}
             });
             // Tray: Open restores the window, Quit ends the app (which
             // kills the server via ExitRequested).

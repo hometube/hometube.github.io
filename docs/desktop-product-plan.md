@@ -1,6 +1,6 @@
 # HomeTube Desktop — Product Plan
 
-**Status:** M6 implemented (wizard, faces, shell, Settings; autostart + native menu) · **Date:** 2026-10-31 · **Builds on:** M5 (Bun server sidecar)
+**Status:** M6 + M7 implemented (wizard/shell/Settings; transport bar, queue, shuffle/repeat, add-by-URL) · **Date:** 2026-10-31 · **Builds on:** M5 (Bun server sidecar)
 
 ## 1. Problem
 
@@ -87,8 +87,9 @@ player model:
   `[id].tsx` screen — resume from `position`, flush every 30 s, auto-watch
   at ≥95%.
 - **macOS integration**: Media Session API for media keys + now-playing in
-  Control Center; `MPNowPlayingInfoCenter` parity comes free with WKWebView
-  support — if not, a small Rust-side `now_playing` command via tauri plugin.
+  Control Center — best-effort (WKWebView may not expose it to non-Safari
+  hosts); the guaranteed path is the native **Playback** menu (⌘P play/pause,
+  ⌥⌘←/→ prev/next). A Rust `now_playing`/media-key bridge stays a stretch.
 - **Watch state sync** is free: desktop writes the same `position` /
   `watched_at` fields the mobile app reads.
 

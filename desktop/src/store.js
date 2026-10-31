@@ -8,6 +8,7 @@ export const state = reactive({
   storage: null, // StorageInfo from the Rust shell
   users: [],
   currentUserId: null,
+  openPlaylistId: null,
   view: localStorage.getItem("hometube.view") || "home",
 });
 
@@ -50,6 +51,11 @@ export function setCurrentUser(id) {
 export function navigate(view) {
   state.view = view;
   localStorage.setItem("hometube.view", view);
+}
+
+export function openPlaylist(id) {
+  state.openPlaylistId = id;
+  navigate("playlists");
 }
 
 export async function refreshStatus() {

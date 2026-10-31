@@ -11,11 +11,13 @@ import {
   state,
   wizardDone,
 } from "./store";
+import { next, player, prev, toggle } from "./player";
 import WizardView from "./views/WizardView.vue";
 import HomeView from "./views/HomeView.vue";
 import PlaylistsView from "./views/PlaylistsView.vue";
 import DevicesView from "./views/DevicesView.vue";
 import SettingsView from "./views/SettingsView.vue";
+import TransportBar from "./components/TransportBar.vue";
 
 const NAV = [
   { id: "home", label: "Home" },
@@ -45,18 +47,26 @@ watch(
 
 let timers = [];
 let unlisten = null;
+let unlistenPlayer = null;
 onMounted(async () => {
   refreshStatus();
   refreshStorage();
   timers.push(setInterval(refreshStatus, 2000));
   timers.push(setInterval(refreshStorage, 10000));
   timers.push(setInterval(refreshUsers, 10000));
-  // ⌘, from the native menu jumps to the Settings pane.
+  // ⌘, from the native menu jumps to the Settings pane; the Playback
+  // submenu drives the transport.
   unlisten = await listen("menu-settings", () => navigate("settings"));
+  unlistenPlayer = await listen("menu-player", (e) => {
+    if (e.payload === "playpause") toggle();
+    else if (e.payload === "next") next();
+    else if (e.payload === "prev") prev();
+  });
 });
 onUnmounted(() => {
   timers.forEach(clearInterval);
   if (unlisten) unlisten();
+  if (unlistenPlayer) unlistenPlayer();
 });
 </script>
 
@@ -88,9 +98,12 @@ onUnmounted(() => {
         <span v-if="face" class="side-face">{{ face.username }}</span>
       </div>
     </aside>
-    <main>
-      <component :is="view" />
-    </main>
+    <div class="body">
+      <main>
+        <component :is="view" />
+      </main>
+      <TransportBar v-if="player.queue.length" />
+    </div>
   </div>
 </template>
 
@@ -155,5 +168,6 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .status-dot.bad { background: #ff7b72; }
 .status-dot.ext { background: #e3b341; }
 .side-face { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-main { flex: 1; overflow-y: auto; padding: 26px 30px; }
+.body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+main { flex: 1; overflow-y: auto; padding: 22px 30px 26px; }
 </style>
