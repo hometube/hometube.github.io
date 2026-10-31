@@ -4,6 +4,7 @@
 // its logs, exposes status/logs/start/stop to the UI, and guarantees the
 // child dies with the app. The sidecar is resolved from (in order):
 //   HOMETUBE_SERVER  - packaged server binary (PyInstaller, later)
+//   <bundle>         - sidecar inside the app bundle (Contents/Resources)
 //   HOMETUBE_BACKEND - explicit backend directory containing main.py
 //   <repo>/backend   - dev checkout, preferring the venv python
 //
@@ -16,7 +17,7 @@ use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
@@ -37,6 +38,8 @@ struct ServerState {
     log_path: Arc<Mutex<Option<PathBuf>>>,
     port: Arc<AtomicU16>,
     adopted: Arc<AtomicBool>,
+    // Sidecar inside the app bundle (Contents/Resources on macOS), if present.
+    bundled: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl Default for ServerState {
@@ -48,8 +51,15 @@ impl Default for ServerState {
             log_path: Arc::new(Mutex::new(None)),
             port: Arc::new(AtomicU16::new(DEFAULT_PORT)),
             adopted: Arc::new(AtomicBool::new(false)),
+            bundled: Arc::new(Mutex::new(None)),
         }
     }
+}
+
+#[derive(Serialize)]
+struct ToolStatus {
+    ffmpeg: String,
+    js_runtime: String,
 }
 
 #[derive(Serialize)]
@@ -59,6 +69,8 @@ struct ServerStatus {
     adopted: bool,
     port: u16,
     backend_found: bool,
+    // External tools the backend found (ffmpeg / JS runtime); None while down.
+    tools: Option<ToolStatus>,
 }
 
 fn preferred_port() -> u16 {
@@ -199,11 +211,13 @@ fn backend_dir() -> Option<PathBuf> {
     None
 }
 
-/// Resolve the sidecar launch spec: (executable, args, working-dir). A
-/// packaged HOMETUBE_SERVER binary wins over any source checkout; there is
-/// no working-dir to set for it (the bundle is self-contained), whereas a
-/// source checkout must run with cwd=backend so `import main`/siblings work.
-fn resolve_sidecar() -> Result<(PathBuf, Vec<String>, Option<PathBuf>), String> {
+/// Resolve the sidecar launch spec: (executable, args, working-dir). Order:
+/// explicit HOMETUBE_SERVER binary, then the dev source checkout (wins over
+/// the bundled copy so `tauri dev` runs code from the repo), then the sidecar
+/// bundled in the app (which is the only candidate on a user machine).
+/// Packaged binaries run with cwd = their own folder; a source checkout must
+/// run with cwd=backend so `import main`/siblings work.
+fn resolve_sidecar(state: &ServerState) -> Result<(PathBuf, Vec<String>, Option<PathBuf>), String> {
     if let Ok(bin) = env::var("HOMETUBE_SERVER") {
         let p = PathBuf::from(&bin);
         if !p.exists() {
@@ -212,11 +226,19 @@ fn resolve_sidecar() -> Result<(PathBuf, Vec<String>, Option<PathBuf>), String> 
         let cwd = p.parent().map(|d| d.to_path_buf());
         return Ok((p, vec![], cwd));
     }
-    let backend = backend_dir().ok_or(
-        "HomeTube backend not found (set HOMETUBE_SERVER to a packaged binary, or HOMETUBE_BACKEND to the directory containing main.py)",
-    )?;
-    let (exe, args) = python_for(&backend);
-    Ok((exe, args, Some(backend)))
+    if let Some(backend) = backend_dir() {
+        let (exe, args) = python_for(&backend);
+        return Ok((exe, args, Some(backend)));
+    }
+    if let Some(p) = state.bundled.lock().unwrap().clone() {
+        if p.exists() {
+            ensure_executable(&p);
+            let cwd = p.parent().map(|d| d.to_path_buf());
+            return Ok((p, vec![], cwd));
+        }
+    }
+    Err(String::from(
+        "HomeTube backend not found (set HOMETUBE_SERVER to a packaged binary, or HOMETUBE_BACKEND to the directory containing main.py)"))
 }
 
 /// (executable, args) for running main.py from a source checkout, preferring
@@ -235,12 +257,64 @@ fn python_for(backend: &PathBuf) -> (PathBuf, Vec<String>) {
     (exe, vec!["main.py".into()])
 }
 
-/// Whether any sidecar (a packaged binary or a source backend) can launch.
-fn sidecar_available() -> bool {
+/// Whether any sidecar (explicit binary, source backend, or bundled copy)
+/// can launch.
+fn sidecar_available(state: &ServerState) -> bool {
     match env::var("HOMETUBE_SERVER") {
         Ok(bin) => PathBuf::from(bin).exists(),
-        Err(_) => backend_dir().is_some(),
+        Err(_) => {
+            backend_dir().is_some()
+                || state
+                    .bundled
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .map(|p| p.exists())
+                    .unwrap_or(false)
+        }
     }
+}
+
+/// Bundled resources can lose the executable bit during packaging; restore it
+/// before spawning (no-op on Windows, where extension decides executability).
+#[cfg(unix)]
+fn ensure_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(md) = fs::metadata(path) {
+        if md.permissions().mode() & 0o111 == 0 {
+            let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
+        }
+    }
+}
+
+#[cfg(windows)]
+fn ensure_executable(_path: &Path) {}
+
+/// Locate the sidecar inside the app bundle: Resources/hometube-server/ on
+/// macOS, next to the executable's resources elsewhere.
+fn bundled_sidecar(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let exe = if cfg!(windows) {
+        "hometube-server/hometube-server.exe"
+    } else {
+        "hometube-server/hometube-server"
+    };
+    app.path()
+        .resolve(exe, tauri::path::BaseDirectory::Resource)
+        .ok()
+        .filter(|p| p.exists())
+}
+
+/// Fetch + parse /api/status from the backend on this port (raw HTTP GET;
+/// avoids pulling an HTTP client into the shell).
+fn fetch_status_json(port: u16) -> Option<serde_json::Value> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream.set_read_timeout(Some(Duration::from_millis(750))).ok()?;
+    stream
+        .write_all(b"GET /api/status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .ok()?;
+    let mut buf = String::new();
+    stream.read_to_string(&mut buf).ok()?;
+    serde_json::from_str(buf.split("\r\n\r\n").nth(1)?).ok()
 }
 
 /// True when a HomeTube /api/status answers on this port (raw HTTP GET;
@@ -291,7 +365,7 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
             return Ok(()); // already running
         }
     }
-    let (exe, args, cwd) = resolve_sidecar()?;
+    let (exe, args, cwd) = resolve_sidecar(state)?;
     let port = state.port.load(Ordering::SeqCst);
     // paths.py reads the same config.json, but pass DATA_DIR explicitly:
     // it beats a relative "data" resolved against the sidecar's cwd.
@@ -365,12 +439,24 @@ fn status_of(state: &ServerState) -> ServerStatus {
         && healthy(state);
     let running = guard.is_some() || adopted;
     drop(guard);
+    let healthy = healthy(state);
+    let tools = healthy
+        .then(|| {
+            fetch_status_json(state.port.load(Ordering::SeqCst))
+                .and_then(|v| v.get("tools").cloned())
+                .map(|t| ToolStatus {
+                    ffmpeg: t.get("ffmpeg").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
+                    js_runtime: t.get("js_runtime").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
+                })
+        })
+        .flatten();
     ServerStatus {
         running,
-        healthy: healthy(state),
+        healthy,
         adopted,
         port: state.port.load(Ordering::SeqCst),
-        backend_found: sidecar_available(),
+        backend_found: sidecar_available(state),
+        tools,
     }
 }
 
@@ -520,6 +606,11 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
+            // Register the bundled sidecar (packaged installs; absent in dev).
+            *setup_state.bundled.lock().unwrap() = bundled_sidecar(&app.handle().clone());
+            if let Some(p) = setup_state.bundled.lock().unwrap().as_ref() {
+                log(&setup_state, format!("[desktop] bundled sidecar: {}", p.display()));
+            }
             // Auto-start (or adopt) the backend; the UI polls server_status.
             let (port, adopted) = resolve_port(preferred_port()).unwrap_or_else(|e| {
                 eprintln!("[desktop] {e}");

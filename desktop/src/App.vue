@@ -149,7 +149,21 @@ onUnmounted(() => timers.forEach(clearInterval));
           <dd>{{ status.adopted ? "external process" : status.running ? "started by HomeTube" : "—" }}</dd>
           <dt>Health</dt>
           <dd>{{ healthy ? "OK" : "unreachable" }}</dd>
+          <template v-if="status.tools">
+            <dt>Tools</dt>
+            <dd>
+              {{ status.tools.ffmpeg ? "ffmpeg ✓" : "ffmpeg missing" }} ·
+              {{ status.tools.js_runtime ? status.tools.js_runtime + " ✓" : "no JS runtime" }}
+            </dd>
+          </template>
         </dl>
+        <p
+          v-if="status?.tools && (!status.tools.ffmpeg || !status.tools.js_runtime)"
+          class="hint"
+        >
+          Downloads may fail until the missing tools are installed
+          (ffmpeg for audio conversion, a JS runtime like deno for YouTube).
+        </p>
         <div class="actions">
           <button v-if="!status?.running" @click="startServer">Start</button>
           <button v-else-if="status.adopted" disabled>Stop</button>
