@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Parity harness: Python backend vs JS/Bun server serving identical seeded
 # libraries. Resets both copies, boots each server, diffs every response.
-# Usage: [PARITY_PY=8211] [PARITY_JS=8213] ./parity.sh
+# Set PARITY_NET=1 to also exercise live yt-dlp calls (info + full background
+# downloads); those hit YouTube and take ~30s.
+# Usage: [PARITY_PY=8211] [PARITY_JS=8213] [PARITY_NET=1] ./parity.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -15,9 +17,15 @@ PY="$ROOT/backend/.venv/bin/python"
 fail=0
 
 # --- reset: two fresh, identical seeded copies ---
-lsof -ti :$PY_PORT | xargs kill 2>/dev/null || true
-lsof -ti :$JS_PORT | xargs kill 2>/dev/null || true
-sleep 1
+for port in $PY_PORT $JS_PORT; do
+  lsof -ti :$port | xargs kill 2>/dev/null || true
+done
+for port in $PY_PORT $JS_PORT; do
+  for _ in $(seq 1 10); do
+    lsof -ti :$port >/dev/null 2>&1 || break
+    sleep 1
+  done
+done
 rm -rf "$SCRATCH"
 mkdir -p "$SCRATCH/p" "$SCRATCH/j"
 DATA_DIR="$SCRATCH/p" "$PY" "$HERE/seed_parity.py" >/dev/null
@@ -26,11 +34,18 @@ DATA_DIR="$SCRATCH/j" "$PY" "$HERE/seed_parity.py" >/dev/null
 # --- boot both servers ---
 (cd "$ROOT/backend" && DATA_DIR="$SCRATCH/p" PORT=$PY_PORT nohup "$PY" main.py >"$SCRATCH/py.log" 2>&1 &)
 (cd "$HERE" && DATA_DIR="$SCRATCH/j" PORT=$JS_PORT nohup bun run src/index.ts >"$SCRATCH/js.log" 2>&1 &)
-for port in $PY_PORT $JS_PORT; do
+for spec in "$PY_PORT py" "$JS_PORT js"; do
+  set -- $spec
+  up=0
   for _ in $(seq 1 30); do
-    curl -s --max-time 1 -o /dev/null "http://127.0.0.1:$port/api/status" && break
+    curl -s --max-time 1 -o /dev/null "http://127.0.0.1:$1/api/status" && { up=1; break; }
     sleep 1
   done
+  if [ "$up" != 1 ]; then
+    echo "FATAL: $2 server never came up on :$1 — log tail:"
+    tail -15 "$SCRATCH/$2.log"
+    exit 2
+  fi
 done
 
 norm() { # drop volatile runtime fields (scheduler last_checked, pairing state)
@@ -71,15 +86,38 @@ check_status() { # check_status <label> <method> <path> <body> <expected>
   fi
 }
 
+norm3() { # downloads registry: drop volatile id/timestamps/live progress
+  python3 -c '
+import sys, json
+VOLATILE = ("id", "created_at", "message", "progress")
+def strip(x):
+    if isinstance(x, dict):
+        return {k: strip(v) for k, v in x.items() if k not in VOLATILE}
+    if isinstance(x, list):
+        return [strip(v) for v in x]
+    return x
+print(json.dumps(strip(json.load(sys.stdin)), sort_keys=True))'
+}
+
+wait_jobs() { # wait_jobs <base-url>: poll until no queued/running jobs remain
+  local base=$1
+  for _ in $(seq 1 120); do
+    busy=$(curl -s --max-time 5 "$base/api/downloads" | python3 -c "import sys,json;j=json.load(sys.stdin);print(sum(1 for x in j if x['status'] in ('queued','running')))" 2>/dev/null || echo x)
+    [ "$busy" = "0" ] && return 0
+    sleep 2
+  done
+  return 1
+}
+
 check() { # check <label> <method> <path> [body] [normalizer]
   local label=$1 method=$2 path=$3 body=${4:-} nz=${5:-norm}
   local rp rj
   if [ -n "$body" ]; then
-    rp=$(curl -s -X "$method" "$P$path" -H 'content-type: application/json' -d "$body")
-    rj=$(curl -s -X "$method" "$J$path" -H 'content-type: application/json' -d "$body")
+    rp=$(curl -s --max-time 120 -X "$method" "$P$path" -H 'content-type: application/json' -d "$body")
+    rj=$(curl -s --max-time 120 -X "$method" "$J$path" -H 'content-type: application/json' -d "$body")
   else
-    rp=$(curl -s -X "$method" "$P$path")
-    rj=$(curl -s -X "$method" "$J$path")
+    rp=$(curl -s --max-time 120 -X "$method" "$P$path")
+    rj=$(curl -s --max-time 120 -X "$method" "$J$path")
   fi
   if [ "$($nz <<<"$rp")" != "$($nz <<<"$rj")" ]; then
     echo "DIFF $label:"
@@ -122,6 +160,10 @@ check "POST playlist/add (music)" POST "/api/playlists/$pl_id/add" '{"music_id":
 # the JSON column's list object leaves its change history empty; SQLAlchemy
 # never flagged it dirty). Fixed backend-wide in add_to_playlist/add_*.
 check "POST playlist/add (music, non-empty)" POST "/api/playlists/$pl_id/add" '{"music_id":2,"position":1}'
+# SQLite CURRENT_TIMESTAMP has 1-second granularity; created_at ties break
+# arbitrarily per SQLite build, so cross the a second boundary before the
+# second create to keep ORDER BY created_at DESC deterministic.
+sleep 2
 check "POST /api/playlists (2nd)" POST /api/playlists '{"name":"HarnessV","user_id":1}' norm2
 plv_id=$(curl -s "$J/api/playlists" | python3 -c "import sys,json;[print(p['id']) for p in json.load(sys.stdin) if p['name']=='HarnessV']" | head -1)
 check "POST playlist/add (video)" POST "/api/playlists/$plv_id/add" '{"video_id":2,"position":1}'
@@ -185,6 +227,29 @@ pt_j=$(json_get -X POST "$J/api/desktop/pair")
 code=$(status_of -X POST "$J/api/auth/exchange" -H 'content-type: application/json' -d "{\"token\":\"$pt_j\"}")
 code2=$(status_of -X POST "$J/api/auth/exchange" -H 'content-type: application/json' -d "{\"token\":\"$pt_j\"}")
 [ "$code" = 200 ] && [ "$code2" = 403 ] && echo "OK   pairing token single-use" || { echo "FAIL pairing reuse: first=$code second=$code2"; fail=1; }
+
+# --- live yt-dlp checks (opt-in; hits YouTube, ~30s) ---
+if [ "${PARITY_NET:-0}" = "1" ]; then
+  V="https://www.youtube.com/watch?v=jNQXAC9IVRw"
+  # same yt-dlp engine+version both sides -> format lists must match exactly
+  check "GET /api/videos/info (live formats)" GET "/api/videos/info?url=$V"
+  check "POST channels/add bad -> 400" POST /api/channels/add '{"url":"https://example.com/nope"}'
+  # adds queue background downloads (auto_download default on) on both
+  check "POST videos/add (live)" POST /api/videos/add "{\"url\":\"$V\",\"user_id\":1}" norm2
+  check "POST music/add (live)" POST /api/music/add "{\"url\":\"$V\",\"user_id\":1}" norm2
+  if wait_jobs "$P" && wait_jobs "$J"; then
+    echo "OK   background downloads settled"
+  else
+    echo "FAIL background downloads did not settle"; fail=1
+  fi
+  check "GET /api/downloads (settled)" GET /api/downloads '' norm3
+  check "GET /api/videos (after download)" GET /api/videos '' norm2
+  check "GET /api/music (after download)" GET /api/music '' norm2
+  for spec in "p videos jNQXAC9IVRw.mp4" "j videos jNQXAC9IVRw.mp4" "p music jNQXAC9IVRw.mp3" "j music jNQXAC9IVRw.mp3"; do
+    set -- $spec
+    [ -s "$SCRATCH/$1/downloads/$2/$3" ] && echo "OK   on-disk file $1/$2/$3" || { echo "FAIL missing $1/$2/$3"; fail=1; }
+  done
+fi
 
 echo "---"
 [ $fail -eq 0 ] && echo "ALL PARITY CHECKS PASSED" || echo "FAILURES (see above)"

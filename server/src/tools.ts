@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 
 const JS_RUNTIMES = ["deno", "node", "bun", "quickjs"] as const;
 
-function which(cmd: string): string {
+export function which(cmd: string): string {
   const sep = process.platform === "win32" ? ";" : ":";
   const exts = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
   for (const dir of (process.env.PATH ?? "").split(sep)) {

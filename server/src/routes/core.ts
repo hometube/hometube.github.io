@@ -4,8 +4,9 @@
 import type { Hono, Context } from "hono";
 import type { Env } from "../app";
 import { consumePairingToken, issuePairingToken, createJwt, isLocal, lanIp } from "../auth";
-import { serialize, getSetting, setSetting, type Row } from "../db";
+import { serialize, setSetting, type Row } from "../db";
 import { toolStatus } from "../tools";
+import * as downloader from "../services/downloader";
 
 type App = Hono<Env>;
 
@@ -156,11 +157,9 @@ export function registerCore(app: App) {
     return c.json({ ok: true });
   });
 
-  // Real job registry arrives with the downloader port; empty list keeps the
-  // desktop Downloads card working meanwhile.
   app.get("/api/downloads", (c) => {
-    void getSetting; // slice 2 wires jobs into settings-independent memory
-    return c.json([]);
+    const userId = c.req.query("user_id");
+    return c.json(downloader.listJobs(userId == null ? null : Number(userId)));
   });
 }
 

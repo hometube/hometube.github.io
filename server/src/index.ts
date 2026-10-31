@@ -7,15 +7,19 @@ import { getJwtSecret, issuePairingToken } from "./auth";
 import { startWatchdogs } from "./watchdog";
 import { registerCore } from "./routes/core";
 import { registerLibrary } from "./routes/library";
+import { registerMedia } from "./routes/media";
+import { initDownloader } from "./services/downloader";
 import { lanIp } from "./auth";
 
 ensureToolPath();
 const db = openDb();
+initDownloader(db);
 startWatchdogs((s) => console.log(s));
 
 const app = createApp();
 registerCore(app);
 registerLibrary(app);
+registerMedia(app);
 
 const port = Number(process.env.PORT ?? 8000);
 
