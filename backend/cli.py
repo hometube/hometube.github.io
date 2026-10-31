@@ -1595,6 +1595,39 @@ def _deploy_apk(args, variant):
     print("Installed successfully.")
 
 
+def cmd_build_server(args):
+    """Build the frozen backend sidecar (PyInstaller) for the desktop app."""
+    import importlib.util
+
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    spec = os.path.join(backend_dir, "hometube-server.spec")
+    if not os.path.isfile(spec):
+        print(f"Error: spec not found at {spec}", file=sys.stderr)
+        sys.exit(1)
+
+    if importlib.util.find_spec("PyInstaller") is None:
+        print("Installing PyInstaller into the current environment...")
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "pyinstaller"])
+        if r.returncode != 0:
+            print("Error: could not install PyInstaller (activate the backend venv first).", file=sys.stderr)
+            sys.exit(1)
+
+    print("Building hometube-server (this takes a couple of minutes)...")
+    # Builds are incremental by default (cache in build/); --clean busts it.
+    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm"]
+    if args.clean:
+        cmd.append("--clean")
+    cmd.append(spec)
+    r = subprocess.run(cmd, cwd=backend_dir)
+    out = os.path.join(backend_dir, "dist", "hometube-server", "hometube-server")
+    if r.returncode != 0:
+        print("Build failed. Warnings log: build/hometube-server/warn-hometube-server.txt", file=sys.stderr)
+        sys.exit(r.returncode)
+    print(f"\nSidecar built: {out}")
+    print("Try it:  PORT=8300 DATA_DIR=/tmp/ht-test " + out)
+    print("Desktop: HOMETUBE_SERVER=" + out + " (npm run tauri dev)")
+
+
 def cmd_mobile(args):
     """Build, release, and/or deploy the Android app."""
     if args.debug and args.release:
@@ -1789,6 +1822,10 @@ def main():
     mobile_p.add_argument("--device", help="Device serial for --deploy (see: adb devices)")
     mobile_p.add_argument("--tag", help="GitHub release tag for --release (default: mobile-v<app version>)")
     mobile_p.set_defaults(func=cmd_mobile)
+
+    build_server_p = sub.add_parser("build-server", help="Build the frozen backend sidecar (PyInstaller) for the desktop app")
+    build_server_p.add_argument("--clean", action="store_true", help="Full rebuild instead of incremental")
+    build_server_p.set_defaults(func=cmd_build_server)
 
     fixart_p = sub.add_parser("fixart", help="Backfill missing album art for downloaded music")
     fixart_p.add_argument("--data-dir", help="Path to a data directory containing db.sqlite (default: configured data dir)")
