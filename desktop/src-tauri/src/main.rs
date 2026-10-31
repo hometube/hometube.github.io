@@ -312,6 +312,14 @@ fn main() {
     let setup_state = state.clone();
 
     tauri::Builder::default()
+        // One shell = one server. A second launch focuses this window; a
+        // duplicate uvicorn would only fight over the port and SQLite.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             server_status,
@@ -348,11 +356,21 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building HomeTube desktop")
         .run(|app_handle, event| {
-            // Clean shutdown: kill the sidecar here. Hard kills (SIGKILL) are
-            // covered by HOMETUBE_WATCH_PARENT on Unix; Windows needs Job
-            // Objects (M1).
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                kill_server(&app_handle.state::<ServerState>());
+            match event {
+                // Clean shutdown: kill the sidecar here. Hard kills (SIGKILL)
+                // are covered by HOMETUBE_WATCH_PARENT on Unix; Windows needs
+                // Job Objects (M1).
+                tauri::RunEvent::ExitRequested { .. } => {
+                    kill_server(&app_handle.state::<ServerState>());
+                }
+                // macOS: reopening from the Dock after the window closed.
+                tauri::RunEvent::Reopen { .. } => {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                _ => {}
             }
         });
 }
