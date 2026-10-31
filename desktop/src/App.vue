@@ -82,8 +82,8 @@ onUnmounted(() => timers.forEach(clearInterval));
   <main class="page">
     <header>
       <h1>HomeTube</h1>
-      <span v-if="status" class="badge" :class="healthy ? 'ok' : 'bad'">
-        {{ healthy ? "● Server running" : status.running ? "● Starting…" : "● Server stopped" }}
+      <span v-if="status" class="badge" :class="status.adopted ? 'ext' : healthy ? 'ok' : 'bad'">
+        {{ status.adopted ? "● External server" : healthy ? "● Server running" : status.running ? "● Starting…" : "● Server stopped" }}
       </span>
       <span v-else class="badge">…</span>
     </header>
@@ -94,13 +94,14 @@ onUnmounted(() => timers.forEach(clearInterval));
         <dl v-if="status">
           <dt>Port</dt>
           <dd>{{ status.port }}</dd>
-          <dt>Backend</dt>
-          <dd>{{ status.backend_found ? "found" : "not found" }}</dd>
+          <dt>Source</dt>
+          <dd>{{ status.adopted ? "external process" : status.running ? "started by HomeTube" : "—" }}</dd>
           <dt>Health</dt>
           <dd>{{ healthy ? "OK" : "unreachable" }}</dd>
         </dl>
         <div class="actions">
           <button v-if="!status?.running" @click="startServer">Start</button>
+          <button v-else-if="status.adopted" disabled>Stop</button>
           <button v-else @click="stopServer">Stop</button>
         </div>
       </div>
@@ -157,6 +158,7 @@ h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .badge { font-size: 13px; color: #9aa0aa; }
 .badge.ok { color: #4ade80; }
 .badge.bad { color: #f87171; }
+.badge.ext { color: #fbbf24; }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
 .card { background: #171a21; border: 1px solid #262b36; border-radius: 10px; padding: 16px; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0 0 12px; font-size: 14px; }

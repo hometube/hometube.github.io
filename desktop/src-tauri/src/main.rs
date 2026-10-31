@@ -1,4 +1,4 @@
-// HomeTube desktop shell (M0 spike).
+// HomeTube desktop shell.
 //
 // Owns the backend process: spawns the FastAPI server on launch, captures
 // its logs, exposes status/logs/start/stop to the UI, and guarantees the
@@ -6,54 +6,76 @@
 //   HOMETUBE_SERVER  - packaged server binary (PyInstaller, later)
 //   HOMETUBE_BACKEND - explicit backend directory containing main.py
 //   <repo>/backend   - dev checkout, preferring the venv python
+//
+// Port handling: if a HomeTube server already answers on the preferred port
+// it is adopted (shown as "external", not killed); if some other process
+// holds it, the next free port is used.
 use serde::Serialize;
 use std::env;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::{Manager, State};
 
 const MAX_LOG_LINES: usize = 1000;
+const DEFAULT_PORT: u16 = 8000;
+const PORT_SCAN_RANGE: u16 = 100;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct ServerState {
     child: Arc<Mutex<Option<Child>>>,
     logs: Arc<Mutex<Vec<String>>>,
+    port: Arc<AtomicU16>,
+    adopted: Arc<AtomicBool>,
+}
+
+impl Default for ServerState {
+    fn default() -> Self {
+        Self {
+            child: Arc::new(Mutex::new(None)),
+            logs: Arc::new(Mutex::new(Vec::new())),
+            port: Arc::new(AtomicU16::new(DEFAULT_PORT)),
+            adopted: Arc::new(AtomicBool::new(false)),
+        }
+    }
 }
 
 #[derive(Serialize)]
 struct ServerStatus {
     running: bool,
     healthy: bool,
+    adopted: bool,
     port: u16,
     backend_found: bool,
 }
 
-fn server_port() -> u16 {
+fn preferred_port() -> u16 {
     env::var("HOMETUBE_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(8000)
+        .unwrap_or(DEFAULT_PORT)
 }
 
-fn log(logs: &Arc<Mutex<Vec<String>>>, line: impl Into<String>) {
-    let mut logs = logs.lock().unwrap();
+fn log(state: &ServerState, line: impl Into<String>) {
+    let line = line.into();
+    println!("{line}"); // dev observability (pump() prefixes backend lines)
+    let mut logs = state.logs.lock().unwrap();
     if logs.len() >= MAX_LOG_LINES {
         logs.remove(0);
     }
-    logs.push(line.into());
+    logs.push(line);
 }
 
-/// Copy every log line to the shell's own stdout too (useful in dev).
-fn pump(logs: Arc<Mutex<Vec<String>>>, reader: impl Read + Send + 'static) {
+/// Mirror the backend's output into the in-memory log (log() echoes).
+fn pump(state: ServerState, reader: impl Read + Send + 'static) {
     thread::spawn(move || {
         for line in BufReader::new(reader).lines().map_while(Result::ok) {
-            println!("[backend] {line}");
-            log(&logs, line);
+            log(&state, format!("[backend] {line}"));
         }
     });
 }
@@ -90,6 +112,47 @@ fn sidecar_command(backend: &PathBuf) -> (PathBuf, Vec<String>) {
     (PathBuf::from(fallback), vec!["main.py".into()])
 }
 
+/// True when a HomeTube /api/status answers on this port (raw HTTP GET;
+/// avoids pulling an HTTP client into the shell for one probe).
+fn probe_backend(port: u16) -> bool {
+    let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(750)));
+    let _ = stream.write_all(
+        b"GET /api/status HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+    );
+    let mut buf = String::new();
+    stream.read_to_string(&mut buf).is_ok() && buf.contains("\"status\":\"ok\"")
+}
+
+/// True when something accepts TCP on this port. A bind-based test is
+/// unreliable here: both uvicorn and many dev servers set SO_REUSEADDR,
+/// which lets a localhost bind "succeed" against an existing wildcard
+/// listener while real clients would still collide.
+fn port_in_use(port: u16) -> bool {
+    TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_millis(200),
+    )
+    .is_ok()
+}
+
+/// Decide the port before spawning: adopt a running HomeTube, or fall back
+/// to the next free port. Returns (port, adopted).
+fn resolve_port(preferred: u16) -> Result<(u16, bool), String> {
+    let end = preferred.saturating_add(PORT_SCAN_RANGE);
+    for port in preferred..end {
+        if probe_backend(port) {
+            return Ok((port, true));
+        }
+        if !port_in_use(port) {
+            return Ok((port, false));
+        }
+    }
+    Err(format!("no free port in {preferred}..{end}"))
+}
+
 fn spawn_server(state: &ServerState) -> Result<(), String> {
     {
         let guard = state.child.lock().unwrap();
@@ -101,11 +164,12 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
         "HomeTube backend not found (set HOMETUBE_BACKEND to the directory containing main.py)",
     )?;
     let (exe, args) = sidecar_command(&backend);
+    let port = state.port.load(Ordering::SeqCst);
 
     let mut child = Command::new(&exe)
         .current_dir(&backend)
         .args(&args)
-        .env("PORT", server_port().to_string())
+        .env("PORT", port.to_string())
         // The backend exits itself if this shell dies (covers hard kills;
         // ExitRequested below covers clean shutdowns).
         .env("HOMETUBE_WATCH_PARENT", "1")
@@ -115,33 +179,21 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
         .map_err(|e| format!("failed to spawn {}: {e}", exe.display()))?;
 
     log(
-        &state.logs,
-        format!("[desktop] spawned backend: {} {:?}", exe.display(), args),
+        state,
+        format!("[desktop] spawned backend on :{port}: {} {:?}", exe.display(), args),
     );
     if let Some(stdout) = child.stdout.take() {
-        pump(state.logs.clone(), stdout);
+        pump(state.clone(), stdout);
     }
     if let Some(stderr) = child.stderr.take() {
-        pump(state.logs.clone(), stderr);
+        pump(state.clone(), stderr);
     }
     *state.child.lock().unwrap() = Some(child);
     Ok(())
 }
 
-fn healthy(port: u16) -> bool {
-    TcpStream::connect(("127.0.0.1", port)).is_ok()
-}
-
-#[allow(dead_code)]
-fn wait_healthy(port: u16, timeout: Duration) -> bool {
-    let start = Instant::now();
-    while start.elapsed() < timeout {
-        if healthy(port) {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(250));
-    }
-    false
+fn healthy(state: &ServerState) -> bool {
+    TcpStream::connect(("127.0.0.1", state.port.load(Ordering::SeqCst))).is_ok()
 }
 
 fn kill_server(state: &ServerState) {
@@ -149,8 +201,9 @@ fn kill_server(state: &ServerState) {
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
         let _ = child.wait();
-        log(&state.logs, "[desktop] backend stopped");
+        log(state, "[desktop] backend stopped");
     }
+    state.adopted.store(false, Ordering::SeqCst);
 }
 
 fn status_of(state: &ServerState) -> ServerStatus {
@@ -161,13 +214,16 @@ fn status_of(state: &ServerState) -> ServerStatus {
             *guard = None;
         }
     }
-    let running = guard.is_some();
+    let adopted = state.adopted.load(Ordering::SeqCst)
+        // Dropped adoption if the adopted server itself went away.
+        && healthy(state);
+    let running = guard.is_some() || adopted;
     drop(guard);
-    let port = server_port();
     ServerStatus {
         running,
-        healthy: healthy(port),
-        port,
+        healthy: healthy(state),
+        adopted,
+        port: state.port.load(Ordering::SeqCst),
         backend_found: backend_dir().is_some(),
     }
 }
@@ -186,12 +242,31 @@ fn server_logs(state: State<ServerState>, tail: Option<usize>) -> Vec<String> {
 
 #[tauri::command]
 fn server_start(state: State<ServerState>) -> Result<ServerStatus, String> {
-    spawn_server(&state)?;
+    if status_of(&state).running {
+        return Ok(status_of(&state));
+    }
+    let (port, adopted) = resolve_port(preferred_port())?;
+    state.port.store(port, Ordering::SeqCst);
+    state.adopted.store(adopted, Ordering::SeqCst);
+    if adopted {
+        log(
+            &state,
+            format!("[desktop] adopting HomeTube already running on :{port} (external)"),
+        );
+    } else {
+        spawn_server(&state)?;
+    }
     Ok(status_of(&state))
 }
 
 #[tauri::command]
 fn server_stop(state: State<ServerState>) -> Result<(), String> {
+    let child_running = state.child.lock().unwrap().is_some();
+    if !child_running && state.adopted.load(Ordering::SeqCst) {
+        return Err(
+            "that server was started outside HomeTube Desktop; stop it where it runs".into(),
+        );
+    }
     kill_server(&state);
     Ok(())
 }
@@ -208,12 +283,24 @@ fn main() {
             server_start,
             server_stop
         ])
-        .setup(move |_app| {
-            // Auto-start the backend; the UI polls server_status until healthy.
-            if let Err(e) = spawn_server(&setup_state) {
+        .setup(move |app| {
+            // Auto-start (or adopt) the backend; the UI polls server_status.
+            let (port, adopted) = resolve_port(preferred_port()).unwrap_or_else(|e| {
                 eprintln!("[desktop] {e}");
-                log(&setup_state.logs, format!("[desktop] {e}"));
+                (preferred_port(), false)
+            });
+            setup_state.port.store(port, Ordering::SeqCst);
+            setup_state.adopted.store(adopted, Ordering::SeqCst);
+            if adopted {
+                log(
+                    &setup_state,
+                    format!("[desktop] adopting HomeTube already running on :{port} (external)"),
+                );
+            } else if let Err(e) = spawn_server(&setup_state) {
+                eprintln!("[desktop] {e}");
+                log(&setup_state, format!("[desktop] {e}"));
             }
+            let _ = app;
             Ok(())
         })
         .build(tauri::generate_context!())
