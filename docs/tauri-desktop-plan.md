@@ -235,6 +235,11 @@ Small, additive surface:
 
 ## 10. Milestones
 
+Progress: M0 auth work landed — ngrok purged; pairing-only enforcement
+(localhost-exempt + JWT via header/query); `POST /api/desktop/pair` + `ht pair`;
+startup banner with pairing QR; mobile sends JWT on media URLs. `desktop/` Tauri
+scaffold in progress (sidecar spawn + status/pairing/logs UI).
+
 - **M0 — De-risk (spike)** — ngrok purge PR (code, `requirements.txt`, `run-dev.sh`,
   `cli.py` prompts) and `verify_token`/`exchange` switched to pairing-only enforcement
   (§D5); Tauri v2 scaffold in `desktop/`; spawn a plain uvicorn sidecar on macOS +
