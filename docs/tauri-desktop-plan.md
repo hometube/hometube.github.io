@@ -235,10 +235,12 @@ Small, additive surface:
 
 ## 10. Milestones
 
-Progress: M0 auth work landed — ngrok purged; pairing-only enforcement
-(localhost-exempt + JWT via header/query); `POST /api/desktop/pair` + `ht pair`;
-startup banner with pairing QR; mobile sends JWT on media URLs. `desktop/` Tauri
-scaffold in progress (sidecar spawn + status/pairing/logs UI).
+Progress: M0 complete (auth switch + scaffold, verified end-to-end). M1 mostly landed:
+QR pairing screen, port fallback + external-server adoption, disk logs (rolling,
+path in UI), single-instance + dock reopen, data-folder onboarding (shared
+config.json with CLI, live restart on change, adopt-existing via folder picker),
+tray + close-to-hide. Remaining M1: PyInstaller sidecar packaging (yt-dlp frozen
+fix, bundled ffmpeg/node) + Settings polish.
 
 - **M0 — De-risk (spike)** — ngrok purge PR (code, `requirements.txt`, `run-dev.sh`,
   `cli.py` prompts) and `verify_token`/`exchange` switched to pairing-only enforcement
