@@ -266,11 +266,18 @@ Remaining M1: Settings polish.
 - **M4 — Release engineering** — free signing path (ad-hoc macOS signing + updater keypair,
   first-launch bypass docs), full CI matrix, first public release
   (v0.1 desktop), delete `frontend/` PWA, retarget Pages to docs-only (§8).
-- **M5 — (CLOSED, rejected 2026-10-30, §D2) Node backend migration** — decided against: paid
-  code-signing certs are off the table permanently, the port cost (API + CLI + `.ht` format +
-  mutagen-quality audio tagging) outweighs the packaging benefit, and Windows targets are
-  new users who are indifferent to the tradeoff. Python sidecar is final; Windows ships as
-  experimental (CI-built, unsigned NSIS). Old versions remain runnable via git if ever needed.
+- **M5 — Node/Bun backend migration (ACTIVE since 2026-10-30)** — decided: the Python-on-
+  Windows packaging burden isn't worth keeping; no paid certs ever; Windows targets are new
+  users indifferent to packaging; rollback via git + `.ht` export if ever needed.
+  **Slice 1 landed** (`server/`): Bun + Hono server sharing the exact SQLite schema
+  (byte-identical DDL, `IF NOT EXISTS`), settings-table pairing tokens and JWT secret —
+  JWTs minted by either server verify on the other (proven by `server/parity.sh`, 17 checks
+  green incl. cross-runtime auth over the LAN IP). JWT is hand-rolled HS256 on WebCrypto
+  (jose resolves to its broken browser bundle under Bun). Watchdogs: ppid-poll (POSIX) +
+  stdin-EOF (`HOMETUBE_WATCH_STDIN=1`, used on Windows). Remaining slices, in order:
+  videos/music/playlists/channels CRUD → yt-dlp service (spawn official binary + job
+  registry + progress) → podcasts → scheduler → export/import → file serving with lazy
+  download → CLI port → Tauri sidecar switch + CI matrix update → Python backend retirement.
 
 ## 11. Risks & mitigations
 
