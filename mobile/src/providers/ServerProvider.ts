@@ -19,7 +19,6 @@ import type {
 const KEYS = {
   BACKEND_URL: "backendUrl",
   JWT_TOKEN: "jwt_token",
-  NGROK_TOKEN: "ngrok_token",
   REQUEST_TIMEOUT: "requestTimeout",
 };
 
@@ -35,7 +34,6 @@ export class ServerProvider extends DataProvider {
 
   private _backendUrl: string = "";
   private _jwt: string = "";
-  private _ngrokToken: string = "";
   private _requestTimeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS;
   private _reachable: boolean | null = null;
   private _blobUrls: string[] = [];
@@ -49,8 +47,6 @@ export class ServerProvider extends DataProvider {
     this._backendUrl =
       (await SecureStore.getItemAsync(KEYS.BACKEND_URL)) || "";
     this._jwt = (await SecureStore.getItemAsync(KEYS.JWT_TOKEN)) || "";
-    this._ngrokToken =
-      (await SecureStore.getItemAsync(KEYS.NGROK_TOKEN)) || "";
     const timeout = parseInt(
       (await SecureStore.getItemAsync(KEYS.REQUEST_TIMEOUT)) || "",
       10
@@ -128,8 +124,6 @@ export class ServerProvider extends DataProvider {
     const headers: Record<string, string> = {};
     if (this._jwt) {
       headers["Authorization"] = `Bearer ${this._jwt}`;
-    } else if (this._ngrokToken) {
-      headers["ngrok-skip-browser-warning"] = "true";
     }
     return headers;
   }
@@ -354,7 +348,6 @@ export class ServerProvider extends DataProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify({ token }),
     });
@@ -375,13 +368,20 @@ export class ServerProvider extends DataProvider {
   }
 
   getVideoUrl(video: Video): string {
-    return this._apiUrl(`videos/${video.id}/file`);
+    return this._withToken(this._apiUrl(`videos/${video.id}/file`));
   }
 
   getMusicUrl(song: Music): string {
     const cached = this._cachedMusicUrls.get(song.id);
     if (cached) return cached;
-    return this._apiUrl(`music/${song.id}/file`);
+    return this._withToken(this._apiUrl(`music/${song.id}/file`));
+  }
+
+  // Media elements (video player, audio track sources) cannot send the
+  // Authorization header, so pass the JWT as a query param instead.
+  private _withToken(url: string): string {
+    if (!this._jwt) return url;
+    return `${url}?token=${encodeURIComponent(this._jwt)}`;
   }
 
   releaseUrl(url: string): void {
@@ -404,7 +404,7 @@ export class ServerProvider extends DataProvider {
     }
 
     try {
-      const url = this._apiUrl(`music/${songId}/file`);
+      const url = this._withToken(this._apiUrl(`music/${songId}/file`));
       const dir = this._cacheDir;
       await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
 
