@@ -9,6 +9,7 @@ const pairInfo = ref(null);
 const pairQr = ref("");
 const users = ref(null);
 const apiError = ref("");
+const logPath = ref("");
 let timers = [];
 
 const apiBase = computed(() =>
@@ -23,6 +24,7 @@ async function refreshStatus() {
 
 async function refreshLogs() {
   logs.value = await invoke("server_logs", { tail: 200 });
+  if (!logPath.value) logPath.value = await invoke("server_log_path");
   const el = document.getElementById("logs");
   if (el) el.scrollTop = el.scrollHeight;
 }
@@ -66,6 +68,10 @@ async function startServer() {
 function copyPair() {
   if (pairInfo.value)
     navigator.clipboard.writeText(`${pairInfo.value.url}?token=${pairInfo.value.token}`);
+}
+
+function copyLogPath() {
+  navigator.clipboard.writeText(logPath.value);
 }
 
 onMounted(() => {
@@ -140,6 +146,10 @@ onUnmounted(() => timers.forEach(clearInterval));
     <section class="card logs-card">
       <h2>Server logs</h2>
       <pre id="logs">{{ logs.join("\n") }}</pre>
+      <div v-if="logPath" class="log-path">
+        <span class="hint">{{ logPath }}</span>
+        <button class="secondary" @click="copyLogPath">Copy path</button>
+      </div>
     </section>
   </main>
 </template>
@@ -185,4 +195,6 @@ button.secondary:hover { background: #343d50; }
   background: #0f1115; border-radius: 6px; padding: 12px; font-size: 12px;
   height: 280px; overflow-y: auto; white-space: pre-wrap; margin: 0;
 }
+.log-path { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.log-path .hint { font-family: ui-monospace, monospace; word-break: break-all; }
 </style>

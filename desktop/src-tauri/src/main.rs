@@ -12,6 +12,7 @@
 // holds it, the next free port is used.
 use serde::Serialize;
 use std::env;
+use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -25,11 +26,14 @@ use tauri::{Manager, State};
 const MAX_LOG_LINES: usize = 1000;
 const DEFAULT_PORT: u16 = 8000;
 const PORT_SCAN_RANGE: u16 = 100;
+const MAX_LOG_FILE_BYTES: u64 = 5 * 1024 * 1024;
 
 #[derive(Clone)]
 struct ServerState {
     child: Arc<Mutex<Option<Child>>>,
     logs: Arc<Mutex<Vec<String>>>,
+    file: Arc<Mutex<Option<File>>>,
+    log_path: Arc<Mutex<Option<PathBuf>>>,
     port: Arc<AtomicU16>,
     adopted: Arc<AtomicBool>,
 }
@@ -39,6 +43,8 @@ impl Default for ServerState {
         Self {
             child: Arc::new(Mutex::new(None)),
             logs: Arc::new(Mutex::new(Vec::new())),
+            file: Arc::new(Mutex::new(None)),
+            log_path: Arc::new(Mutex::new(None)),
             port: Arc::new(AtomicU16::new(DEFAULT_PORT)),
             adopted: Arc::new(AtomicBool::new(false)),
         }
@@ -64,11 +70,31 @@ fn preferred_port() -> u16 {
 fn log(state: &ServerState, line: impl Into<String>) {
     let line = line.into();
     println!("{line}"); // dev observability (pump() prefixes backend lines)
+    if let Some(file) = state.file.lock().unwrap().as_mut() {
+        let _ = writeln!(file, "{line}");
+        let _ = file.flush();
+    }
     let mut logs = state.logs.lock().unwrap();
     if logs.len() >= MAX_LOG_LINES {
         logs.remove(0);
     }
     logs.push(line);
+}
+
+/// Open (append) the rolling log file under the platform's app-log dir,
+/// restarting it once it grows past MAX_LOG_FILE_BYTES.
+fn open_log(state: &ServerState, dir: &PathBuf) {
+    let _ = std::fs::create_dir_all(dir);
+    let path = dir.join("hometube-desktop.log");
+    if let Ok(meta) = path.metadata() {
+        if meta.len() > MAX_LOG_FILE_BYTES {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    if let Ok(file) = OpenOptions::new().create(true).append(true).open(&path) {
+        *state.file.lock().unwrap() = Some(file);
+        *state.log_path.lock().unwrap() = Some(path);
+    }
 }
 
 /// Mirror the backend's output into the in-memory log (log() echoes).
@@ -241,6 +267,16 @@ fn server_logs(state: State<ServerState>, tail: Option<usize>) -> Vec<String> {
 }
 
 #[tauri::command]
+fn server_log_path(state: State<ServerState>) -> Option<String> {
+    state
+        .log_path
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|p| p.display().to_string())
+}
+
+#[tauri::command]
 fn server_start(state: State<ServerState>) -> Result<ServerStatus, String> {
     if status_of(&state).running {
         return Ok(status_of(&state));
@@ -280,10 +316,16 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             server_status,
             server_logs,
+            server_log_path,
             server_start,
             server_stop
         ])
         .setup(move |app| {
+            // Persist logs under the platform app-log dir (~/Library/Logs on
+            // macOS, %APPDATA%/…/logs on Windows, ~/.local/share/… on Linux).
+            if let Ok(dir) = app.path().app_log_dir() {
+                open_log(&setup_state, &dir);
+            }
             // Auto-start (or adopt) the backend; the UI polls server_status.
             let (port, adopted) = resolve_port(preferred_port()).unwrap_or_else(|e| {
                 eprintln!("[desktop] {e}");
