@@ -28,7 +28,8 @@ hometube/
 │   ├── htcmp.py              # Structural .ht comparator (used by parity)
 │   └── seed_parity.py        # Seeds both parity data dirs
 ├── desktop/                   # Tauri v2 desktop app (all-in-one server host + UI)
-│   ├── src/                   # Vue 3 UI (status, pairing, logs)
+│   ├── src/                   # Vue 3 UI: wizard → shell (Home faces/shelves, Playlists,
+│   │                          #   Devices pairing, Settings = owner diagnostics)
 │   ├── src-tauri/             # Rust shell: spawns/monitors the server sidecar, kills on exit
 │   ├── package.json
 │   └── vite.config.js

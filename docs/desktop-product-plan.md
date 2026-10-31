@@ -1,6 +1,6 @@
 # HomeTube Desktop — Product Plan
 
-**Status:** proposal · **Date:** 2026-10-31 · **Builds on:** M5 (Bun server sidecar)
+**Status:** M6 implemented (wizard, faces, shell, Settings; autostart + native menu) · **Date:** 2026-10-31 · **Builds on:** M5 (Bun server sidecar)
 
 ## 1. Problem
 
@@ -173,13 +173,14 @@ player before devices (there must be something to hand off), packaging last.
 
 ## 7. Open questions
 
-1. **Faces UI**: initials-on-gradient avatars (generated from the brand
-   ramp) vs file-upload images — start with initials; server already stores
-   an `image` field on users.
-2. **Single window vs native menus**: native menu bar items (play/pause,
-   next) are cheap with tauri v2 menus — likely yes in M7.
-3. **Auto-start on login** for the Owner (server should survive reboots
-   even before M6 ships): tauri autostart plugin, opt-in in Settings.
+1. **Faces UI**: resolved M6 — initials-on-gradient avatars (brand ramp picked
+   deterministically from the name); the server still stores an `image` field
+   for future uploaded avatars.
+2. **Single window vs native menus**: resolved M6 — standard app/edit/window
+   menus with About + ⌘, → Settings; player items (play/pause/next) arrive
+   with M7.
+3. **Auto-start on login**: resolved M6 — LaunchAgent via
+   tauri-plugin-autostart, opt-in toggle in Settings ▸ Preferences.
 4. **Volume ducking / exclusive audio**: not needed for v1.
 5. **Multiple desktops in one household**: same server = fine (state is
    server-side); port-adoption already prevents sidecar clashes.

@@ -523,6 +523,25 @@ fn storage_info() -> StorageInfo {
     storage_info_of()
 }
 
+// Launch-at-login (Settings ▸ Preferences); a LaunchAgent on macOS.
+#[tauri::command]
+fn autostart_get(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn autostart_set(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let m = app.autolaunch();
+    if enabled {
+        m.enable()
+    } else {
+        m.disable()
+    }
+    .map_err(|e| e.to_string())
+}
+
 /// Point the library at a new folder and restart the server so it picks it
 /// up. The adopted (external) server is not ours to restart.
 #[tauri::command]
@@ -552,6 +571,10 @@ fn main() {
     tauri::Builder::default()
         // Folder picker for the storage onboarding (dialog:default capability).
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         // One shell = one server. A second launch focuses this window; a
         // duplicate uvicorn would only fight over the port and SQLite.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -569,7 +592,9 @@ fn main() {
             server_start,
             server_stop,
             storage_info,
-            set_data_dir
+            set_data_dir,
+            autostart_get,
+            autostart_set
         ])
         .on_window_event(|window, event| {
             // Closing the window keeps the server running; the tray (or
@@ -585,6 +610,52 @@ fn main() {
             if let Ok(dir) = app.path().app_log_dir() {
                 open_log(&setup_state, &dir);
             }
+            // Native menu bar: standard app/edit/window items (⌘C/⌘V in text
+            // fields, ⌘W, etc.) plus ⌘, jumping to the in-app Settings pane.
+            let settings_item =
+                tauri::menu::MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl:,"))?;
+            let app_submenu = tauri::menu::SubmenuBuilder::new(app, "HomeTube")
+                .about(None)
+                .separator()
+                .item(&settings_item)
+                .separator()
+                .services()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let edit_submenu = tauri::menu::SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+            let window_submenu = tauri::menu::SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .maximize()
+                .separator()
+                .close_window()
+                .build()?;
+            let main_menu = tauri::menu::MenuBuilder::new(app)
+                .item(&app_submenu)
+                .item(&edit_submenu)
+                .item(&window_submenu)
+                .build()?;
+            app.set_menu(main_menu)?;
+            app.on_menu_event(|app, event| {
+                if event.id() == "settings" {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                    let _ = tauri::Emitter::emit(app, "menu-settings", ());
+                }
+            });
             // Tray: Open restores the window, Quit ends the app (which
             // kills the server via ExitRequested).
             let open_item = tauri::menu::MenuItem::with_id(app, "open", "Open HomeTube", true, None::<&str>)?;
