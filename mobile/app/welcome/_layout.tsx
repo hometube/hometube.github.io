@@ -10,6 +10,7 @@ export default function WelcomeLayout() {
     >
       <Stack.Screen name="setup-backend" />
       <Stack.Screen name="setup-user" />
+      <Stack.Screen name="scan" options={{ presentation: "modal" }} />
     </Stack>
   );
 }

@@ -61,9 +61,21 @@ export default function SetupBackend() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Server Mode</Text>
         <Text style={styles.cardDesc}>
-          Connect to a HomeTube backend server for downloads, subscriptions, and
-          cloud storage.
+          Scan the pairing code shown in the HomeTube desktop app, or enter the
+          server URL manually below.
         </Text>
+        <TouchableOpacity
+          style={[styles.button, styles.scanButton, loading && styles.buttonDisabled]}
+          onPress={() => router.push("/welcome/scan")}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>Scan pairing code</Text>
+        </TouchableOpacity>
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.dividerLine} />
+        </View>
         <TextInput
           style={styles.input}
           placeholder="http://your-server:8000"
@@ -167,6 +179,9 @@ const styles = StyleSheet.create({
   },
   localButton: {
     backgroundColor: "#0f3460",
+  },
+  scanButton: {
+    backgroundColor: "#8a155e",
   },
   divider: {
     flexDirection: "row",

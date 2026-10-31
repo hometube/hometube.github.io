@@ -40,6 +40,12 @@
       "expo-document-picker",
       "expo-sqlite",
       [
+        "expo-camera",
+        {
+          "cameraPermissionMessage": "HomeTube uses the camera to scan the desktop pairing code."
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
