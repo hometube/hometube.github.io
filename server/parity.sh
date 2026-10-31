@@ -199,6 +199,18 @@ check "DELETE playlist" DELETE "/api/playlists/$pl_id"
 check "DELETE playlist (2nd)" DELETE "/api/playlists/$plv_id"
 check "GET /api/playlists (after delete)" GET /api/playlists '' norm2
 
+# --- Podcasts (seeded feeds; music/2 already deleted above) ---
+check "GET /api/podcasts" GET /api/podcasts
+check "GET /api/podcasts?user_id=1" GET "/api/podcasts?user_id=1"
+check "GET /api/podcasts?user_id=2" GET "/api/podcasts?user_id=2"
+check "GET /api/podcasts/episodes" GET /api/podcasts/episodes
+check "GET /api/podcasts/episodes?user_id=1" GET "/api/podcasts/episodes?user_id=1"
+check "GET /api/podcasts/1/episodes (video sub -> 404)" GET /api/podcasts/1/episodes
+check "GET /api/podcasts/2/episodes" GET /api/podcasts/2/episodes
+check "GET /api/podcasts/999/episodes (404)" GET /api/podcasts/999/episodes
+check "POST /api/podcasts/999/check (404)" POST /api/podcasts/999/check '{}'
+check "DELETE /api/podcasts/1 (not podcast -> 404)" DELETE /api/podcasts/1
+
 # intentional deviation: Python's SPA catch-all serves index.html (200) for
 # unknown routes incl. /api/*; the JS server returns a proper JSON 404.
 code=$(status_of "$J/api/nope")
@@ -249,6 +261,13 @@ if [ "${PARITY_NET:-0}" = "1" ]; then
     set -- $spec
     [ -s "$SCRATCH/$1/downloads/$2/$3" ] && echo "OK   on-disk file $1/$2/$3" || { echo "FAIL missing $1/$2/$3"; fail=1; }
   done
+  # podcast feed refresh against the seeded example.com channel (yt-dlp
+  # fails fast -> added 0 both sides; last_checked is normalised away)
+  check "POST podcasts/subscribe bad -> 400" POST /api/podcasts/subscribe '{"url":"https://example.com/nope","user_id":1}'
+  check "POST podcasts/2/check (live)" POST /api/podcasts/2/check '{}'
+  check "GET /api/podcasts (after check)" GET /api/podcasts
+  check "DELETE /api/podcasts/2" DELETE /api/podcasts/2
+  check "GET /api/podcasts (after unsubscribe)" GET /api/podcasts
 fi
 
 echo "---"

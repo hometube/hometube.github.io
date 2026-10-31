@@ -8,18 +8,23 @@ import { startWatchdogs } from "./watchdog";
 import { registerCore } from "./routes/core";
 import { registerLibrary } from "./routes/library";
 import { registerMedia } from "./routes/media";
+import { registerPodcasts } from "./routes/podcasts";
 import { initDownloader } from "./services/downloader";
+import { initScheduler, startScheduler } from "./services/scheduler";
 import { lanIp } from "./auth";
 
 ensureToolPath();
 const db = openDb();
 initDownloader(db);
+initScheduler(db);
 startWatchdogs((s) => console.log(s));
 
 const app = createApp();
 registerCore(app);
 registerLibrary(app);
 registerMedia(app);
+registerPodcasts(app);
+startScheduler();
 
 const port = Number(process.env.PORT ?? 8000);
 
