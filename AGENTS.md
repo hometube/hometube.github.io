@@ -22,7 +22,14 @@ hometube/
 │   ├── requirements.txt      # Python dependencies
 │   └── services/
 │       ├── ytdlp.py          # yt-dlp wrapper for downloads (preserves audio format)
-│       └── scheduler.py      # Background subscription checker + auto-delete
+│       ├── scheduler.py      # Background subscription checker + auto-delete
+│       ├── downloader.py     # Background download job queue (thread pool + progress)
+│       └── pairing.py        # Single-use LAN pairing tokens
+├── desktop/                   # Tauri v2 desktop app (all-in-one server host + UI)
+│   ├── src/                   # Vue 3 UI (status, pairing, logs; seeded from frontend/)
+│   ├── src-tauri/             # Rust shell: spawns/monitors the backend sidecar, kills on exit
+│   ├── package.json
+│   └── vite.config.js
 ├── frontend/
 │   ├── src/
 │   │   ├── App.vue           # Main Vue app with slide-out nav menu
@@ -156,6 +163,18 @@ npm run dev        # Dev server
 npm run build      # Production build
 ```
 
+### Desktop (Tauri v2)
+```bash
+cd desktop
+npm install
+npm run tauri dev    # Dev: starts Vite + the app window; shell auto-starts the backend
+npm run tauri build  # Production bundle (needs bundle icons — M1)
+```
+The Rust shell (`desktop/src-tauri`) spawns the backend as a child process, tails its
+logs, and kills it on app exit. Sidecar resolution order: `HOMETUBE_SERVER` (packaged
+binary) → `HOMETUBE_BACKEND` (backend dir) → dev checkout `../../backend` (prefers its
+`.venv`). Port: `HOMETUBE_PORT` (default 8000). See `docs/tauri-desktop-plan.md`.
+
 ## Running as a systemd service (Linux)
 
 The backend is the whole server: FastAPI + background scheduler (`services/scheduler.py`) + the async download queue (`services/downloader.py`). Playwright is not required; only the Python venv (`yt-dlp` runs via `python -m yt_dlp`, no separate binary needed). On a headless Linux box:
@@ -243,7 +262,7 @@ npx tsc --noEmit   # TypeScript type check
 ## API Endpoints
 
 ### General
-- `GET /api/status` - Health check / server status
+- `GET /api/status` - Health check (open, no auth — reports `pairing_required`)
 - `GET /api/settings` - List server settings as key/value map
 - `PUT /api/settings` - Set a server setting (body: key, value)
 - `GET /api/downloads` - List background download jobs for active user: `[{id, type, item_id, user_id, status, progress, message, filename, error, created_at}]`. `status`: queued/running/done/error
