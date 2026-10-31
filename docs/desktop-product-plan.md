@@ -1,6 +1,6 @@
 # HomeTube Desktop — Product Plan
 
-**Status:** M6–M8 implemented (wizard/shell/Settings; transport/queue/add-by-URL; videos + podcasts) · **Date:** 2026-10-31 · **Builds on:** M5 (Bun server sidecar)
+**Status:** M6–M10 implemented (wizard/shell/Settings; transport/queue/add-by-URL; videos + podcasts; device presence; setup guide + bundle verification) · **Date:** 2026-10-31 · **Builds on:** M5 (Bun server sidecar)
 
 ## 1. Problem
 
