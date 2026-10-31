@@ -341,7 +341,8 @@ async def force_cors(request, call_next):
 # server and start pairing. Never leaks library data.
 @app.get("/api/status")
 def status():
-    return {"status": "ok", "version": "1.0", "pairing_required": True}
+    return {"status": "ok", "version": "1.0", "pairing_required": True,
+            "tools": ytdlp.tool_status()}
 
 # Pairing - mint a single-use token, only allowed from the host itself
 # (desktop shell / local tools). Redeemed at /api/auth/exchange.

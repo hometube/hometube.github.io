@@ -1,9 +1,26 @@
 import os
-from paths import downloads_dir
+import shutil
+from paths import downloads_dir, ensure_tool_path
 
 import yt_dlp
 
+# Resolve ffmpeg/deno even when launched from a GUI (minimal PATH).
+ensure_tool_path()
+
 DL_DIR = downloads_dir()
+
+JS_RUNTIMES = ("deno", "node", "bun", "quickjs")
+
+
+def tool_status():
+    """Diagnostic view of external tools yt-dlp needs (paths or empty)."""
+    ffmpeg = shutil.which("ffmpeg") or ""
+    js = ""
+    for r in JS_RUNTIMES:
+        if shutil.which(r):
+            js = r
+            break
+    return {"ffmpeg": ffmpeg, "js_runtime": js}
 
 # YouTube has been blocking the android_vr client (HTTP 403). Exclude it so
 # yt-dlp uses the JS-capable web/web_safari clients instead.

@@ -155,12 +155,26 @@ def _resolve_video(db, user_id, id_or_name):
 
 def check_js_runtime():
     """Warn if no supported JavaScript runtime is installed for YouTube downloads."""
+    from paths import ensure_tool_path
+    ensure_tool_path()
     if any(shutil.which(r) for r in ("deno", "node", "quickjs", "bun")):
         return True
     print("Warning: No JavaScript runtime found. Newer yt-dlp requires one (e.g. Deno)", file=sys.stderr)
     print("  for YouTube downloads. Install one on macOS with:", file=sys.stderr)
     print("    brew install deno", file=sys.stderr)
     print("  See https://github.com/yt-dlp/yt-dlp/wiki/EJS for alternatives.", file=sys.stderr)
+    return False
+
+
+def check_ffmpeg():
+    """Warn if ffmpeg is missing (audio conversion / thumbnail embedding)."""
+    if shutil.which("ffmpeg"):
+        return True
+    print("Warning: ffmpeg not found. Music downloads need it to convert and", file=sys.stderr)
+    print("  embed cover art. Install it with:", file=sys.stderr)
+    print("    brew install ffmpeg          # macOS", file=sys.stderr)
+    print("    sudo apt install ffmpeg      # Linux", file=sys.stderr)
+    print("    winget install Gyan.FFmpeg   # Windows", file=sys.stderr)
     return False
 
 
@@ -176,6 +190,7 @@ def check_ytdlp():
         print()
         return False
     check_js_runtime()
+    check_ffmpeg()
     return True
 
 
