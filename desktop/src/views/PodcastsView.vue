@@ -89,9 +89,14 @@ onUnmounted(() => clearInterval(pollTimer));
           class="row-item"
           @click="playEpisodes(standalone, i)"
         >
-          <span class="go">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"
-              ><path d="M8 5v14l11-7z" /></svg>
+          <span class="thumb" :class="{ art: !!e.album_art }">
+            <img v-if="e.album_art" :src="e.album_art" loading="lazy" alt="" />
+            <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="rgba(255,255,255,.92)"
+              ><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>
+            <span class="go">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"
+                ><path d="M8 5v14l11-7z" /></svg>
+            </span>
           </span>
           <span class="p-name" :title="e.title">{{ e.title || "Untitled" }}</span>
           <span class="dot-state" :class="{ on: e.filename }" />
@@ -124,9 +129,14 @@ onUnmounted(() => clearInterval(pollTimer));
         class="row-item"
         @click="playEpisodes(detail.episodes, i)"
       >
-        <span class="go">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"
-            ><path d="M8 5v14l11-7z" /></svg>
+        <span class="thumb" :class="{ art: !!e.album_art }">
+          <img v-if="e.album_art" :src="e.album_art" loading="lazy" alt="" />
+          <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="rgba(255,255,255,.92)"
+            ><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>
+          <span class="go">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"
+              ><path d="M8 5v14l11-7z" /></svg>
+          </span>
         </span>
         <span class="p-name" :title="e.title">{{ e.title || "Untitled" }}</span>
         <span class="p-count">{{ fmtLong(e.duration) }}</span>
@@ -149,8 +159,19 @@ onUnmounted(() => clearInterval(pollTimer));
 }
 .row-item:last-child { border-bottom: 0; }
 .row-item:hover { background: var(--inset); }
-.go { color: var(--muted); display: inline-flex; width: 16px; flex: none; opacity: 0; }
-.row-item:hover .go { opacity: 1; }
+.thumb {
+  position: relative; width: 38px; height: 38px; border-radius: 7px; flex: none;
+  overflow: hidden; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--inset);
+}
+.thumb.art { background: #000; }
+.thumb:not(.art) { background-image: var(--grad); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb .go {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.45); opacity: 0; border-radius: 0;
+}
+.row-item:hover .thumb .go { opacity: 1; }
 .p-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-count { color: var(--muted); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
 .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: none; }

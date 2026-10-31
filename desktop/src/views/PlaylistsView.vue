@@ -112,9 +112,14 @@ onUnmounted(() => clearInterval(timer));
         :class="{ playing: t.id === playingId }"
         @click="playAll(i)"
       >
-        <span class="go">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"
-            ><path d="M8 5v14l11-7z" /></svg>
+        <span class="thumb" :class="{ art: !!t.album_art }">
+          <img v-if="t.album_art" :src="t.album_art" loading="lazy" alt="" />
+          <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="rgba(255,255,255,.92)"
+            ><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>
+          <span class="go">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"
+              ><path d="M8 5v14l11-7z" /></svg>
+          </span>
         </span>
         <span class="title" :title="t.title">{{ t.title || "Untitled" }}</span>
         <span class="artist">{{ t.artist || "—" }}</span>
@@ -146,10 +151,20 @@ onUnmounted(() => clearInterval(timer));
 }
 .row-item:last-child { border-bottom: 0; }
 .row-item:hover { background: var(--inset); }
-.row-item .go { color: var(--muted); display: inline-flex; width: 16px; flex: none; opacity: 0; }
-.row-item:hover .go, .row-item.playing .go { opacity: 1; }
+.thumb {
+  position: relative; width: 38px; height: 38px; border-radius: 7px; flex: none;
+  overflow: hidden; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--inset);
+}
+.thumb.art { background: #000; }
+.thumb:not(.art) { background-image: var(--grad); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb .go {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.45); opacity: 0; border-radius: 0;
+}
+.row-item:hover .thumb .go, .row-item.playing .thumb .go { opacity: 1; }
 .row-item.playing { color: var(--accent); }
-.row-item.playing .go { color: var(--accent); }
 .row-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-item .artist { color: var(--muted); font-size: 13px; width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .remove {
