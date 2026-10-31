@@ -253,6 +253,22 @@ class ExportRequest(BaseModel):
     video_ids: Optional[List[int]] = None
     music_ids: Optional[List[int]] = None
 
+def start_parent_watchdog():
+    """Exit when the process that launched us goes away (desktop shell mode)."""
+    import threading
+
+    original_ppid = os.getppid()
+
+    def watch():
+        while True:
+            time.sleep(2)
+            # Reparented (ppid changed) or the parent died -> we are orphaned.
+            if os.getppid() != original_ppid:
+                os._exit(0)
+
+    threading.Thread(target=watch, daemon=True).start()
+
+
 ensure_schema()
 
 @asynccontextmanager
@@ -268,6 +284,12 @@ async def lifespan(app: FastAPI):
         startup_token, startup_ttl = pairing.issue(db, ttl=600)
     finally:
         db.close()
+
+    # When launched by the desktop shell, exit if the shell dies so the
+    # server never lingers without its owner (orphaned children get
+    # reparented, so a changed ppid means the launcher is gone).
+    if os.environ.get("HOMETUBE_WATCH_PARENT") == "1":
+        start_parent_watchdog()
 
     # Start background subscription checker
     asyncio.create_task(scheduler.check_subscriptions())
