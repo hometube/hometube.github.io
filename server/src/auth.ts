@@ -3,7 +3,7 @@
 // (and the Python CLI) against the same SQLite file. The JWT secret is read
 // from the same settings row, which keeps JWTs already issued to mobile
 // clients valid across the Python -> JS cutover.
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { networkInterfaces } from "node:os";
 import type { Database } from "bun:sqlite";
 import { getSetting, setSetting } from "./db";
@@ -124,4 +124,44 @@ export async function verifyJwt(db: Database, token: string): Promise<{ user_id:
     throw { status: 401, detail: "Token expired" };
   }
   return { user_id: claims.user_id as number };
+}
+
+// ---- Device presence ----
+// Each paired device holds one long-lived JWT, so the token's hash is a
+// stable device id. Authenticated requests refresh last_seen (throttled in
+// SQL) and the desktop Devices pane reads the roster. The token itself is
+// never stored — only its SHA-256 fingerprint.
+
+export function tokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function deviceLabel(ua: string): { name: string; platform: string } {
+  const s = ua || "";
+  // React Native's default agent is bare okhttp (no "Android" substring).
+  if (/okhttp/i.test(s)) return { platform: "android", name: "Android app" };
+  if (/android/i.test(s)) return { platform: "android", name: "Android device" };
+  if (/iphone/i.test(s)) return { platform: "ios", name: "iPhone" };
+  if (/ipad/i.test(s)) return { platform: "ios", name: "iPad" };
+  if (/(macintosh|mac os x)/i.test(s)) return { platform: "macos", name: "Mac" };
+  if (/windows/i.test(s)) return { platform: "windows", name: "Windows PC" };
+  if (/linux/i.test(s)) return { platform: "linux", name: "Linux machine" };
+  if (!s) return { platform: "unknown", name: "Device" };
+  return { platform: "unknown", name: s.slice(0, 60) };
+}
+
+export function touchDevice(db: Database, token: string, ua: string, userId: number | null): void {
+  const now = Math.floor(Date.now() / 1000);
+  const { name, platform } = deviceLabel(ua);
+  db.run(
+    `INSERT INTO devices (token_hash, user_id, name, platform, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(token_hash) DO UPDATE SET
+       last_seen = excluded.last_seen,
+       user_id = COALESCE(excluded.user_id, devices.user_id),
+       name = COALESCE(excluded.name, devices.name),
+       platform = COALESCE(excluded.platform, devices.platform)
+     WHERE excluded.last_seen - devices.last_seen >= 30`,
+    [tokenFingerprint(token), userId, name, platform, now, now],
+  );
 }

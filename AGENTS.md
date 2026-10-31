@@ -184,6 +184,7 @@ clients keep working.
 Requests from the host itself (127.0.0.1/::1) are always allowed; LAN clients need a JWT.
 - `POST /api/desktop/pair` - Mint a single-use pairing token (host-local only): `{token, expires_in, url}`
 - `POST /api/auth/exchange` - Redeem a pairing token for a long-lived JWT (body: `{token}`)
+- `GET /api/devices` - Paired-device roster: `[{id, name, platform, user_id, username, online, last_seen}]`. Presence is a heartbeat: each authenticated LAN request refreshes `last_seen` (throttled ≥30s, device id = SHA-256 of the JWT, token itself never stored); `online` = seen <60s. Not deletable (JWTs aren't revocable)
 - `ht pair` - CLI equivalent of `/api/desktop/pair` (works while the server runs; shares SQLite)
 - Protected endpoints accept the JWT as `Authorization: Bearer` header or `?token=` query param (media URLs can't send headers)
 

@@ -99,6 +99,17 @@ CREATE TABLE IF NOT EXISTS playlist_music (
 	FOREIGN KEY(playlist_id) REFERENCES playlists (id),
 	FOREIGN KEY(music_id) REFERENCES music (id)
 );
+CREATE TABLE IF NOT EXISTS devices (
+	id INTEGER NOT NULL,
+	token_hash VARCHAR(64) NOT NULL,
+	user_id INTEGER,
+	name VARCHAR(200),
+	platform VARCHAR(50),
+	first_seen INTEGER,
+	last_seen INTEGER,
+	PRIMARY KEY (id),
+	UNIQUE (token_hash)
+);
 `;
 
 // Columns the ORM exposes as JSON booleans; SQLite stores 0/1.

@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
-import { isLocal, verifyJwt } from "./auth";
+import { isLocal, touchDevice, verifyJwt } from "./auth";
 import { HttpError } from "./errors";
 
 export type Env = { Bindings: { remoteIp: string; db: Database } };
@@ -16,7 +16,10 @@ export async function requireToken(c: Context<Env>) {
   const bearer = c.req.header("authorization");
   const token = url.searchParams.get("token") ?? (bearer?.startsWith("Bearer ") ? bearer.slice(7) : null);
   if (!token) throw { status: 401, detail: "Missing token" };
-  await verifyJwt(c.env.db, token);
+  const { user_id } = await verifyJwt(c.env.db, token);
+  // Device presence heartbeat: one long-lived JWT per paired device, so any
+  // authenticated request refreshes its last_seen (upsert throttled in SQL).
+  touchDevice(c.env.db, token, c.req.header("user-agent") ?? "", user_id);
 }
 
 // Endpoints reachable without a JWT (a brand-new device has none yet).

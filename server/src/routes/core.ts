@@ -161,6 +161,31 @@ export function registerCore(app: App) {
     const userId = c.req.query("user_id");
     return c.json(downloader.listJobs(userId == null ? null : Number(userId)));
   });
+
+  // Paired-device roster, refreshed by the auth middleware heartbeat.
+  // No DELETE: JWTs are not revocable, so "forgetting" a device would be
+  // misleading — stale rows simply drop offline.
+  app.get("/api/devices", (c) => {
+    const now = Math.floor(Date.now() / 1000);
+    const rows = c.env.db
+      .query<Row, []>(
+        `SELECT d.id, d.name, d.platform, d.user_id, u.username, d.first_seen, d.last_seen
+         FROM devices d LEFT JOIN users u ON u.id = d.user_id
+         ORDER BY d.last_seen DESC`,
+      )
+      .all();
+    return c.json(
+      rows.map((r) => ({
+        id: r.id,
+        name: r.name ?? "Device",
+        platform: r.platform ?? "unknown",
+        user_id: r.user_id ?? null,
+        username: r.username ?? null,
+        online: Number(r.last_seen) > now - 60,
+        last_seen: new Date(Number(r.last_seen) * 1000).toISOString(),
+      })),
+    );
+  });
 }
 
 function parseJson(v: unknown, fallback: unknown): unknown {

@@ -9,9 +9,28 @@ const pairQr = ref("");
 const pairError = ref("");
 const mobile = ref(null);
 const mobileChecked = ref(false);
+const devices = ref([]);
 let refreshTimer = null;
+let deviceTimer = null;
 
 const ready = computed(() => healthy());
+
+async function loadDevices() {
+  if (!ready.value) return;
+  try {
+    devices.value = await api("/api/devices");
+  } catch {
+    /* server may be restarting */
+  }
+}
+
+function lastSeen(iso) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}
 
 async function mint() {
   if (!ready.value) return;
@@ -59,17 +78,25 @@ function copyPair() {
 
 // Tokens live 5 minutes; re-mint just in time while the pane is open.
 watch(ready, (ok) => {
-  if (ok && !pairInfo.value) mint();
+  if (ok) {
+    if (!pairInfo.value) mint();
+    loadDevices();
+  }
 });
 
 onMounted(() => {
   mint();
+  loadDevices();
   refreshMobile();
   refreshTimer = setInterval(() => {
     if (pairInfo.value) mint();
   }, 4 * 60 * 1000);
+  deviceTimer = setInterval(loadDevices, 10000);
 });
-onUnmounted(() => clearInterval(refreshTimer));
+onUnmounted(() => {
+  clearInterval(refreshTimer);
+  clearInterval(deviceTimer);
+});
 </script>
 
 <template>
@@ -122,6 +149,20 @@ onUnmounted(() => clearInterval(refreshTimer));
         </p>
       </div>
     </div>
+
+    <h2 class="roster-title">Connected devices</h2>
+    <div v-if="devices.length" class="rows">
+      <div v-for="d in devices" :key="d.id" class="dev-row">
+        <span class="dot" :class="{ on: d.online }" :title="d.online ? 'Online now' : 'Seen recently'" />
+        <span class="dev-name">{{ d.name }}</span>
+        <span class="dev-user" v-if="d.username && d.username !== 'system'">{{ d.username }}</span>
+        <span class="dev-seen">{{ d.online ? "Active now" : `Last seen ${lastSeen(d.last_seen)}` }}</span>
+      </div>
+    </div>
+    <p v-else class="hint">
+      No devices paired yet. Scan the code above with the mobile app and it
+      will appear here — green means it used the server in the last minute.
+    </p>
   </div>
 </template>
 
@@ -143,4 +184,22 @@ onUnmounted(() => clearInterval(refreshTimer));
 }
 h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
 .tips { margin-top: 12px; line-height: 1.55; }
+.roster-title { margin: 28px 0 12px; }
+.rows {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; max-width: 640px;
+}
+.dev-row {
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px;
+  font-size: 14px; border-bottom: 1px solid var(--border);
+}
+.dev-row:last-child { border-bottom: 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: none; }
+.dot.on { background: #56d364; }
+.dev-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-user {
+  font-size: 11px; color: var(--accent); background: rgba(198, 120, 221, 0.12);
+  padding: 2px 8px; border-radius: 999px; flex: none;
+}
+.dev-seen { color: var(--muted); font-size: 12px; flex: none; }
 </style>
