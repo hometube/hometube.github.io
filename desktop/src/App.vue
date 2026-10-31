@@ -12,6 +12,7 @@ import {
   wizardDone,
 } from "./store";
 import { next, player, prev, toggle } from "./player";
+import { checkForUpdate, updateAvailable } from "./updates";
 import WizardView from "./views/WizardView.vue";
 import HomeView from "./views/HomeView.vue";
 import PlaylistsView from "./views/PlaylistsView.vue";
@@ -20,6 +21,7 @@ import PodcastsView from "./views/PodcastsView.vue";
 import DevicesView from "./views/DevicesView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import TransportBar from "./components/TransportBar.vue";
+import QueuePanel from "./components/QueuePanel.vue";
 
 const NAV = [
   { id: "home", label: "Home" },
@@ -57,6 +59,7 @@ let unlistenPlayer = null;
 onMounted(async () => {
   refreshStatus();
   refreshStorage();
+  checkForUpdate(); // GitHub Releases check; silent unless something is newer
   timers.push(setInterval(refreshStatus, 2000));
   timers.push(setInterval(refreshStorage, 10000));
   timers.push(setInterval(refreshUsers, 10000));
@@ -93,6 +96,9 @@ onUnmounted(() => {
           @click="navigate(n.id)"
         >
           {{ n.label }}
+          <span v-if="n.id === 'settings' && updateAvailable()" class="nav-badge"
+            >1</span
+          >
         </button>
       </nav>
       <div class="side-foot">
@@ -105,10 +111,13 @@ onUnmounted(() => {
       </div>
     </aside>
     <div class="body">
-      <main>
-        <component :is="view" />
-      </main>
-      <TransportBar v-if="player.queue.length" />
+      <div class="content">
+        <main>
+          <component :is="view" />
+        </main>
+        <TransportBar v-if="player.queue.length" />
+      </div>
+      <QueuePanel v-if="player.queue.length && state.queueOpen" />
     </div>
   </div>
 </template>
@@ -165,15 +174,22 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
   background: none; color: var(--muted); text-align: left; border-radius: 8px;
   padding: 9px 12px; font-size: 14px; font-weight: 500;
+  display: flex; align-items: center; gap: 8px;
 }
 .nav-item:hover { background: var(--panel); color: var(--text); filter: none; }
 .nav-item.active { background: var(--panel); color: var(--text); font-weight: 600; }
+.nav-badge {
+  margin-left: auto; background-image: var(--grad); color: #fff; font-size: 10px;
+  font-weight: 700; border-radius: 999px; min-width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 4px;
+}
 .side-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px; font-size: 12px; color: var(--muted); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .status-dot.ok { background: #56d364; }
 .status-dot.bad { background: #ff7b72; }
 .status-dot.ext { background: #e3b341; }
 .side-face { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.body { flex: 1; display: flex; flex-direction: row; min-width: 0; }
+.content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 main { flex: 1; overflow-y: auto; padding: 16px 30px 24px; }
 </style>

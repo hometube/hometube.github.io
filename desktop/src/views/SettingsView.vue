@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { api, apiBase, healthy, refreshStatus, state } from "../store";
+import { checkForUpdate, updateAvailable, updater } from "../updates";
 
 const logs = ref([]);
 const logPath = ref("");
@@ -231,7 +232,28 @@ onUnmounted(() => timers.forEach(clearInterval));
       <summary>About</summary>
       <dl>
         <dt>Version</dt>
-        <dd>{{ version || "—" }}</dd>
+        <dd>
+          {{ version || "—" }}
+          <span v-if="updater.latest" class="hint"> (latest {{ updater.latest }})</span>
+        </dd>
+        <dt>Updates</dt>
+        <dd>
+          <template v-if="updateAvailable()">
+            <span class="update-avail">{{ updater.latest }} is available</span>
+            <a :href="updater.url" target="_blank" rel="noreferrer">Download</a>
+            <span class="hint"> — installs over the old version, nothing is lost.</span>
+          </template>
+          <template v-else-if="updater.checking">Checking GitHub…</template>
+          <template v-else-if="updater.checked && !updater.error">
+            You're up to date.
+          </template>
+          <template v-else>
+            <span class="hint">Couldn't reach GitHub.</span>
+          </template>
+          <button class="link-btn" :disabled="updater.checking" @click="checkForUpdate">
+            Check now
+          </button>
+        </dd>
         <dt>Project</dt>
         <dd><a href="https://hometube.github.io">hometube.github.io</a></dd>
       </dl>
@@ -257,6 +279,12 @@ onUnmounted(() => timers.forEach(clearInterval));
 .sec[open] summary::after { transform: rotate(90deg); }
 .sec > *:not(summary) { margin-bottom: 12px; }
 .sec[open] { padding-bottom: 16px; }
+.update-avail { color: var(--accent); font-weight: 600; margin-right: 8px; }
+button.link-btn {
+  background: none; color: var(--muted); font-size: 12px; padding: 0 0 0 10px;
+  text-decoration: underline; text-decoration-color: #59404f; font-weight: 400;
+}
+button.link-btn:hover { color: var(--text); background: none; filter: none; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; font-size: 14px; }
 dt { color: var(--muted); }
 dd { margin: 0; }
