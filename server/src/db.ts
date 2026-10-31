@@ -132,11 +132,12 @@ export function serialize(row: Row): Row {
   return out;
 }
 
-export function openDb(): Database {
-  mkdirSync(dirname(dbPath()), { recursive: true });
+export function openDb(pathOverride?: string): Database {
+  const path = pathOverride ?? dbPath();
+  mkdirSync(dirname(path), { recursive: true });
   mkdirSync(join(downloadsDir(), "videos"), { recursive: true });
   mkdirSync(join(downloadsDir(), "music"), { recursive: true });
-  const db = new Database(dbPath());
+  const db = new Database(path);
   db.run("PRAGMA journal_mode=WAL");
   db.run(SCHEMA);
   return db;

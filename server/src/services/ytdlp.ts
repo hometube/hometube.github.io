@@ -20,7 +20,7 @@ export function ytDlpPath(): string {
   return which("yt-dlp") || "yt-dlp";
 }
 
-type Info = Record<string, any>;
+export type Info = Record<string, any>;
 
 async function runJson(extra: string[], url: string): Promise<Info | null> {
   const proc = Bun.spawn([ytDlpPath(), ...BASE_ARGS, "--quiet", "--no-progress", "-J", ...extra, url], {

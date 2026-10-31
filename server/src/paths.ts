@@ -1,8 +1,8 @@
 // Path resolution — mirrors backend/paths.py so both servers (and the CLI)
 // share one data dir: env override -> ~/.config/hometube/config.json -> ./data
 import { homedir } from "os";
-import { join, resolve } from "path";
-import { existsSync, readFileSync } from "fs";
+import { dirname, join, resolve } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 
 const CONFIG_FILE = join(homedir(), ".config", "hometube", "config.json");
 
@@ -12,6 +12,11 @@ export function loadConfig(): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+export function saveConfig(config: Record<string, unknown>): void {
+  mkdirSync(dirname(CONFIG_FILE), { recursive: true });
+  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 
 // Finder/GUI launches get a minimal PATH without Homebrew/winget dirs, so
