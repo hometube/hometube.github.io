@@ -9,6 +9,7 @@ import { registerCore } from "./routes/core";
 import { registerLibrary } from "./routes/library";
 import { registerMedia } from "./routes/media";
 import { registerPodcasts } from "./routes/podcasts";
+import { registerFiles } from "./routes/files";
 import { initDownloader } from "./services/downloader";
 import { initScheduler, startScheduler } from "./services/scheduler";
 import { lanIp } from "./auth";
@@ -24,6 +25,7 @@ registerCore(app);
 registerLibrary(app);
 registerMedia(app);
 registerPodcasts(app);
+registerFiles(app);
 startScheduler();
 
 const port = Number(process.env.PORT ?? 8000);

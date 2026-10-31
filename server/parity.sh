@@ -30,6 +30,12 @@ rm -rf "$SCRATCH"
 mkdir -p "$SCRATCH/p" "$SCRATCH/j"
 DATA_DIR="$SCRATCH/p" "$PY" "$HERE/seed_parity.py" >/dev/null
 DATA_DIR="$SCRATCH/j" "$PY" "$HERE/seed_parity.py" >/dev/null
+# Deterministic on-disk media referenced by the seed rows.
+for d in p j; do
+  mkdir -p "$SCRATCH/$d/downloads/videos" "$SCRATCH/$d/downloads/music"
+  printf 'HOMETUBE-PARITY-VIDEO-0123456789ABCDEF' > "$SCRATCH/$d/downloads/videos/ep1.mp4"
+  printf 'HOMETUBE-PARITY-AUDIO-0123456789ABCDEF' > "$SCRATCH/$d/downloads/music/songa.mp3"
+done
 
 # --- boot both servers ---
 (cd "$ROOT/backend" && DATA_DIR="$SCRATCH/p" PORT=$PY_PORT nohup "$PY" main.py >"$SCRATCH/py.log" 2>&1 &)
@@ -107,6 +113,27 @@ wait_jobs() { # wait_jobs <base-url>: poll until no queued/running jobs remain
     sleep 2
   done
   return 1
+}
+
+get_hdrs() { # media response headers, minus volatile ones (date/server)
+  local url=$1 range=${2:-}
+  if [ -n "$range" ]; then
+    curl -s -D - -o /dev/null --max-time 60 -H "Range: bytes=$range" "$url"
+  else
+    curl -s -D - -o /dev/null --max-time 60 "$url"
+  fi | tr -d '\r' | grep -iE "^(HTTP/|content-type:|content-length:|content-range:|accept-ranges:|content-disposition:|cache-control:|pragma:|expires:)" | awk -F: '{print tolower($1)":"substr($0, index($0,":")+1)}' | sort
+}
+
+check_media() { # check_media <label> <path> [range]
+  local label=$1 path=$2 range=${3:-}
+  local hp hj
+  hp=$(get_hdrs "$P$path" "$range")
+  hj=$(get_hdrs "$J$path" "$range")
+  if [ "$hp" = "$hj" ]; then
+    echo "OK   $label"
+  else
+    echo "DIFF $label:"; diff <(echo "$hp") <(echo "$hj"); fail=1
+  fi
 }
 
 check() { # check <label> <method> <path> [body] [normalizer]
@@ -198,6 +225,21 @@ check "GET /api/music (after delete)" GET /api/music '' norm2
 check "DELETE playlist" DELETE "/api/playlists/$pl_id"
 check "DELETE playlist (2nd)" DELETE "/api/playlists/$plv_id"
 check "GET /api/playlists (after delete)" GET /api/playlists '' norm2
+
+# --- media file serving (seeded ep1.mp4 / songa.mp3) ---
+check "GET /api/videos/999/file (404)" GET /api/videos/999/file
+check "GET /api/music/999/file (404)" GET /api/music/999/file
+check_media "GET /api/videos/1/file" /api/videos/1/file
+check_media "GET range /api/videos/1/file 0-3" /api/videos/1/file "0-3"
+check_media "GET /api/music/1/file" /api/music/1/file
+check_media "GET range /api/music/1/file 2-" /api/music/1/file "2-"
+check_media "GET /api/files/videos/ep1.mp4" /api/files/videos/ep1.mp4
+check_media "GET range /api/files/videos/ep1.mp4 0-3" /api/files/videos/ep1.mp4 "0-3"
+check "GET /api/files/videos/nope.mp4 (404)" GET /api/files/videos/nope.mp4
+check_media "GET /api/files/music/songa.mp3" /api/files/music/songa.mp3
+check "GET /api/files/music/nope.mp3 (404)" GET /api/files/music/nope.mp3
+sp=$(status_of "$P/api/videos/2/file"); sj=$(status_of "$J/api/videos/2/file")
+[ "$sp" = 502 ] && [ "$sj" = 502 ] && echo "OK   lazy download w/ bad url -> 502 both" || { echo "FAIL lazy-502: py=$sp js=$sj"; fail=1; }
 
 # --- Podcasts (seeded feeds; music/2 already deleted above) ---
 check "GET /api/podcasts" GET /api/podcasts

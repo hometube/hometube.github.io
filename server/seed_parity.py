@@ -52,7 +52,7 @@ db.add_all(
     [
         models.Video(
             url="u1", title="Ep1", added_by=alice.id, channel_id=redwall.id,
-            filename="ep1.mp4", duration=120, thumbnail="http://x/t1.jpg", quality="best",
+            filename="ep1.mp4", downloaded=True, duration=120, thumbnail="http://x/t1.jpg", quality="best",
             created_at=t(3),
         ),
         models.Video(
