@@ -13,7 +13,35 @@ const apiError = ref("");
 const logPath = ref("");
 const storage = ref(null);
 const storageError = ref("");
+const mobile = ref(null);
+const mobileChecked = ref(false);
 let timers = [];
+
+const REPO = "hometube/hometube.github.io";
+
+async function refreshMobile() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=20`, {
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    for (const r of await res.json()) {
+      if (!String(r.tag_name).startsWith("mobile-v")) continue;
+      const apk = (r.assets || []).find((a) => String(a.name).endsWith(".apk"));
+      if (apk) {
+        mobile.value = {
+          version: String(r.tag_name).replace(/^mobile-v/, ""),
+          apkUrl: apk.browser_download_url,
+          size: apk.size || 0,
+        };
+        break;
+      }
+    }
+  } catch {
+    /* offline or none: the hint covers it */
+  }
+  mobileChecked.value = true;
+}
 
 const apiBase = computed(() =>
   status.value ? `http://127.0.0.1:${status.value.port}` : null
@@ -107,6 +135,7 @@ async function applyDataDir(dir) {
 onMounted(() => {
   refreshStatus();
   refreshStorage();
+  refreshMobile();
   timers.push(setInterval(refreshStatus, 2000));
   timers.push(setInterval(refreshLogs, 2000));
   timers.push(setInterval(refreshApi, 3000));
@@ -190,6 +219,25 @@ onUnmounted(() => timers.forEach(clearInterval));
       </div>
 
       <div class="card">
+        <h2>Mobile app</h2>
+        <template v-if="mobile">
+          <dl>
+            <dt>Android</dt>
+            <dd>v{{ mobile.version }} · {{ (mobile.size / 1048576).toFixed(1) }} MB</dd>
+          </dl>
+          <div class="actions">
+            <a class="btnlink" :href="mobile.apkUrl">Download APK</a>
+          </div>
+          <p class="hint">Install it on a phone, then scan the pairing QR above.</p>
+        </template>
+        <p v-else class="hint">
+          {{ mobileChecked
+            ? "No Android release on GitHub yet — publish one with: ht mobile --release"
+            : "Checking GitHub Releases…" }}
+        </p>
+      </div>
+
+      <div class="card">
         <h2>Library</h2>
         <template v-if="users">
           <dl>
@@ -258,6 +306,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 button:hover:not(:disabled) { background: #1d4ed8; }
 button.secondary { background: #2a3140; }
 button.secondary:hover { background: #343d50; }
+.btnlink {
+  display: inline-block; background: #2563eb; color: #fff; text-decoration: none;
+  border-radius: 6px; padding: 8px 14px; font-size: 14px;
+}
+.btnlink:hover { background: #1d4ed8; }
 .pair-qr {
   display: block; width: 180px; height: 180px; border-radius: 8px;
   margin-bottom: 10px; background: #fff;

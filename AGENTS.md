@@ -9,7 +9,8 @@ hometube/
 ├── install.sh                # One-shot install: venv, deps, frontend build, ht command
 ├── install.ps1               # Windows one-shot install (PowerShell equivalent)
 ├── .github/workflows/
-│   └── deploy.yml            # GitHub Actions deploy workflow
+│   ├── deploy.yml            # GitHub Actions deploy workflow
+│   └── desktop.yml           # Desktop builds (macOS/Windows) + desktop-v* tag releases
 ├── backend/
 │   ├── main.py               # FastAPI app with REST endpoints
 │   ├── models.py             # DB models (User, Video, Music, Channel, Subscription, Playlist)
