@@ -174,5 +174,5 @@ function parseJson(v: unknown, fallback: unknown): unknown {
 }
 
 function isoOrNull(v: unknown): string | null {
-  return typeof v === "string" ? v.replace(" ", "T") : null;
+  return typeof v === "string" ? v.replace(" ", "T").replace(/\.000000$/, "") : null;
 }

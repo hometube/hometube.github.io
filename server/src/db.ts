@@ -117,7 +117,10 @@ export function serialize(row: Row): Row {
   for (const [k, v] of Object.entries(row)) {
     if (v === null || v === undefined) out[k] = null;
     else if (BOOL_COLUMNS.has(k)) out[k] = Boolean(v);
-    else if (DATE_COLUMNS.has(k) && typeof v === "string") out[k] = v.replace(" ", "T");
+    else if (DATE_COLUMNS.has(k) && typeof v === "string") {
+      // Python isoformat() drops zero microseconds; the raw column keeps them.
+      out[k] = v.replace(" ", "T").replace(/\.000000$/, "");
+    }
     else if (JSON_COLUMNS.has(k) && typeof v === "string") {
       try {
         out[k] = JSON.parse(v);

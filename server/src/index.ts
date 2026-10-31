@@ -6,6 +6,7 @@ import { ensureToolPath } from "./paths";
 import { getJwtSecret, issuePairingToken } from "./auth";
 import { startWatchdogs } from "./watchdog";
 import { registerCore } from "./routes/core";
+import { registerLibrary } from "./routes/library";
 import { lanIp } from "./auth";
 
 ensureToolPath();
@@ -14,6 +15,7 @@ startWatchdogs((s) => console.log(s));
 
 const app = createApp();
 registerCore(app);
+registerLibrary(app);
 
 const port = Number(process.env.PORT ?? 8000);
 

@@ -5,6 +5,7 @@ import type { Context } from "hono";
 import { cors } from "hono/cors";
 import type { Database } from "bun:sqlite";
 import { isLocal, verifyJwt } from "./auth";
+import { HttpError } from "./errors";
 
 export type Env = { Bindings: { remoteIp: string; db: Database } };
 
@@ -40,6 +41,9 @@ export function createApp() {
   });
 
   app.onError((e, c) => {
+    if (e instanceof HttpError) {
+      return c.json({ detail: e.message }, e.status as 400);
+    }
     const err = e as { status?: number; detail?: string };
     if (typeof err.status === "number") {
       return c.json({ detail: err.detail ?? "Error" }, err.status as 400);
