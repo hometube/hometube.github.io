@@ -23,6 +23,10 @@ import models
 from services import ytdlp, scheduler, downloader, pairing
 from paths import downloads_dir
 
+# Captured at import time (earliest point): the desktop shell that launched
+# us, for the parent watchdog below.
+_LAUNCH_PPID = os.getppid()
+
 VIDEOS_DIR = os.path.join(downloads_dir(), "videos")
 MUSIC_DIR = os.path.join(downloads_dir(), "music")
 
@@ -255,15 +259,44 @@ class ExportRequest(BaseModel):
 
 def start_parent_watchdog():
     """Exit when the process that launched us goes away (desktop shell mode)."""
+    import sys
     import threading
 
-    original_ppid = os.getppid()
+    if _LAUNCH_PPID == 1:
+        # Parent already gone by the time we got here (under the desktop
+        # shell ppid is never 1; launchd/systemd only appear as parent when
+        # HOMETUBE_WATCH_PARENT is unset).
+        os._exit(0)
+
+    if sys.platform == "win32":
+        # POSIX detects death via reparenting; Windows pids never reparent,
+        # so poll a handle to the parent process instead.
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        SYNCHRONIZE = 0x0010_0000
+        WAIT_OBJECT_0 = 0x0000_0000
+        WAIT_TIMEOUT = 0x0000_0102
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.WaitForSingleObject.restype = ctypes.c_long
+        kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        parent = kernel32.OpenProcess(SYNCHRONIZE, False, _LAUNCH_PPID)
+        if not parent:
+            return  # can't watch; rely on the shell's graceful kill
+
+        def watch():
+            while True:
+                if kernel32.WaitForSingleObject(parent, 2000) != WAIT_TIMEOUT:
+                    os._exit(0)  # parent closed/gone
+
+        threading.Thread(target=watch, daemon=True).start()
+        return
 
     def watch():
         while True:
             time.sleep(2)
-            # Reparented (ppid changed) or the parent died -> we are orphaned.
-            if os.getppid() != original_ppid:
+            # Reparented (ppid changed from the launcher) -> parent died.
+            if os.getppid() != _LAUNCH_PPID:
                 os._exit(0)
 
     threading.Thread(target=watch, daemon=True).start()
