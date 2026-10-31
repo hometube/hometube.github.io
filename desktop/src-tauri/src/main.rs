@@ -1,12 +1,12 @@
 // HomeTube desktop shell.
 //
-// Owns the backend process: spawns the FastAPI server on launch, captures
+// Owns the backend process: spawns the Bun/Hono server on launch, captures
 // its logs, exposes status/logs/start/stop to the UI, and guarantees the
 // child dies with the app. The sidecar is resolved from (in order):
-//   HOMETUBE_SERVER  - packaged server binary (PyInstaller, later)
-//   <bundle>         - sidecar inside the app bundle (Contents/Resources)
-//   HOMETUBE_BACKEND - explicit backend directory containing main.py
-//   <repo>/backend   - dev checkout, preferring the venv python
+//   HOMETUBE_SERVER     - packaged server binary (bun build --compile)
+//   HOMETUBE_SERVER_DIR - explicit server directory containing src/index.ts
+//   <repo>/server       - dev checkout, run with bun from PATH or ~/.bun
+//   <bundle>            - sidecar inside the app bundle (Contents/Resources)
 //
 // Port handling: if a HomeTube server already answers on the preferred port
 // it is adopted (shown as "external", not killed); if some other process
@@ -196,19 +196,40 @@ fn pump(state: ServerState, reader: impl Read + Send + 'static) {
     });
 }
 
-fn backend_dir() -> Option<PathBuf> {
-    if let Ok(dir) = env::var("HOMETUBE_BACKEND") {
+fn server_dir() -> Option<PathBuf> {
+    if let Ok(dir) = env::var("HOMETUBE_SERVER_DIR") {
         let p = PathBuf::from(dir);
-        if p.join("main.py").exists() {
+        if p.join("src").join("index.ts").exists() {
             return Some(p);
         }
     }
-    // Dev checkout: <repo>/desktop/src-tauri -> ../../backend
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../backend");
-    if dev.join("main.py").exists() {
+    // Dev checkout: <repo>/desktop/src-tauri -> ../../server
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../server");
+    if dev.join("src").join("index.ts").exists() {
         return Some(dev.canonicalize().unwrap_or(dev));
     }
     None
+}
+
+/// Locate bun for running the dev source checkout: PATH, then ~/.bun/bin;
+/// falls back to a bare "bun" so the spawn error names it.
+fn bun_exe() -> PathBuf {
+    let name = if cfg!(windows) { "bun.exe" } else { "bun" };
+    if let Ok(path) = env::var("PATH") {
+        for dir in env::split_paths(&path) {
+            let cand = dir.join(name);
+            if cand.exists() {
+                return cand;
+            }
+        }
+    }
+    if let Ok(home) = env::var("HOME").or_else(|_| env::var("USERPROFILE")) {
+        let cand = PathBuf::from(home).join(".bun").join("bin").join(name);
+        if cand.exists() {
+            return cand;
+        }
+    }
+    PathBuf::from(name)
 }
 
 /// Resolve the sidecar launch spec: (executable, args, working-dir). Order:
@@ -216,7 +237,7 @@ fn backend_dir() -> Option<PathBuf> {
 /// the bundled copy so `tauri dev` runs code from the repo), then the sidecar
 /// bundled in the app (which is the only candidate on a user machine).
 /// Packaged binaries run with cwd = their own folder; a source checkout must
-/// run with cwd=backend so `import main`/siblings work.
+/// run with cwd=server so relative imports and node_modules resolve.
 fn resolve_sidecar(state: &ServerState) -> Result<(PathBuf, Vec<String>, Option<PathBuf>), String> {
     if let Ok(bin) = env::var("HOMETUBE_SERVER") {
         let p = PathBuf::from(&bin);
@@ -226,9 +247,8 @@ fn resolve_sidecar(state: &ServerState) -> Result<(PathBuf, Vec<String>, Option<
         let cwd = p.parent().map(|d| d.to_path_buf());
         return Ok((p, vec![], cwd));
     }
-    if let Some(backend) = backend_dir() {
-        let (exe, args) = python_for(&backend);
-        return Ok((exe, args, Some(backend)));
+    if let Some(dir) = server_dir() {
+        return Ok((bun_exe(), vec!["src/index.ts".into()], Some(dir)));
     }
     if let Some(p) = state.bundled.lock().unwrap().clone() {
         if p.exists() {
@@ -238,32 +258,16 @@ fn resolve_sidecar(state: &ServerState) -> Result<(PathBuf, Vec<String>, Option<
         }
     }
     Err(String::from(
-        "HomeTube backend not found (set HOMETUBE_SERVER to a packaged binary, or HOMETUBE_BACKEND to the directory containing main.py)"))
+        "HomeTube server not found (set HOMETUBE_SERVER to a packaged binary, or HOMETUBE_SERVER_DIR to the directory containing src/index.ts)"))
 }
 
-/// (executable, args) for running main.py from a source checkout, preferring
-/// its venv python.
-fn python_for(backend: &PathBuf) -> (PathBuf, Vec<String>) {
-    let venv_python = if cfg!(windows) {
-        backend.join(".venv").join("Scripts").join("python.exe")
-    } else {
-        backend.join(".venv").join("bin").join("python")
-    };
-    let exe = if venv_python.exists() {
-        venv_python
-    } else {
-        PathBuf::from(if cfg!(windows) { "python" } else { "python3" })
-    };
-    (exe, vec!["main.py".into()])
-}
-
-/// Whether any sidecar (explicit binary, source backend, or bundled copy)
+/// Whether any sidecar (explicit binary, source server, or bundled copy)
 /// can launch.
 fn sidecar_available(state: &ServerState) -> bool {
     match env::var("HOMETUBE_SERVER") {
         Ok(bin) => PathBuf::from(bin).exists(),
         Err(_) => {
-            backend_dir().is_some()
+            server_dir().is_some()
                 || state
                     .bundled
                     .lock()
@@ -290,8 +294,9 @@ fn ensure_executable(path: &Path) {
 #[cfg(windows)]
 fn ensure_executable(_path: &Path) {}
 
-/// Locate the sidecar inside the app bundle: Resources/hometube-server/ on
-/// macOS, next to the executable's resources elsewhere.
+/// Locate the sidecar inside the app bundle: Resources/hometube-server/ holds
+/// the bun-compiled binary (server/dist maps there), as
+/// hometube-server(.exe).
 fn bundled_sidecar(app: &tauri::AppHandle) -> Option<PathBuf> {
     let exe = if cfg!(windows) {
         "hometube-server/hometube-server.exe"

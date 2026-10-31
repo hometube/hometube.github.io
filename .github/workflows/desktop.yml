@@ -1,10 +1,11 @@
 name: Desktop builds
 
-# Builds HomeTube.app / installer with the frozen backend sidecar embedded.
-# Triggered by `desktop-v*` tags (publishes a GitHub Release) or manually.
-# Updater signing artifacts (M4): once TAURI_SIGNING_PRIVATE_KEY exists as a
-# repo secret, add `--config '{\"bundle\":{\"createUpdaterArtifacts\":true}}'`
-# to the tauri build step.
+# Builds HomeTube.app / installer with the Bun-compiled server sidecar
+# embedded. Triggered by `desktop-v*` tags (publishes a GitHub Release) or
+# manually. Updater signing artifacts (M4): once TAURI_SIGNING_PRIVATE_KEY
+# exists as a repo secret, add
+# `--config '{\"bundle\":{\"createUpdaterArtifacts\":true}}'` to the tauri
+# build step.
 on:
   push:
     tags: ["desktop-v*"]
@@ -33,9 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: oven-sh/setup-bun@v2
         with:
-          python-version: "3.12"
+          bun-version: "1.1.15"
 
       - uses: actions/setup-node@v4
         with:
@@ -47,11 +48,12 @@ jobs:
         with:
           workspaces: desktop/src-tauri
 
-      - name: Install build deps (PyInstaller included)
-        run: python -m pip install -r backend/requirements.txt pyinstaller
+      - name: Install server dependencies
+        working-directory: server
+        run: bun install
 
-      - name: Build frozen sidecar
-        run: python backend/cli.py build-server
+      - name: Build sidecar (bun compile)
+        run: bun server/src/cli.ts build-server
 
       - name: Build desktop app
         working-directory: desktop

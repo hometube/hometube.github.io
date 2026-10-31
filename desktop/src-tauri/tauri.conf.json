@@ -27,7 +27,7 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "../../backend/dist/hometube-server": "hometube-server"
+      "../../server/dist": "hometube-server"
     },
     "icon": [
       "icons/32x32.png",
