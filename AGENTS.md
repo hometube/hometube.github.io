@@ -168,12 +168,16 @@ npm run build      # Production build
 cd desktop
 npm install
 npm run tauri dev    # Dev: starts Vite + the app window; shell auto-starts the backend
-npm run tauri build  # Production bundle (needs bundle icons — M1)
+cd ../backend && ht build-server   # frozen sidecar (PyInstaller onedir -> backend/dist/)
+cd ../desktop && npm run tauri build  # production bundle (embeds the sidecar; build it first)
 ```
 The Rust shell (`desktop/src-tauri`) spawns the backend as a child process, tails its
-logs, and kills it on app exit. Sidecar resolution order: `HOMETUBE_SERVER` (packaged
-binary) → `HOMETUBE_BACKEND` (backend dir) → dev checkout `../../backend` (prefers its
-`.venv`). Port: `HOMETUBE_PORT` (default 8000). See `docs/tauri-desktop-plan.md`.
+logs, and kills it on app exit. Sidecar resolution order: `HOMETUBE_SERVER` (explicit
+binary) → dev checkout `../../backend` or `HOMETUBE_BACKEND` (prefers its `.venv`) →
+the sidecar bundled under the app's resources (`Resources/hometube-server/`).
+`tauri.conf.json` bundles `backend/dist/hometube-server/` as a resource, so
+`ht build-server` must succeed before `tauri build`. Port: `HOMETUBE_PORT`
+(default 8000). See `docs/tauri-desktop-plan.md`.
 
 ## Running as a systemd service (Linux)
 

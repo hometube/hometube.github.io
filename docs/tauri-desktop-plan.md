@@ -239,8 +239,11 @@ Progress: M0 complete (auth switch + scaffold, verified end-to-end). M1 mostly l
 QR pairing screen, port fallback + external-server adoption, disk logs (rolling,
 path in UI), single-instance + dock reopen, data-folder onboarding (shared
 config.json with CLI, live restart on change, adopt-existing via folder picker),
-tray + close-to-hide. Remaining M1: PyInstaller sidecar packaging (yt-dlp frozen
-fix, bundled ffmpeg/node) + Settings polish.
+tray + close-to-hide. Sidecar packaging landed: `ht build-server` builds a PyInstaller
+onedir bundle (`hometube-server.spec`), all yt-dlp access moved to its Python API so
+extraction/downloads work frozen, and the bundle is copied into the app as a Tauri
+resource with the shell resolving sidecar → env override → dev checkout → bundled.
+Remaining M1: bundled ffmpeg/node detection, Settings polish.
 
 - **M0 — De-risk (spike)** — ngrok purge PR (code, `requirements.txt`, `run-dev.sh`,
   `cli.py` prompts) and `verify_token`/`exchange` switched to pairing-only enforcement
