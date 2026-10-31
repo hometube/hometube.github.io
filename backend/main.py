@@ -493,6 +493,41 @@ def delete_subscription(sub_id: int, token_valid: bool = Depends(verify_token), 
     db.commit()
     return {"ok": True}
 
+@app.get("/api/subscriptions")
+def list_subscriptions(user_id: int = None, kind: str = None, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
+    """List all subscriptions (video channels and podcast feeds) with counts."""
+    q = db.query(models.Subscription)
+    if user_id:
+        q = q.filter(models.Subscription.user_id == user_id)
+    if kind:
+        q = q.filter(models.Subscription.kind == kind)
+    result = []
+    for sub in q.order_by(models.Subscription.kind, models.Subscription.created_at.desc()).all():
+        channel = db.query(models.Channel).filter(models.Channel.id == sub.channel_id).first()
+        if sub.kind == "podcast":
+            episodes = db.query(models.Music).filter(
+                models.Music.kind == "podcast",
+                models.Music.channel_id == sub.channel_id
+            ).all()
+            item_count, downloaded = len(episodes), sum(1 for e in episodes if e.downloaded)
+        else:
+            vids = db.query(models.Video).filter(models.Video.channel_id == sub.channel_id).all()
+            item_count, downloaded = len(vids), sum(1 for v in vids if v.filename)
+        result.append({
+            "subscription_id": sub.id,
+            "channel_id": sub.channel_id,
+            "channel_name": channel.name if channel else "?",
+            "channel_url": channel.url if channel else "",
+            "kind": sub.kind or "video",
+            "user_id": sub.user_id,
+            "criteria": sub.criteria or {},
+            "item_count": item_count,
+            "downloaded_count": downloaded,
+            "last_checked": sub.last_checked.isoformat() if sub.last_checked else None,
+            "created_at": sub.created_at.isoformat() if sub.created_at else None,
+        })
+    return result
+
 # Videos
 @app.post("/api/videos/add")
 def add_video(data: VideoAdd, token_valid: bool = Depends(verify_token), db: Session = Depends(get_db)):
