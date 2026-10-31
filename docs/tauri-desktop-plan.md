@@ -245,7 +245,10 @@ extraction/downloads work frozen, and the bundle is copied into the app as a Tau
 resource with the shell resolving sidecar → env override → dev checkout → bundled.
 ffmpeg/JS-runtime are detected (PATH widened for GUI launches, reported via
 /api/status tools, shown on the Server card) rather than bundled; decide whether to
-bundle binaries at M4. Remaining M1: Settings polish.
+bundle binaries at M4. M2 landed both sides: mobile QR scan + hometube://pair deep
+link (849ca3b), desktop Mobile-app card linking the release APK (935e61d), plus a
+macOS/Windows CI matrix publishing desktop-v* tag releases (d35b1f2).
+Remaining M1: Settings polish.
 
 - **M0 — De-risk (spike)** — ngrok purge PR (code, `requirements.txt`, `run-dev.sh`,
   `cli.py` prompts) and `verify_token`/`exchange` switched to pairing-only enforcement
@@ -263,15 +266,17 @@ bundle binaries at M4. Remaining M1: Settings polish.
 - **M4 — Release engineering** — free signing path (ad-hoc macOS signing + updater keypair,
   first-launch bypass docs), full CI matrix, first public release
   (v0.1 desktop), delete `frontend/` PWA, retarget Pages to docs-only (§8).
-- **M5 — (Gated, §D2) Node backend migration** — only if trigger conditions are met:
-  Fastify mirror of the API, `better-sqlite3` on the same file, standalone yt-dlp, sidecar
-  swap behind the identical lifecycle contract.
+- **M5 — (CLOSED, rejected 2026-10-30, §D2) Node backend migration** — decided against: paid
+  code-signing certs are off the table permanently, the port cost (API + CLI + `.ht` format +
+  mutagen-quality audio tagging) outweighs the packaging benefit, and Windows targets are
+  new users who are indifferent to the tradeoff. Python sidecar is final; Windows ships as
+  experimental (CI-built, unsigned NSIS). Old versions remain runnable via git if ever needed.
 
 ## 11. Risks & mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Windows Defender flags PyInstaller sidecar | onedir + authenticode signing; keep Option B (Bun/pkg) warm — it's the escape hatch by design |
+| Windows Defender flags PyInstaller sidecar | Accepted risk: Windows is experimental-only and signing certs are out of scope by decision (M5 closed). If it proves unusable, document the SmartScreen/Defender exclusions rather than port |
 | macOS blocks nested binaries (unsigned app) | Ad-hoc-sign every nested binary (mandatory on Apple Silicon, free); document one-time quarantine bypass; verify on a clean machine before release |
 | YouTube extractor rot strands users between app releases | standalone yt-dlp binary, "update yt-dlp" button, auto-update check on app launch |
 | Enforced pairing-only auth breaks existing manual-URL mobile setups | Pairing token is shown as text for manual redemption via the existing `exchangeToken` flow; mobile and desktop ship together in M2; docs site explains re-pairing |
