@@ -11,8 +11,9 @@
 // it is adopted (shown as "external", not killed); if some other process
 // holds it, the next free port is used.
 use serde::Serialize;
+use serde_json::json;
 use std::env;
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -65,6 +66,83 @@ fn preferred_port() -> u16 {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(DEFAULT_PORT)
+}
+
+// Storage: the shared config at ~/.config/hometube/config.json is the
+// single source of truth for data_dir (same as paths.py / ht init), so the
+// desktop app, the CLI, and a systemd server all agree.
+
+fn home_dir() -> Option<PathBuf> {
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+fn config_file() -> Option<PathBuf> {
+    home_dir().map(|h| h.join(".config").join("hometube").join("config.json"))
+}
+
+fn read_config() -> serde_json::Map<String, serde_json::Value> {
+    config_file()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+#[derive(Serialize)]
+struct StorageInfo {
+    configured: bool,
+    config_path: String,
+    data_dir: Option<String>,
+    suggested_dir: String,
+    db_exists: bool,
+}
+
+fn storage_info_of() -> StorageInfo {
+    let config_path = config_file()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let data_dir = read_config()
+        .get("data_dir")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let db_exists = data_dir
+        .as_ref()
+        .map(|d| PathBuf::from(d).join("db.sqlite").exists())
+        .unwrap_or(false);
+    let suggested_dir = home_dir()
+        .map(|h| h.join("HomeTube").display().to_string())
+        .unwrap_or_else(|| "HomeTube".into());
+    StorageInfo {
+        configured: data_dir.is_some(),
+        config_path,
+        suggested_dir,
+        db_exists,
+        data_dir,
+    }
+}
+
+fn write_data_dir(dir: &str) -> Result<(), String> {
+    let root = PathBuf::from(dir);
+    fs::create_dir_all(root.join("downloads").join("videos"))
+        .map_err(|e| format!("cannot create {dir}: {e}"))?;
+    fs::create_dir_all(root.join("downloads").join("music"))
+        .map_err(|e| format!("cannot create {dir}: {e}"))?;
+    let cfg_file = config_file().ok_or("no home directory")?;
+    cfg_file
+        .parent()
+        .map(|p| fs::create_dir_all(p))
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    let mut cfg = read_config();
+    cfg.insert("data_dir".into(), json!(dir));
+    let text = serde_json::to_string_pretty(&serde_json::Value::Object(cfg)).unwrap();
+    let tmp = cfg_file.with_extension("json.tmp");
+    fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &cfg_file).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn log(state: &ServerState, line: impl Into<String>) {
@@ -191,14 +269,25 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
     )?;
     let (exe, args) = sidecar_command(&backend);
     let port = state.port.load(Ordering::SeqCst);
+    // paths.py reads the same config.json, but pass DATA_DIR explicitly:
+    // it beats a relative "data" resolved against the sidecar's cwd.
+    let data_dir = read_config()
+        .get("data_dir")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
 
-    let mut child = Command::new(&exe)
-        .current_dir(&backend)
+    let mut cmd = Command::new(&exe);
+    cmd.current_dir(&backend)
         .args(&args)
         .env("PORT", port.to_string())
         // The backend exits itself if this shell dies (covers hard kills;
         // ExitRequested below covers clean shutdowns).
-        .env("HOMETUBE_WATCH_PARENT", "1")
+        .env("HOMETUBE_WATCH_PARENT", "1");
+    if let Some(dir) = &data_dir {
+        cmd.env("DATA_DIR", dir);
+    }
+    let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -206,7 +295,12 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
 
     log(
         state,
-        format!("[desktop] spawned backend on :{port}: {} {:?}", exe.display(), args),
+        format!(
+            "[desktop] spawned backend on :{port} (data: {}): {} {:?}",
+            data_dir.as_deref().unwrap_or("default"),
+            exe.display(),
+            args
+        ),
     );
     if let Some(stdout) = child.stdout.take() {
         pump(state.clone(), stdout);
@@ -307,15 +401,45 @@ fn server_stop(state: State<ServerState>) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn storage_info() -> StorageInfo {
+    storage_info_of()
+}
+
+/// Point the library at a new folder and restart the server so it picks it
+/// up. The adopted (external) server is not ours to restart.
+#[tauri::command]
+fn set_data_dir(state: State<ServerState>, dir: String) -> Result<StorageInfo, String> {
+    write_data_dir(&dir)?;
+    log(&state, format!("[desktop] data dir set to {dir}"));
+    let child_running = state.child.lock().unwrap().is_some();
+    if child_running {
+        kill_server(&state);
+        // Reuse the current port: it was chosen for this child and just
+        // died with it, so resolve_port could only wander (or wrongly
+        // adopt some other instance).
+        spawn_server(&state)?;
+    } else if state.adopted.load(Ordering::SeqCst) {
+        log(
+            &state,
+            "[desktop] external server keeps its previous data dir until restarted",
+        );
+    }
+    Ok(storage_info_of())
+}
+
 fn main() {
     let state = ServerState::default();
     let setup_state = state.clone();
 
     tauri::Builder::default()
+        // Folder picker for the storage onboarding (dialog:default capability).
+        .plugin(tauri_plugin_dialog::init())
         // One shell = one server. A second launch focuses this window; a
         // duplicate uvicorn would only fight over the port and SQLite.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
@@ -326,14 +450,50 @@ fn main() {
             server_logs,
             server_log_path,
             server_start,
-            server_stop
+            server_stop,
+            storage_info,
+            set_data_dir
         ])
+        .on_window_event(|window, event| {
+            // Closing the window keeps the server running; the tray (or
+            // dock Reopen) brings it back, Quit stops everything.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(move |app| {
             // Persist logs under the platform app-log dir (~/Library/Logs on
             // macOS, %APPDATA%/…/logs on Windows, ~/.local/share/… on Linux).
             if let Ok(dir) = app.path().app_log_dir() {
                 open_log(&setup_state, &dir);
             }
+            // Tray: Open restores the window, Quit ends the app (which
+            // kills the server via ExitRequested).
+            let open_item = tauri::menu::MenuItem::with_id(app, "open", "Open HomeTube", true, None::<&str>)?;
+            let quit_item = tauri::menu::MenuItem::with_id(app, "quit", "Quit HomeTube", true, None::<&str>)?;
+            let tray_menu = tauri::menu::Menu::with_items(app, &[&open_item, &quit_item])?;
+            tauri::tray::TrayIconBuilder::with_id("main-tray")
+                .tooltip("HomeTube")
+                .icon(
+                    app.default_window_icon()
+                        .cloned()
+                        .ok_or("no bundled window icon")?,
+                )
+                .menu(&tray_menu)
+                .show_menu_on_left_click(true)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
             // Auto-start (or adopt) the backend; the UI polls server_status.
             let (port, adopted) = resolve_port(preferred_port()).unwrap_or_else(|e| {
                 eprintln!("[desktop] {e}");
@@ -350,7 +510,6 @@ fn main() {
                 eprintln!("[desktop] {e}");
                 log(&setup_state, format!("[desktop] {e}"));
             }
-            let _ = app;
             Ok(())
         })
         .build(tauri::generate_context!())
