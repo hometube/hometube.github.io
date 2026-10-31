@@ -9,6 +9,7 @@ export const state = reactive({
   users: [],
   currentUserId: null,
   openPlaylistId: null,
+  queueOpen: false,
   view: localStorage.getItem("hometube.view") || "home",
 });
 

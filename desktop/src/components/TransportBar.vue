@@ -1,10 +1,9 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import {
   currentTrack,
   cycleRepeat,
   fmtTime,
-  jumpInOrder,
   next,
   player,
   prev,
@@ -13,12 +12,9 @@ import {
   toggle,
   toggleShuffle,
 } from "../player";
+import { state } from "../store";
 
-const showQueue = ref(false);
 const track = computed(() => currentTrack());
-const ordered = computed(() =>
-  player.order.map((qi, pos) => ({ track: player.queue[qi], pos }))
-);
 
 function onSeek(e) {
   seek(Number(e.target.value));
@@ -97,15 +93,17 @@ function onSeek(e) {
 
     <div class="right">
       <button
-        class="icon-btn"
-        :class="{ on: showQueue }"
-        title="Queue"
-        @click="showQueue = !showQueue"
+        class="queue-btn"
+        :class="{ on: state.queueOpen }"
+        title="Show the play queue"
+        @click="state.queueOpen = !state.queueOpen"
       >
-        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"
           ><path
             d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zm12-6v6l4.5-3L15 10z"
           /></svg>
+        <span>Queue</span>
+        <span class="count">{{ player.order.length }}</span>
       </button>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--muted)" class="vol-icon"
         ><path d="M3 9v6h4l5 5V4L7 9H3z" /></svg
@@ -120,20 +118,6 @@ function onSeek(e) {
         title="Volume"
         @input="setVolume(Number($event.target.value))"
       />
-    </div>
-
-    <div v-if="showQueue" class="queue">
-      <h3>Queue</h3>
-      <div
-        v-for="{ track: t, pos } in ordered"
-        :key="pos"
-        class="q-row"
-        :class="{ current: pos === player.orderPos }"
-        @click="jumpInOrder(pos)"
-      >
-        <span class="q-title">{{ t.title || "Untitled" }}</span>
-        <span class="q-artist">{{ t.artist || "" }}</span>
-      </div>
     </div>
   </footer>
 </template>
@@ -189,19 +173,16 @@ input[type="range"] {
 }
 .right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .vol { width: 84px; flex: none; }
-.queue {
-  position: absolute; bottom: calc(100% + 6px); right: 14px; width: 320px;
-  max-height: 380px; overflow-y: auto;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-  padding: 12px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+button.queue-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: var(--inset); border: 1px solid var(--border); border-radius: 999px;
+  color: var(--muted); font-size: 12px; font-weight: 550;
 }
-.queue h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-.q-row {
-  display: flex; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer;
-  align-items: baseline; min-width: 0;
+button.queue-btn:hover { color: var(--text); background: var(--inset); filter: none; }
+button.queue-btn.on { color: var(--accent); border-color: var(--accent); }
+.count {
+  background: var(--panel); border-radius: 999px; padding: 0 7px;
+  font-size: 11px; font-variant-numeric: tabular-nums;
 }
-.q-row:hover { background: var(--inset); }
-.q-row.current .q-title { color: var(--accent); }
-.q-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; max-width: 170px; }
-.q-artist { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.queue-btn.on .count { background: rgba(224, 85, 155, 0.18); }
 </style>

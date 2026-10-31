@@ -60,6 +60,29 @@ export function jumpInOrder(pos) {
   loadCurrent(true);
 }
 
+// Remove one entry from the play order (the queue view's ×). Removing the
+// current entry advances to whatever is next, like skipping.
+export function removeFromOrder(pos) {
+  if (pos < 0 || pos >= player.order.length) return;
+  const isCurrent = pos === player.orderPos;
+  player.order.splice(pos, 1);
+  if (isCurrent) {
+    if (!player.order.length) {
+      player.orderPos = -1;
+      audio.pause();
+      audio.removeAttribute("src");
+      player.playing = false;
+      player.loading = false;
+      player.queue = [];
+      return;
+    }
+    player.orderPos = Math.min(player.orderPos, player.order.length - 1);
+    loadCurrent(true);
+  } else if (pos < player.orderPos) {
+    player.orderPos--;
+  }
+}
+
 export function next(auto = false) {
   if (!player.order.length) return;
   if (auto && player.repeat === "one") {
