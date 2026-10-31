@@ -1,0 +1,96 @@
+name: Desktop builds
+
+# Builds HomeTube.app / installer with the frozen backend sidecar embedded.
+# Triggered by `desktop-v*` tags (publishes a GitHub Release) or manually.
+# Updater signing artifacts (M4): once TAURI_SIGNING_PRIVATE_KEY exists as a
+# repo secret, add `--config '{\"bundle\":{\"createUpdaterArtifacts\":true}}'`
+# to the tauri build step.
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            bundles: app
+            artifact: macos
+          - os: windows-latest
+            bundles: nsis
+            artifact: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install build deps (PyInstaller included)
+        run: python -m pip install -r backend/requirements.txt pyinstaller
+
+      - name: Build frozen sidecar
+        run: python backend/cli.py build-server
+
+      - name: Build desktop app
+        working-directory: desktop
+        run: |
+          npm ci
+          npm run tauri build -- --bundles ${{ matrix.bundles }}
+
+      - name: Zip the .app (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd desktop/src-tauri/target/release/bundle/macos
+          ditto -c -k --sequesterRsrc HomeTube.app "$GITHUB_WORKSPACE/HomeTube-macos.zip"
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: hometube-desktop-${{ matrix.artifact }}
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            HomeTube-macos.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hometube-desktop-*
+          merge-multiple: true
+          path: bundles
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --verify-tag --title "HomeTube desktop $TAG" \
+            --generate-notes || true
+          shopt -s nullglob
+          gh release upload "$TAG" bundles/*.zip bundles/*.exe --clobber
