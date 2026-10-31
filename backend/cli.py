@@ -274,12 +274,6 @@ def cmd_init(args):
     if username:
         config["active_user"] = username
 
-    print("\nMode:")
-    print("  1) HTTP (local server)")
-    print("  2) ngrok (public tunnel)")
-    mode_choice = input("Choice [1]: ").strip() or "1"
-    config["mode"] = {"1": "http", "2": "ngrok"}.get(mode_choice, "http")
-
     save_config(config)
 
     if username:
@@ -1410,6 +1404,23 @@ def get_local_ip():
         return None
 
 
+def cmd_pair(args):
+    """Mint a single-use pairing token for connecting a device."""
+    db = get_db()
+    try:
+        from services.pairing import issue, lan_ip
+        token, ttl = issue(db, ttl=args.ttl)
+        ip = lan_ip()
+        print("Pairing token (single use)")
+        print(f"  URL:   http://{ip}:{args.port}")
+        print(f"  Token: {token}")
+        print()
+        print("Enter in the mobile app's backend URL screen:")
+        print(f"  http://{ip}:{args.port}?token={token}")
+    finally:
+        db.close()
+
+
 def cmd_serve(args):
     """Start the HomeTube server."""
     import uvicorn
@@ -1764,6 +1775,11 @@ def main():
     serve_p.add_argument("--host", default="0.0.0.0", help="Host to bind (default: 0.0.0.0)")
     serve_p.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
     serve_p.add_argument("--log-level", choices=["debug", "info", "warning", "error", "critical"], default="info", help="Log level (default: info)")
+
+    pair_p = sub.add_parser("pair", help="Mint a one-time pairing token for connecting a device")
+    pair_p.add_argument("--port", type=int, default=8000, help="Server port shown to the device (default: 8000)")
+    pair_p.add_argument("--ttl", type=int, default=600, help="Token lifetime in seconds (default: 600)")
+    pair_p.set_defaults(func=cmd_pair)
 
     mobile_p = sub.add_parser("mobile", help="Build / release / deploy the Android app")
     mobile_p.add_argument("--build", action="store_true", help="Build the APK (expo prebuild + gradle assemble)")

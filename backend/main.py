@@ -15,23 +15,19 @@ import io
 import json
 import time
 from contextlib import asynccontextmanager
-import sys
-import urllib.parse
 import jwt
 from datetime import datetime, timedelta
 
 from database import engine, get_db, Base, ensure_schema
 import models
-from services import ytdlp, scheduler, downloader
+from services import ytdlp, scheduler, downloader, pairing
 from paths import downloads_dir
 
 VIDEOS_DIR = os.path.join(downloads_dir(), "videos")
 MUSIC_DIR = os.path.join(downloads_dir(), "music")
 
 
-# Global variable to store the current ngrok token for display
-current_ngrok_token = None
-current_ngrok_url = None
+# Global JWT signing secret cache (persisted in the settings table)
 jwt_secret = None
 
 
@@ -261,103 +257,43 @@ ensure_schema()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize JWT secret and persistent ngrok token
+    # Initialize JWT secret and mint a startup pairing token so a phone can
+    # be paired straight from the terminal banner.
     from sqlalchemy.orm import sessionmaker
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
+    startup_token = None
     try:
         get_jwt_secret(db)
-
-        # Load or create persistent ngrok token (only in dev mode)
-        if len(sys.argv) > 1 and sys.argv[1] == "--dev":
-            global current_ngrok_token
-            token_setting = db.query(models.Setting).filter(models.Setting.key == "ngrok_token").first()
-            if token_setting:
-                current_ngrok_token = token_setting.value
-            else:
-                current_ngrok_token = secrets.token_urlsafe(32)
-                token_setting = models.Setting(key="ngrok_token", value=current_ngrok_token)
-                db.add(token_setting)
-                db.commit()
+        startup_token, startup_ttl = pairing.issue(db, ttl=600)
     finally:
         db.close()
 
     # Start background subscription checker
     asyncio.create_task(scheduler.check_subscriptions())
 
-    # If running locally (not in production), set up ngrok tunnel
-    # Check if we're likely in a development environment
-    if len(sys.argv) > 1 and sys.argv[1] == "--dev":
-        try:
-            from pyngrok import ngrok, conf
-
-            # Get the port from environment or default to 8000
-            port = int(os.environ.get("PORT", 8000))
-
-            # Set auth token if available (optional for basic use)
-            # ngrok.set_auth_token(os.environ.get("NGROK_AUTH_TOKEN", ""))
-
-            # Open a ngrok tunnel to the HTTP port
-            http_tunnel = ngrok.connect(port, "http")
-            global current_ngrok_url
-            current_ngrok_url = http_tunnel.public_url
-
-            backend_param = f"{current_ngrok_url}/api?token={current_ngrok_token}"
-            setup_url = f"https://hometube.github.io/setup?backend={urllib.parse.quote(backend_param, safe='')}"
-
-            print("\n" + "="*60)
-            print("🚀 HomeTube Development Server Ready!")
-            print("="*60)
-            print(f"Local API:     http://localhost:{port}")
-            print(f"Public URL:    {current_ngrok_url}")
-            print()
-            print("📱 Open this URL to connect from anywhere:")
-            print(f"   {setup_url}")
-            print()
-
-            try:
-                import qrcode
-                qr = qrcode.QRCode(border=1)
-                qr.add_data(setup_url)
-                qr.print_ascii(invert=True)
-            except ImportError:
-                print("   (install 'qrcode' package for a QR code)")
-
-            print("="*60)
-            print("Share the link above on any device to connect to")
-            print("your HomeTube backend via GitHub Pages.")
-            print("="*60 + "\n")
-        except ImportError:
-            print("⚠️  pyngrok not installed. Install with: pip install pyngrok")
-            print("   Running in local-only mode.")
-        except Exception as e:
-            print(f"⚠️  Failed to start ngrok tunnel: {e}")
-            print("   Running in local-only mode.")
-
-    else:
-        # Local-only mode: still print the setup URL
-        port = int(os.environ.get("PORT", 8000))
-        setup_url = f"https://hometube.github.io/setup?backend={urllib.parse.quote(f'http://localhost:{port}/api', safe='')}"
-
-        print("\n" + "="*60)
-        print("🚀 HomeTube Server Ready!")
-        print("="*60)
-        print(f"Local API:     http://localhost:{port}")
-        print()
-        print("📱 Local setup URL:")
-        print(f"   {setup_url}")
-        print()
-        print("="*60 + "\n")
+    port = int(os.environ.get("PORT", 8000))
+    lan = pairing.lan_ip()
+    print("\n" + "="*60)
+    print("🚀 HomeTube Server Ready!")
+    print("="*60)
+    print(f"Local API:     http://localhost:{port}")
+    print(f"Network:       http://{lan}:{port}")
+    print()
+    print(f"📱 One-time pairing token (valid {startup_ttl // 60} min):")
+    print(f"   {startup_token}")
+    print("   Enter it in the app's backend URL screen,")
+    print("   or run 'ht pair' to mint a fresh one.")
+    try:
+        import qrcode
+        qr = qrcode.QRCode(border=1)
+        qr.add_data(f"hometube://pair?url=http://{lan}:{port}&token={startup_token}")
+        qr.print_ascii(invert=True)
+    except ImportError:
+        pass
+    print("="*60 + "\n")
 
     yield
-
-    # Clean up ngrok tunnel on shutdown
-    if len(sys.argv) > 1 and sys.argv[1] == "--dev":
-        try:
-            from pyngrok import ngrok
-            ngrok.kill()
-        except:
-            pass
 
 app = FastAPI(lifespan=lifespan)
 
@@ -370,56 +306,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Force CORS headers on all responses (handles ngrok headers)
+# Force CORS headers on all responses
 @app.middleware("http")
 async def force_cors(request, call_next):
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, ngrok-skip-browser-warning"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
 
-# Status endpoint - check backend connectivity (accepts JWT or ngrok token)
+# Status endpoint - open for discovery so unpaired clients can find the
+# server and start pairing. Never leaks library data.
 @app.get("/api/status")
-def status(request: Request, db: Session = Depends(get_db)):
-    global current_ngrok_token
+def status():
+    return {"status": "ok", "version": "1.0", "pairing_required": True}
 
-    # If no ngrok token is set (production mode), always allow
-    if not current_ngrok_token:
-        return {"status": "ok", "version": "1.0"}
+# Pairing - mint a single-use token, only allowed from the host itself
+# (desktop shell / local tools). Redeemed at /api/auth/exchange.
+@app.post("/api/desktop/pair")
+def desktop_pair(request: Request, db: Session = Depends(get_db)):
+    if not pairing.is_local(request):
+        raise HTTPException(status_code=403, detail="Pairing tokens can only be minted on the host machine")
+    token, ttl = pairing.issue(db)
+    port = int(os.environ.get("PORT", 8000))
+    return {
+        "token": token,
+        "expires_in": ttl,
+        "url": f"http://{pairing.lan_ip()}:{port}",
+    }
 
-    # Get token from query params or Authorization header
-    token = request.query_params.get('token', '')
-    if not token and request.headers.get('authorization'):
-        auth = request.headers.get('authorization')
-        if auth.startswith('Bearer '):
-            token = auth[7:]
-
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing token")
-
-    # Try JWT validation first
-    try:
-        verify_jwt_token(token, db)
-        return {"status": "ok", "version": "1.0"}
-    except HTTPException:
-        pass
-
-    # Fall back to ngrok token validation
-    if token == current_ngrok_token:
-        return {"status": "ok", "version": "1.0"}
-
-    raise HTTPException(status_code=403, detail="Invalid token")
-
-# Token exchange endpoint - use temporary ngrok token to get a long-lived JWT
+# Token exchange endpoint - redeem a pairing token for a long-lived JWT
 @app.post("/api/auth/exchange")
 def exchange_token(data: dict, db: Session = Depends(get_db)):
-    global current_ngrok_token
-
-    # Validate the temporary ngrok token
-    token = data.get("token", "")
-    if not current_ngrok_token or token != current_ngrok_token:
-        raise HTTPException(status_code=403, detail="Invalid temporary token")
+    if not pairing.consume(db, data.get("token", "")):
+        raise HTTPException(status_code=403, detail="Invalid or expired pairing token")
 
     # Get or create a system user for the JWT
     user = db.query(models.User).filter(models.User.username == "system").first()
@@ -433,22 +353,17 @@ def exchange_token(data: dict, db: Session = Depends(get_db)):
     jwt_token = create_jwt_token(user.id, db)
     return {"token": jwt_token, "token_type": "bearer"}
 
-# Dependency to validate JWT token for protected endpoints
+# Dependency for protected endpoints. Requests from the host itself (desktop
+# shell, CLI tools, health probes) are always allowed; LAN clients need a JWT
+# obtained by redeeming a pairing token at /api/auth/exchange.
 async def verify_token(request: Request, db: Session = Depends(get_db)):
-    global current_ngrok_token
-
-    # If no ngrok token is set (production mode), allow all
-    if not current_ngrok_token:
+    if pairing.is_local(request):
         return True
 
-    # Get token from query params or Authorization header
-    token = None
-
-    # Check query parameters first
-    if request.query_params.get('token'):
-        token = request.query_params.get('token')
-    # Then check Authorization header
-    elif request.headers.get('authorization'):
+    # Accept token from query params (media URLs can't send headers) or the
+    # Authorization header.
+    token = request.query_params.get('token')
+    if not token and request.headers.get('authorization'):
         auth_header = request.headers.get('authorization')
         if auth_header.startswith('Bearer '):
             token = auth_header[7:]  # Remove 'Bearer ' prefix
@@ -456,18 +371,7 @@ async def verify_token(request: Request, db: Session = Depends(get_db)):
     if not token:
         raise HTTPException(status_code=401, detail="Missing token")
 
-    # Try JWT validation first
-    try:
-        payload = verify_jwt_token(token, db)
-        return payload
-    except HTTPException:
-        pass
-
-    # Fall back to ngrok token validation
-    if token == current_ngrok_token:
-        return True
-
-    raise HTTPException(status_code=403, detail="Invalid or missing token")
+    return verify_jwt_token(token, db)
 
 # Users
 @app.get("/api/users")
@@ -1516,5 +1420,4 @@ async def serve_spa(fullpath: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-    raise HTTPException(404)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), log_level="info")

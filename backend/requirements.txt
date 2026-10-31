@@ -6,6 +6,5 @@ yt-dlp[default]>=2025.11.12
 python-multipart>=0.0.6
 pydantic>=2.0.0
 mutagen>=1.47.0
-pyngrok>=6.0.0
 PyJWT>=2.8.0
 qrcode>=7.4.0

@@ -18,7 +18,6 @@ hometube/
 │   ├── cli.py                # CLI: install, init, login, download, export/import, songs, playlists, videos
 │   ├── cli.sh                # Helper script: manages venv and installs ht command
 │   ├── cli.ps1               # Windows PowerShell equivalent of cli.sh
-│   ├── run-dev.sh            # Dev runner with ngrok tunnel
 │   ├── import_music.py       # Import local music files (supports mp3, webm, flac, wav, m4a, ogg)
 │   ├── requirements.txt      # Python dependencies
 │   └── services/
@@ -107,7 +106,7 @@ hometube/
 ```bash
 cd backend
 pip install -r requirements.txt
-python main.py               # Run server (add --dev for ngrok tunnel)
+python main.py               # Run server (PORT env var overrides 8000)
 python import_music.py --folder /path --user-id 1  # Import local music
 ```
 
@@ -115,8 +114,9 @@ python import_music.py --folder /path --user-id 1  # Import local music
 ```bash
 cd backend
 python cli.py install         # Install `ht` command to ~/.local/bin
-ht init                       # Interactive setup (data dir, default user, mode)
+ht init                       # Interactive setup (data dir, default user)
 ht login <user>               # Switch active user (creates if not exists)
+ht pair                       # Mint a one-time pairing token for connecting a device
 ht download <url>             # Auto-detect video/music, download, store
 ht download <url> --playlist "name"  # Download music into specific playlist
 ht download <url> --type music       # Force music type
@@ -192,7 +192,7 @@ Notes:
 - All paths resolve from `data_dir` in `~/.config/hometube/config.json` (`ht init`) — point `User=` so `~` resolves to the right home, or override with `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars.
 - The scheduler + downloader use **threads inside the one process**, so don't run more than one systemd instance of `main.py` (SQLite + port conflict). One unit = the full server.
 - `install.sh`/`cli.sh` require `#!/bin/bash` (Debian/Ubuntu ships `/bin/bash`); Alpine/busybox boxes need `bash` installed. On Windows use `install.ps1`/`cli.ps1` instead.
-- If you need ngrok tunneling (mobile access from outside), run `main.py --dev` under the service instead — or keep the domain/reverse-proxy outside systemd.
+- Remote access beyond the LAN is out of scope: use a user-side reverse proxy or Tailscale (ngrok tunneling was removed).
 
 ## Running on Windows
 
@@ -250,8 +250,12 @@ npx tsc --noEmit   # TypeScript type check
 - `GET /api/users` - List all users
 - `POST /api/users` - Create user (body: name, image)
 
-### Auth
-- `POST /api/auth/exchange` - Exchange token for backend auth
+### Auth (LAN pairing)
+Requests from the host itself (127.0.0.1/::1) are always allowed; LAN clients need a JWT.
+- `POST /api/desktop/pair` - Mint a single-use pairing token (host-local only): `{token, expires_in, url}`
+- `POST /api/auth/exchange` - Redeem a pairing token for a long-lived JWT (body: `{token}`)
+- `ht pair` - CLI equivalent of `/api/desktop/pair` (works while the server runs; shares SQLite)
+- Protected endpoints accept the JWT as `Authorization: Bearer` header or `?token=` query param (media URLs can't send headers)
 
 ### Videos
 - `GET /api/videos?user_id=&filter=` - List videos (filter: all/my-feed/unwatched/keep)
