@@ -88,7 +88,7 @@ onUnmounted(() => clearInterval(timer));
         :class="{ active: user && u.id === user.id }"
         @click="setCurrentUser(u.id)"
       >
-        <FaceAvatar :name="u.username" :size="38" />
+        <FaceAvatar :name="u.username" :size="30" />
         <span>{{ u.username }}</span>
       </button>
       <button class="face-btn add" title="Add a face" @click="adding = !adding">
@@ -173,18 +173,18 @@ onUnmounted(() => clearInterval(timer));
 </template>
 
 <style scoped>
-.faces { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin: -4px 0 20px; }
+.faces { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin: -8px 0 14px; }
 .face-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  background: none; border: 0; padding: 2px 4px; cursor: pointer; color: var(--muted);
-  border-radius: 10px; font-size: 12px; width: 64px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted);
+  font-size: 11px; width: 48px;
 }
 .face-btn > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .face-btn.active { color: var(--text); }
-.face-btn.active :deep(.face) { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.face-btn.active :deep(.face) { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--accent); }
 .plus {
-  width: 38px; height: 38px; border-radius: 50%; display: inline-flex;
-  align-items: center; justify-content: center; font-size: 19px;
+  width: 30px; height: 30px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 16px;
   border: 1px dashed var(--border); color: var(--muted); background: none;
 }
 .add-music { margin-left: auto; align-self: center; flex: none; }
@@ -202,7 +202,7 @@ onUnmounted(() => clearInterval(timer));
   border-radius: 8px; color: var(--text); padding: 8px 12px; font-size: 14px; outline: none;
 }
 .row input:focus { border-color: var(--accent); }
-.shelf { margin-bottom: 26px; }
+.shelf { margin-bottom: 18px; }
 .rows { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .row-item {
   display: flex; align-items: center; gap: 14px; padding: 10px 14px;

@@ -113,6 +113,10 @@ export function toggle() {
   else audio.pause();
 }
 
+export function pauseMusic() {
+  if (!audio.paused) audio.pause();
+}
+
 export function seek(t) {
   if (!Number.isFinite(t)) return;
   audio.currentTime = t;
@@ -193,4 +197,15 @@ export function fmtTime(s) {
   s = Math.max(0, Math.floor(s));
   const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Hours-aware duration for videos/podcasts.
+export function fmtLong(s) {
+  if (!Number.isFinite(s) || s <= 0) return "";
+  s = Math.floor(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
+    : `${m}:${String(s % 60).padStart(2, "0")}`;
 }

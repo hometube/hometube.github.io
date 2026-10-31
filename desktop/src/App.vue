@@ -15,6 +15,8 @@ import { next, player, prev, toggle } from "./player";
 import WizardView from "./views/WizardView.vue";
 import HomeView from "./views/HomeView.vue";
 import PlaylistsView from "./views/PlaylistsView.vue";
+import VideosView from "./views/VideosView.vue";
+import PodcastsView from "./views/PodcastsView.vue";
 import DevicesView from "./views/DevicesView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import TransportBar from "./components/TransportBar.vue";
@@ -22,12 +24,16 @@ import TransportBar from "./components/TransportBar.vue";
 const NAV = [
   { id: "home", label: "Home" },
   { id: "playlists", label: "Playlists" },
+  { id: "videos", label: "Videos" },
+  { id: "podcasts", label: "Podcasts" },
   { id: "devices", label: "Devices" },
   { id: "settings", label: "Settings" },
 ];
 const VIEWS = {
   home: HomeView,
   playlists: PlaylistsView,
+  videos: VideosView,
+  podcasts: PodcastsView,
   devices: DevicesView,
   settings: SettingsView,
 };
@@ -169,5 +175,5 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .status-dot.ext { background: #e3b341; }
 .side-face { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .body { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-main { flex: 1; overflow-y: auto; padding: 22px 30px 26px; }
+main { flex: 1; overflow-y: auto; padding: 16px 30px 24px; }
 </style>
