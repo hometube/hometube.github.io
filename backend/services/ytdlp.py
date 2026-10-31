@@ -1,35 +1,52 @@
-import subprocess, json, os, re, sys
+import os
 from paths import downloads_dir
 
 import yt_dlp
 
 DL_DIR = downloads_dir()
 
-# Run yt-dlp as a module so no PATH/binary resolution is needed (works in
-# venvs on Windows, Linux, and macOS alike).
-YTDLP_CMD = [sys.executable, "-m", "yt_dlp"]
-
 # YouTube has been blocking the android_vr client (HTTP 403). Exclude it so
 # yt-dlp uses the JS-capable web/web_safari clients instead.
-YTDLP_YT_ARGS = ["--extractor-args", "youtube:player_client=default,-android_vr"]
+#
+# All yt-dlp access goes through its Python API: the old subprocess
+# `[sys.executable, "-m", "yt_dlp"]` breaks in the frozen (PyInstaller)
+# sidecar, where sys.executable is the app binary, not python.
+def _ytdlp_params(**extra):
+    params = {
+        "quiet": True,
+        "no_warnings": True,
+        "noprogress": True,
+        "extractor_args": {"youtube": ["player_client=default,-android_vr"]},
+    }
+    params.update(extra)
+    return params
 
-def run_ytdlp(args, capture=True, timeout=120):
-    cmd = YTDLP_CMD + ["--no-warnings"] + YTDLP_YT_ARGS + args
-    result = subprocess.run(cmd, capture_output=capture, text=True, timeout=timeout)
-    return result.stdout if capture else result
+
+def _entries_list(info):
+    """Materialize playlist entries (generators) into a JSON-safe list."""
+    entries = (info or {}).get("entries")
+    if entries is None or isinstance(entries, list):
+        return info
+    out = dict(info)
+    out["entries"] = [e for e in entries if e]
+    return out
+
 
 def get_video_info(url):
-    out = run_ytdlp(["--flat-playlist", "--dump-single-json", url])
     try:
-        return json.loads(out)
-    except:
+        with yt_dlp.YoutubeDL(_ytdlp_params(extract_flat=True)) as ydl:
+            return _entries_list(ydl.extract_info(url, download=False))
+    except Exception:
         return None
 
 def get_available_formats(url):
-    out = run_ytdlp(["-J", url])
     try:
-        data = json.loads(out)
-        formats = data.get("formats", [])
+        with yt_dlp.YoutubeDL(_ytdlp_params()) as ydl:
+            data = ydl.extract_info(url, download=False)
+    except Exception:
+        return []
+    try:
+        formats = (data or {}).get("formats", [])
         seen = set()
         result = []
         for f in formats:
@@ -50,22 +67,18 @@ def get_available_formats(url):
         return []
 
 def get_channel_videos(url):
-    out = run_ytdlp(["--flat-playlist", url])
-    videos = []
-    for line in out.strip().split("\n"):
-        if line:
-            try:
-                videos.append(json.loads(line))
-            except:
-                pass
-    return videos
+    try:
+        with yt_dlp.YoutubeDL(_ytdlp_params(extract_flat=True, ignoreerrors=True)) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception:
+        return []
+    entries = (info or {}).get("entries")
+    if not entries:
+        return []
+    return [e for e in entries if e]
 
 def get_music_info(url):
-    out = run_ytdlp(["--flat-playlist", "--dump-single-json", url])
-    try:
-        return json.loads(out)
-    except:
-        return None
+    return get_video_info(url)
 
 def _is_jpg(url):
     return url.split("?", 1)[0].lower().endswith((".jpg", ".jpeg"))
@@ -93,64 +106,13 @@ def pick_video_thumbnail(info):
 def _file_ready(path):
     return bool(path) and os.path.exists(path) and os.path.getsize(path) > 0
 
-def _ytdlp_error(result, url):
-    detail = ""
-    if result is not None:
-        lines = (result.stderr or result.stdout or "").strip().splitlines()
-        detail = lines[-1] if lines else ""
-    return f"yt-dlp download failed for {url}" + (f": {detail}" if detail else "")
-
 def download_video(url, video_id, quality="best"):
-    import glob
-    os.makedirs(f"{DL_DIR}/videos", exist_ok=True)
-    fmt = quality if quality != "best" else "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-    out = run_ytdlp(["--get-filename", "-o", "%(id)s.%(ext)s", "-f", fmt, url])
-    expected_name = out.strip()
-    cmd = YTDLP_CMD + YTDLP_YT_ARGS + ["-f", fmt, "-o", f"{DL_DIR}/videos/%(id)s.%(ext)s", url]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if expected_name:
-        base = expected_name.rsplit(".", 1)[0]
-        matches = [m for m in glob.glob(f"{DL_DIR}/videos/{base}.*") if _file_ready(m)]
-        if matches:
-            return matches[0].split("/")[-1]
-    if result.returncode != 0:
-        raise RuntimeError(_ytdlp_error(result, url))
-    raise RuntimeError(f"No video file produced for {url}")
+    # API-based implementation (frozen-safe); same contract: returns the
+    # stored filename.
+    return download_video_with_progress(url, video_id, quality)
 
 def download_music(url, music_id):
-    import glob
-    os.makedirs(f"{DL_DIR}/music", exist_ok=True)
-    out = run_ytdlp(["--get-filename", "-o", f"%(id)s.%(ext)s", url])
-    expected_name = out.strip()
-    # -x --audio-format mp3: opus/webm can't hold embedded cover art, and
-    # .opus serves badly as audio/mpeg. mp3 is embeddable and plays everywhere.
-    cmd = YTDLP_CMD + YTDLP_YT_ARGS + [
-        "-x",
-        "--audio-format", "mp3",
-        "--audio-quality", "0",
-        "--embed-thumbnail",
-        "--convert-thumbnails", "jpg",
-        "-o", f"{DL_DIR}/music/%(id)s.%(ext)s",
-        url,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if expected_name:
-        matches = [m for m in glob.glob(f"{DL_DIR}/music/{expected_name.split('.')[0]}.*") if _file_ready(m)]
-        if matches:
-            return matches[0].split("/")[-1]
-    if result.returncode != 0:
-        raise RuntimeError(_ytdlp_error(result, url))
-    raise RuntimeError(f"No audio file produced for {url}")
-
-def _ytdlp_params(**extra):
-    params = {
-        "quiet": True,
-        "no_warnings": True,
-        "noprogress": True,
-        "extractor_args": {"youtube": ["player_client=default,-android_vr"]},
-    }
-    params.update(extra)
-    return params
+    return download_music_with_progress(url, music_id)
 
 def _progress_hook(on_progress, kind):
     def hook(d):
