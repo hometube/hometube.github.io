@@ -10,6 +10,9 @@ const pairInfo = ref(null);
 const pairQr = ref("");
 const users = ref(null);
 const apiError = ref("");
+const subs = ref([]);
+const libStats = ref(null);
+const statsBusy = ref(false);
 const logPath = ref("");
 const storage = ref(null);
 const storageError = ref("");
@@ -85,6 +88,43 @@ async function refreshDownloads() {
   } catch {
     jobs.value = [];
   }
+}
+
+async function refreshSubs() {
+  if (!apiBase.value || !healthy.value) {
+    subs.value = [];
+    return;
+  }
+  try {
+    const res = await fetch(`${apiBase.value}/api/subscriptions`);
+    subs.value = res.ok ? await res.json() : [];
+  } catch {
+    subs.value = [];
+  }
+}
+
+// Heavier list endpoints (the library can hold hundreds of rows), so this
+// runs on demand rather than on a timer.
+async function refreshStats() {
+  if (!apiBase.value || !healthy.value || statsBusy.value) return;
+  statsBusy.value = true;
+  try {
+    const [v, m, p] = await Promise.all([
+      fetch(`${apiBase.value}/api/videos?filter=all`).then((r) => (r.ok ? r.json() : [])),
+      fetch(`${apiBase.value}/api/music`).then((r) => (r.ok ? r.json() : [])),
+      fetch(`${apiBase.value}/api/playlists`).then((r) => (r.ok ? r.json() : [])),
+    ]);
+    libStats.value = {
+      videos: v.length,
+      videosDownloaded: v.filter((x) => x.filename).length,
+      music: m.length,
+      musicDownloaded: m.filter((x) => x.downloaded || x.filename).length,
+      playlists: p.length,
+    };
+  } catch {
+    libStats.value = null;
+  }
+  statsBusy.value = false;
 }
 
 async function pairDevice() {
@@ -259,10 +299,33 @@ onUnmounted(() => timers.forEach(clearInterval));
           <dl>
             <dt>Users</dt>
             <dd>{{ users.length }}</dd>
+            <template v-if="libStats">
+              <dt>Videos</dt>
+              <dd>{{ libStats.videosDownloaded }}/{{ libStats.videos }} on disk</dd>
+              <dt>Music</dt>
+              <dd>{{ libStats.musicDownloaded }}/{{ libStats.music }} on disk</dd>
+              <dt>Playlists</dt>
+              <dd>{{ libStats.playlists }}</dd>
+            </template>
           </dl>
           <p class="hint">{{ users.map((u) => u.username).join(", ") || "no users yet" }}</p>
+          <button class="secondary" :disabled="!healthy || statsBusy" @click="refreshStats">
+            {{ libStats ? "Refresh stats" : "Load stats" }}
+          </button>
         </template>
         <p v-else class="hint">{{ apiError || "waiting for the server…" }}</p>
+      </div>
+
+      <div class="card">
+        <h2>Subscriptions</h2>
+        <template v-if="subs.length">
+          <div v-for="s in subs" :key="s.kind + s.subscription_id" class="sub">
+            <span class="sub-kind" :class="s.kind">{{ s.kind }}</span>
+            <span class="sub-name" :title="s.channel_url">{{ s.channel_name }}</span>
+            <span class="sub-count">{{ s.downloaded_count }}/{{ s.item_count }}</span>
+          </div>
+        </template>
+        <p v-else class="hint">No subscriptions yet.</p>
       </div>
 
       <div class="card">
