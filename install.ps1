@@ -1,5 +1,5 @@
-# HomeTube Installer (Windows)
-# Prerequisites: Python 3.10+, Node.js, ffmpeg, and a JS runtime for yt-dlp (e.g. Deno).
+# HomeTube Installer (Windows — experimental)
+# Prerequisites: bun, ffmpeg, and a JS runtime for yt-dlp (e.g. Deno).
 #
 # Usage (PowerShell):
 #   powershell -ExecutionPolicy Bypass -File install.ps1
@@ -16,41 +16,37 @@ function Warn-Missing([string]$name, [string]$hint) {
 Write-Host "🚀 HomeTube Installer"
 Write-Host ""
 
-Warn-Missing "python" "Install Python 3.10+ (winget install Python.Python.3.12)"
-Warn-Missing "py" "or install the Python launcher with the python.org installer"
+if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
+    Write-Host "📦 bun not found — installing via winget..."
+    winget install Oven-sh.Bun -e --accept-source-agreements --accept-package-agreements
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+    if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
+        Write-Host "❌ bun install failed. Install it manually: https://bun.sh" -ForegroundColor Red
+        exit 1
+    }
+}
+
 Warn-Missing "ffmpeg" "Needed for music conversion/embedding (winget install Gyan.FFmpeg)"
-if (-not (Get-Command deno, node, bun -ErrorAction SilentlyContinue)) {
-    Write-Host "⚠️  No JS runtime (deno/node/bun) found — newer yt-dlp needs one for YouTube (winget install DenoLand.Deno)" -ForegroundColor Yellow
+Warn-Missing "yt-dlp" "Needed for downloads (winget install yt-dlp.yt-dlp)"
+if (-not (Get-Command deno, node -ErrorAction SilentlyContinue)) {
+    Write-Host "⚠️  No JS runtime (deno/node) found — newer yt-dlp needs one for YouTube (winget install DenoLand.Deno)" -ForegroundColor Yellow
 }
 
-# Backend setup (virtual environment + dependencies)
-Write-Host "=== Backend ==="
-& (Join-Path $ScriptDir "backend\cli.ps1") init
-
-# Frontend setup (npm install + build)
-Write-Host ""
-Write-Host "=== Frontend ==="
-if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ npm not found. Install Node.js LTS (winget install OpenJS.NodeJS.LTS)" -ForegroundColor Red
-    exit 1
-}
-Push-Location (Join-Path $ScriptDir "frontend")
-Write-Host "📦 Installing npm dependencies..."
-npm install
-Write-Host "🔨 Building frontend..."
-npm run build
+Write-Host "=== Server ==="
+Push-Location (Join-Path $ScriptDir "server")
+bun install
 Pop-Location
 
-# Install ht command
+# Install ht command (also adds ~/.local/bin to the user PATH)
 Write-Host ""
 Write-Host "=== CLI ==="
-& (Join-Path $ScriptDir "backend\cli.ps1") install
+bun (Join-Path $ScriptDir "server\src\cli.ts") install
 
 Write-Host ""
 Write-Host "✅ HomeTube installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "To start the server:"
-Write-Host "  cd backend ; . .\cli.ps1 ; python main.py"
+Write-Host "  ht serve                   # http://localhost:8000 on your LAN"
 Write-Host ""
 Write-Host "Or use the ht CLI tool (restart your terminal first):"
 Write-Host "  ht init                    # configure data directory and user"

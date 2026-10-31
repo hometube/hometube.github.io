@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HomeTube — your self-hosted YouTube library</title>
+<style>
+  :root { color-scheme: light dark; --accent: #e0393e; }
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; line-height: 1.6;
+         max-width: 720px; margin-inline: auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 2rem; margin-bottom: .25rem; }
+  .sub { opacity: .7; margin-top: 0; }
+  a { color: var(--accent); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .card { border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 12px; padding: 1rem 1.1rem; }
+  .card h3 { margin: 0 0 .35rem; }
+  .btn { display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
+         padding: .5rem 1rem; border-radius: 8px; margin-top: .4rem; }
+  pre { background: color-mix(in srgb, currentColor 8%, transparent); padding: .75rem 1rem;
+        border-radius: 8px; overflow-x: auto; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<h1>📺 HomeTube</h1>
+<p class="sub">A self-hosted YouTube media library: download videos and music, subscribe to
+channels and podcasts, and play everything back offline — on your own hardware.</p>
+
+<div class="cards">
+  <div class="card">
+    <h3>🖥 Desktop app</h3>
+    <p>All-in-one: bundled server + UI. No install steps.</p>
+    <a class="btn" href="https://github.com/hometube/hometube.github.io/releases/latest">Download for macOS</a>
+  </div>
+  <div class="card">
+    <h3>📱 Mobile app</h3>
+    <p>Android APK (Expo). Pairs with your server over the LAN via QR or token.</p>
+    <a class="btn" href="https://github.com/hometube/hometube.github.io/releases?q=mobile&expanded=true">Get the APK</a>
+  </div>
+  <div class="card">
+    <h3>⌨️ CLI / server</h3>
+    <p>Run the Bun server headless and drive it with the <code>ht</code> command.</p>
+    <a class="btn" href="https://github.com/hometube/hometube.github.io">Source on GitHub</a>
+  </div>
+</div>
+
+<h2>Quick start (server + CLI)</h2>
+<pre><code>git clone https://github.com/hometube/hometube.github.io hometube
+cd hometube
+bash install.sh        # installs bun if needed, deps, and the ht command
+
+ht init                # choose your data directory + default user
+ht serve               # serve the library on your LAN (port 8000)
+ht pair                # mint a one-time token to connect a device</code></pre>
+
+<h2>Everyday CLI</h2>
+<pre><code>ht download &lt;url&gt;                    # auto-detects video / music / playlist
+ht download &lt;playlist-url&gt; -p "Chill" # download into a named playlist
+ht songs / ht playlists / ht videos   # browse your library
+ht export -o backup.ht               # portable backup (.ht archive)
+ht settings set auto_download off    # disable pre-download on add</code></pre>
+
+<h2>Requirements</h2>
+<ul>
+  <li><a href="https://bun.sh">Bun</a> (installed automatically by <code>install.sh</code>)</li>
+  <li><a href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a> and
+      <a href="https://ffmpeg.org">ffmpeg</a> for downloads</li>
+  <li>A JavaScript runtime for newer YouTube formats (Deno recommended)</li>
+</ul>
+
+<p>Data lives in one directory (config at <code>~/.config/hometube/config.json</code>);
+your whole collection exports to a single <code>.ht</code> archive.</p>
+</body>
+</html>

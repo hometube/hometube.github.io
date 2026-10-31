@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Parity harness: Python backend vs JS/Bun server serving identical seeded
 # libraries. Resets both copies, boots each server, diffs every response.
+# The Python backend was retired from main (tag: python-backend-final) — to
+# run this again, check it out next to the repo first:
+#   git worktree add backend python-backend-final && cd backend && \
+#     python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 # Set PARITY_NET=1 to also exercise live yt-dlp calls (info + full background
 # downloads); those hit YouTube and take ~30s.
 # Usage: [PARITY_PY=8211] [PARITY_JS=8213] [PARITY_NET=1] ./parity.sh

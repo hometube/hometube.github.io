@@ -6,70 +6,32 @@ Instructions for AI agents working on the HomeTube project.
 
 ```
 hometube/
-├── install.sh                # One-shot install: venv, deps, frontend build, ht command
-├── install.ps1               # Windows one-shot install (PowerShell equivalent)
+├── install.sh                # One-shot install: bun (if missing), server deps, ht command
+├── install.ps1               # Windows one-shot install (PowerShell equivalent, experimental)
 ├── .github/workflows/
-│   ├── deploy.yml            # GitHub Actions deploy workflow
+│   ├── deploy.yml            # GitHub Pages deploy (docs/ only — documentation site)
 │   └── desktop.yml           # Desktop builds (macOS/Windows) + desktop-v* tag releases
-├── backend/
-│   ├── main.py               # FastAPI app with REST endpoints
-│   ├── models.py             # DB models (User, Video, Music, Channel, Subscription, Playlist)
-│   ├── database.py           # SQLite configuration (DB path resolved via paths.py)
-│   ├── paths.py              # Single source of truth for data_dir/db/downloads (reads ~/.config/hometube/config.json)
-│   ├── cli.py                # CLI: install, init, login, download, export/import, songs, playlists, videos
-│   ├── cli.sh                # Helper script: manages venv and installs ht command
-│   ├── cli.ps1               # Windows PowerShell equivalent of cli.sh
-│   ├── import_music.py       # Import local music files (supports mp3, webm, flac, wav, m4a, ogg)
-│   ├── requirements.txt      # Python dependencies
-│   └── services/
-│       ├── ytdlp.py          # yt-dlp wrapper for downloads (preserves audio format)
-│       ├── scheduler.py      # Background subscription checker + auto-delete
-│       ├── downloader.py     # Background download job queue (thread pool + progress)
-│       └── pairing.py        # Single-use LAN pairing tokens
+├── server/                   # Bun + Hono server (the whole backend; no Python at runtime)
+│   ├── src/
+│   │   ├── index.ts          # Entry: tool PATH, schema, JWT secret, boot token, listen
+│   │   ├── app.ts            # Hono factory, Env, auth middleware (loopback + pairing JWT)
+│   │   ├── auth.ts           # HS256 JWT on WebCrypto, pairing tokens, lanIp
+│   │   ├── db.ts             # bun:sqlite; SCHEMA byte-identical to the old SQLAlchemy DDL
+│   │   ├── paths.ts          # data_dir/db/downloads resolution (env -> ~/.config/hometube/config.json -> ./data)
+│   │   ├── cli.ts            # The `ht` command (port of backend/cli.py)
+│   │   ├── hts.ts            # Shared .ht import core (used by HTTP route + CLI)
+│   │   ├── watchdog.ts       # HOMETUBE_WATCH_PARENT ppid poll / HOMETUBE_WATCH_STDIN EOF
+│   │   ├── routes/           # core.ts, library.ts, media.ts, podcasts.ts, files.ts, export.ts
+│   │   └── services/         # ytdlp.ts (spawns yt-dlp CLI), downloader.ts (job queue),
+│   │                         # scheduler.ts (subscription checks + auto-delete)
+│   ├── parity.sh             # Response-level regression harness (see Verify loop)
+│   ├── htcmp.py              # Structural .ht comparator (used by parity)
+│   └── seed_parity.py        # Seeds both parity data dirs
 ├── desktop/                   # Tauri v2 desktop app (all-in-one server host + UI)
-│   ├── src/                   # Vue 3 UI (status, pairing, logs; seeded from frontend/)
-│   ├── src-tauri/             # Rust shell: spawns/monitors the backend sidecar, kills on exit
+│   ├── src/                   # Vue 3 UI (status, pairing, logs)
+│   ├── src-tauri/             # Rust shell: spawns/monitors the server sidecar, kills on exit
 │   ├── package.json
 │   └── vite.config.js
-├── frontend/
-│   ├── src/
-│   │   ├── App.vue           # Main Vue app with slide-out nav menu
-│   │   ├── api.js            # API proxy – delegates to active provider (server or local)
-│   │   ├── localDb.js        # IndexedDB wrapper (hometube-local DB with 8 object stores)
-│   │   ├── providers/
-│   │   │   ├── DataProvider.js    # Abstract provider interface
-│   │   │   ├── ServerProvider.js  # HTTP provider – talks to FastAPI backend
-│   │   │   ├── LocalProvider.js   # IndexedDB provider – offline mode
-│   │   │   └── index.js          # Provider factory (detect mode, build, switch)
-│   │   ├── components/
-│   │   │   ├── GlobalMusicPlayer.vue  # Persistent mini-player across the app
-│   │   │   ├── WaveformVisual.vue     # Audio waveform visualization
-│   │   │   ├── BackendMenu.vue        # Backend URL configuration modal
-│   │   │   ├── PlaylistMenu.vue       # Playlist context menu
-│   │   │   └── SongMenu.vue           # Song context menu
-│   │   ├── pages/
-│   │   │   ├── UserPage.vue           # User selection/creation
-│   │   │   ├── SetupUser.vue          # User setup wizard
-│   │   │   ├── SetupBackend.vue       # Initial setup: choose server or local mode
-│   │   │   ├── VideoHome.vue          # Video feed, filters, in-app player (Plyr.js)
-│   │   │   ├── AddVideo.vue           # Add video by URL with quality selection
-│   │   │   ├── AddChannel.vue         # Browse channel videos / subscribe with rules
-│   │   │   ├── MusicHome.vue          # Playlists view with My Songs/All Songs virtual playlists
-│   │   │   ├── AddMusic.vue           # Add music by URL, create/select playlist
-│   │   │   ├── PlaylistView.vue       # Full music player: album art, play/shuffle, controls
-│   │   │   ├── ExportPage.vue         # Export data as .ht file
-│   │   │   ├── ImportPage.vue         # Import .ht file into local mode
-│   │   │   ├── SettingsPage.vue       # Settings with server/local mode toggle
-│   │   │   ├── DebugPage.vue          # Debug/info page
-│   │   │   └── AboutPage.vue          # App info and version
-│   │   ├── stores/
-│   │   │   ├── music.js       # Pinia store (music state, playback queue)
-│   │   │   ├── video.js       # Pinia store (video state)
-│   │   │   ├── user.js        # Pinia store (user state)
-│   │   │   └── errors.js      # Pinia store (error tracking)
-│   │   └── style.css
-│   ├── package.json
-│   └── vite.config.js         # Vite + PWA config
 ├── mobile/                    # React Native companion app (Expo SDK 56)
 │   ├── app/                   # Expo Router file-based routing
 │   │   ├── _layout.tsx        # Root layout with providers
@@ -84,65 +46,61 @@ hometube/
 │   │       └── settings/            # Settings, backend URL, export, import
 │   ├── src/
 │   │   ├── providers/               # DataProvider, ServerProvider, LocalProvider
-│   │   ├── stores/
-│   │   │   ├── userStore.ts         # User state (Zustand)
-│   │   │   ├── musicStore.ts        # Music playback (react-native-track-player)
-│   │   │   ├── videoStore.ts        # Video state
-│   │   │   └── uiStore.ts          # UI state (menu, navigation)
-│   │   ├── db/localDb.ts           # SQLite wrapper (9 tables mirroring IndexedDB stores)
-│   │   ├── services/
-│   │   │   ├── trackPlayerService.ts # Background audio service
-│   │   │   └── playerSetup.ts       # TrackPlayer registration
-│   │   ├── components/
-│   │   │   ├── HamburgerMenu.tsx    # Slide-out navigation menu
-│   │   │   ├── LoadingSpinner.tsx
-│   │   │   ├── EmptyState.tsx
-│   │   │   └── index.ts            # Component re-exports
-│   │   ├── api.ts                  # Provider proxy (same pattern as frontend/)
-│   │   └── types.ts               # Shared TypeScript interfaces
-│   ├── app.json                   # Expo config (plugins, permissions, splash)
-│   ├── babel.config.js            # Babel config with module-resolver for @/ alias
-│   └── tsconfig.json              # TypeScript config with path aliases
-└── data/
-    ├── db.sqlite            # SQLite database
-    └── downloads/           # Downloaded media files
+│   │   ├── stores/                  # Zustand stores (user, music, video, ui)
+│   │   ├── db/localDb.ts            # SQLite wrapper (mirrors the server schema)
+│   │   ├── services/                # react-native-track-player setup
+│   │   ├── components/              # HamburgerMenu, LoadingSpinner, EmptyState
+│   │   ├── api.ts                   # Provider proxy
+│   │   └── types.ts                 # Shared TypeScript interfaces
+│   ├── app.json / babel.config.js / tsconfig.json
+├── docs/                      # GitHub Pages site (static, documentation-only landing)
+└── data/                      # Local dev data (gitignored): db.sqlite + downloads/
 ```
+
+Retired (kept in git history, tag `python-backend-final`): the Python/FastAPI
+`backend/` and the Vue PWA `frontend/`. The desktop app replaced the PWA as
+the shipped UI; GitHub Pages is documentation-only.
 
 ## Development Commands
 
-### Backend
+### Server (Bun + Hono)
 ```bash
-cd backend
-pip install -r requirements.txt
-python main.py               # Run server (PORT env var overrides 8000)
-python import_music.py --folder /path --user-id 1  # Import local music
+cd server
+bun install
+bun run src/index.ts       # Run server (PORT env var overrides 8000)
+bunx tsc --noEmit          # Typecheck
+./parity.sh                # Offline regression harness (needs python-backend-final checkout, see Verify loop)
 ```
 
-### CLI (`python cli.py` or `ht` after install)
+### CLI (`bun server/src/cli.ts` or `ht` after install)
 ```bash
-cd backend
-python cli.py install         # Install `ht` command to ~/.local/bin
-ht init                       # Interactive setup (data dir, default user)
-ht login <user>               # Switch active user (creates if not exists)
-ht pair                       # Mint a one-time pairing token for connecting a device
-ht download <url>             # Auto-detect video/music, download, store
+ht install                  # Install the ht command to ~/.local/bin
+ht init                     # Interactive setup (data dir, default user)
+ht login <user>             # Switch active user (creates if not exists)
+ht pair                     # Mint a one-time pairing token for connecting a device
+ht download <url>           # Auto-detect video/music, download, store
 ht download <url> --playlist "name"  # Download music into specific playlist
 ht download <url> --type music       # Force music type
-ht export -o backup.ht        # Export .ht file for active user
-ht export --week              # Export last 7 days
-ht export --month             # Export last 30 days
-ht export --day               # Export last 24 hours
-ht import backup.ht           # Import .ht file
-ht songs                      # List music for active user
-ht playlists                  # List playlists for active user
-ht videos                     # List videos for active user
-ht podcasts                   # List podcast feeds and standalone (unsubscribed) episodes
-ht settings get               # Show server settings (e.g. auto_download)
-ht settings set <key> <value> # Set a server setting (e.g. ht settings set auto_download off)
-ht mobile --build             # Build the Android APK (release by default)
-ht mobile --build --release   # Build, then publish the APK as a GitHub Release
-ht mobile --release           # Publish the newest built APK to a GitHub Release
-ht mobile --deploy            # Install the built APK onto a connected device
+ht export -o backup.ht      # Export .ht file for active user
+ht export --week            # Export last 7 days
+ht export --month           # Export last 30 days
+ht export --day             # Export last 24 hours
+ht import backup.ht         # Import .ht file
+ht import --music <folder>  # Import local music files (ffprobe metadata; mp3/webm/flac/wav/m4a/ogg/aac)
+ht songs [remove ID_OR_NAME]              # List/remove music for active user
+ht playlists [remove|add|update ...]      # List/manage playlists
+ht videos [remove|watched|keep ...]       # List/manage videos
+ht podcasts                 # List podcast feeds and standalone (unsubscribed) episodes
+ht settings get             # Show server settings (e.g. auto_download)
+ht settings set <key> <value>  # Set a server setting (e.g. ht settings set auto_download off)
+ht serve [--host H] [--port P] # Start the server
+ht update                   # git pull + bun install + yt-dlp update
+ht mobile --build           # Build the Android APK (release by default)
+ht mobile --build --release # Build, then publish the APK as a GitHub Release
+ht mobile --release         # Publish the newest built APK to a GitHub Release
+ht mobile --deploy          # Install the built APK onto a connected device
+ht build-server [--clean]   # Compile the desktop sidecar: bun build --compile -> server/dist/
+ht fixart [--data-dir DIR]  # Backfill missing album art for downloaded music
 
 # Release signing (optional, one-time). Without it, release builds fall back to
 # the debug keystore. The mobile/plugins/withReleaseSigning config plugin wires
@@ -156,90 +114,22 @@ ht mobile --deploy            # Install the built APK onto a connected device
 #   RELEASE_KEY_PASSWORD=...
 ```
 
-### Frontend (Vue PWA)
-```bash
-cd frontend
-npm install
-npm run dev        # Dev server
-npm run build      # Production build
-```
-
 ### Desktop (Tauri v2)
 ```bash
 cd desktop
 npm install
-npm run tauri dev    # Dev: starts Vite + the app window; shell auto-starts the backend
-cd ../server && bun install && bun run src/cli.ts build-server  # sidecar (bun --compile -> server/dist/)
-cd ../desktop && npm run tauri build  # production bundle (embeds the sidecar; build it first)
+npm run tauri dev    # Dev: starts Vite + the app window; shell auto-starts the server from ../server
+ht build-server      # sidecar (bun --compile -> server/dist/hometube-server)
+npm run tauri build  # production bundle (embeds the sidecar; build it first)
 ```
-The Rust shell (`desktop/src-tauri`) spawns the backend as a child process, tails its
-logs, and kills it on app exit. Sidecar resolution order: `HOMETUBE_SERVER` (explicit
-binary) → dev checkout `../../server` run with bun from PATH or `~/.bun` (or
-`HOMETUBE_SERVER_DIR` pointing at the server dir) → the sidecar bundled under the app's
-resources (`Resources/hometube-server/hometube-server[.exe]`).
-`tauri.conf.json` bundles `server/dist/` as a resource, so the sidecar build must
-succeed before `tauri build`. Port: `HOMETUBE_PORT`
-(default 8000). See `docs/tauri-desktop-plan.md`.
-
-## Running as a systemd service (Linux)
-
-The backend is the whole server: FastAPI + background scheduler (`services/scheduler.py`) + the async download queue (`services/downloader.py`). Playwright is not required; only the Python venv (`yt-dlp` runs via `python -m yt_dlp`, no separate binary needed). On a headless Linux box:
-
-```ini
-# /etc/systemd/system/hometube.service
-[Unit]
-Description=HomeTube backend server
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=hometube
-WorkingDirectory=/opt/hometube/backend
-ExecStart=/opt/hometube/backend/.venv/bin/python main.py
-# Restart on transient failure so the server self-heals
-Restart=on-failure
-RestartSec=5
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-systemctl daemon-reload && systemctl enable --now hometube
-# Tail logs / check health
-journalctl -u hometube -f
-curl -s http://localhost:8000/api/status
-```
-
-Notes:
-- All paths resolve from `data_dir` in `~/.config/hometube/config.json` (`ht init`) — point `User=` so `~` resolves to the right home, or override with `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars.
-- The scheduler + downloader use **threads inside the one process**, so don't run more than one systemd instance of `main.py` (SQLite + port conflict). One unit = the full server.
-- `install.sh`/`cli.sh` require `#!/bin/bash` (Debian/Ubuntu ships `/bin/bash`); Alpine/busybox boxes need `bash` installed. On Windows use `install.ps1`/`cli.ps1` instead.
-- Remote access beyond the LAN is out of scope: use a user-side reverse proxy or Tailscale (ngrok tunneling was removed).
-
-## Running on Windows
-
-Prerequisites (winget): Python 3.10+ (`Python.Python.3.12`), Node.js LTS (`OpenJS.NodeJS.LTS`), ffmpeg (`Gyan.FFmpeg`), and a JS runtime for YouTube (`DenoLand.Deno`). `yt-dlp` itself is installed by pip into the venv.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1   # venv + deps + frontend build + ht
-cd backend ; . .\cli.ps1                               # activate the venv in this shell
-python main.py                                         # run the server
-```
-
-`ht` installs to `%USERPROFILE%\.local\bin\ht.cmd` and `cli.py install` adds that folder to the user PATH automatically (restart the terminal to pick it up). Config lives at `%USERPROFILE%\.config\hometube\config.json`; same `DB_PATH`/`DATA_DIR`/`DL_DIR` env overrides apply.
-
-To run the server in the background, register a scheduled task (runs at logon, restarts on failure):
-
-```powershell
-$action = New-ScheduledTaskAction -Execute "C:\hometube\backend\.venv\Scripts\python.exe" `
-    -Argument "main.py" -WorkingDirectory "C:\hometube\backend"
-$trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName HomeTube -Action $action -Trigger $trigger -Settings $settings
-```
+The Rust shell (`desktop/src-tauri`) spawns the server as a child process, tails
+its logs, and kills it on app exit. Sidecar resolution order: `HOMETUBE_SERVER`
+(explicit binary) → dev checkout `../../server` run with bun from PATH or
+`~/.bun` (or `HOMETUBE_SERVER_DIR` pointing at the server dir) → the sidecar
+bundled under the app's resources (`Resources/hometube-server/hometube-server[.exe]`).
+`tauri.conf.json` bundles `server/dist/` as a resource, so the sidecar build
+must succeed before `tauri build`. Port: `HOMETUBE_PORT` (default 8000).
+See `docs/tauri-desktop-plan.md`.
 
 ### Mobile (React Native / Expo)
 ```bash
@@ -251,21 +141,35 @@ npm run ios        # Launch on iOS
 npx tsc --noEmit   # TypeScript type check
 ```
 
+### Verify loop (server)
+```bash
+cd server && bun install && bunx tsc --noEmit && ./parity.sh
+```
+`parity.sh` boots the Python backend (tag `python-backend-final` checkout of
+`backend/`, port 8211) next to the JS server (port 8213) on seeded scratch data
+copies and diffs every response; `PARITY_NET=1 ./parity.sh` adds live YouTube
+calls (avoid back-to-back live runs — throttling). Never write to the repo
+`data/`; parity uses seeded scratch copies under `$TMPDIR`.
+
 ## Code Conventions
 
-- **Backend**: Python with FastAPI, SQLAlchemy ORM, SQLite
-- **Frontend (PWA)**: Vue 3 Composition API, Tailwind CSS for styling
-- **Mobile App**: React Native with Expo SDK 56, TypeScript, expo-router
-- **Icons**: Font Awesome via @fortawesome/vue-fontawesome (PWA) / @expo/vector-icons (Mobile)
-- **Video Player**: expo-video (Mobile); PWA uses a persistent custom `<video>` element (see `components/VideoPlayer.vue`)
-- **Audio Player**: HTML5 + MSE + Wake Lock (PWA) / react-native-track-player (Mobile)
-- **API**: REST endpoints defined in `backend/main.py`; both frontends call through an API proxy (`api.js`) that delegates to the active provider
-- **Downloads**: Handled via yt-dlp in `backend/services/ytdlp.py`
-- **Provider Pattern**: `DataProvider` defines an abstract interface. `ServerProvider` makes HTTP calls to the Python backend. `LocalProvider` uses IndexedDB (PWA) or SQLite (Mobile) for fully offline operation.
-- **Mode Switching**: Stores `localMode` flag. `providers/index.js/ts` detects the mode and builds the correct provider. All pages use the API proxy and never reference providers directly.
-- **`.ht` files**: Zip archives containing `metadata.json` (serialized DB tables) and subdirectories `videos/` and `music/` with media files. The bridge between server mode and local mode.
+- **Server**: TypeScript on Bun, Hono routes, `bun:sqlite` (no ORM), raw SQL
+- **Desktop**: Tauri v2 (Rust shell) + Vue 3 UI
+- **Mobile App**: React Native with Expo SDK 56, TypeScript, expo-router, Zustand
+- **Icons**: @expo/vector-icons (Mobile)
+- **Video Player**: expo-video (Mobile)
+- **Audio Player**: react-native-track-player (Mobile)
+- **API**: REST endpoints in `server/src/routes/*`; the mobile app calls through a provider proxy (`mobile/src/api.ts`)
+- **Downloads**: yt-dlp CLI binary spawned in `server/src/services/ytdlp.ts` (progress parsed from `--newline` stderr; final file globbed by extractor `video_id`)
+- **Provider Pattern**: `DataProvider` abstract interface; `ServerProvider` (HTTP) and `LocalProvider` (SQLite) in `mobile/src/providers/`. Mode flag `localMode`; all screens use the API proxy, never providers directly
+- **`.ht` files**: Zip archives containing `metadata.json` (serialized DB tables) and subdirectories `videos/` and `music/` with media files
 
 ## API Endpoints
+
+Implemented in `server/src/routes/`; responses mirror the original FastAPI
+serialization exactly (booleans from 0/1, ISO datetimes with `.000000`
+stripped only when microseconds are zero, parsed JSON columns) so existing
+clients keep working.
 
 ### General
 - `GET /api/status` - Health check (open, no auth — reports `pairing_required`)
@@ -335,52 +239,27 @@ Requests from the host itself (127.0.0.1/::1) are always allowed; LAN clients ne
 
 ## Notes
 
-- **One library, one data dir**: all paths (DB, downloads, file serving) are resolved by `backend/paths.py` from `data_dir` in `~/.config/hometube/config.json` (see `ht init`); `ht serve`, `ht download`/`ht` CLI commands, `main.py`, `ytdlp.py`, `import_music.py`, and `scheduler.py` all share the same data dir by default. `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars override it.
-- Backend serves the built frontend from `frontend/dist/`
+- **One library, one data dir**: all paths (DB, downloads, file serving) are resolved by `server/src/paths.ts` from `data_dir` in `~/.config/hometube/config.json` (see `ht init`); `ht serve`, `ht download`/`ht` CLI commands, `index.ts`, `ytdlp.ts`, and `scheduler.ts` all share the same data dir by default. `DB_PATH`/`DATA_DIR`/`DL_DIR` env vars override it.
 - Scheduler runs in background checking subscriptions every 60 seconds
-- **Background downloads**: server-side downloads run on a thread pool (`backend/services/downloader.py`, 2 workers) using `yt_dlp`'s Python API with progress hook → job registry. API endpoints return `202 {job_id}`; clients poll `GET /api/downloads` (status + 0-100 progress) via `frontend/src/utils/downloads.js` / `mobile/src/downloads.ts` (`waitForServerDownload`). Completed jobs write `filename`/`downloaded` back to the DB row. The lazy `/videos/{id}/file` and `/music/{id}/file` paths single-flight off an existing job (wait for it) instead of starting a duplicate download
-- **Pre-download on add**: the `auto_download` server setting (default on) makes add endpoints queue a background download for every added video/music/podcast (`add_video`, `add_music`), so items are usually ready to play instantly. The scheduler also pre-warms newly-detected subscription items, and podcast feed backfill pre-warms only the newest 3 episodes (avoiding mass downloads on subscribe). Turn off with `ht settings set auto_download off` or `PUT /api/settings` `{key:"auto_download", value:"off"}` — lazy on-play downloads remain as fallback
+- **Background downloads**: server-side downloads run on a worker queue (`server/src/services/downloader.ts`, 2 workers) spawned via `yt_dlp` CLI with progress → job registry. API endpoints return `202 {job_id}`; clients poll `GET /api/downloads` (status + 0-100 progress) via `mobile/src/downloads.ts` (`waitForServerDownload`). Completed jobs write `filename`/`downloaded` back to the DB row. The lazy `/videos/{id}/file` and `/music/{id}/file` paths single-flight off an existing job (wait for it) instead of starting a duplicate download
+- **Pre-download on add**: the `auto_download` server setting (default on) makes add endpoints queue a background download for every added video/music/podcast, so items are usually ready to play instantly. The scheduler also pre-warms newly-detected subscription items, and podcast feed backfill pre-warms only the newest 3 episodes (avoiding mass downloads on subscribe). Turn off with `ht settings set auto_download off` or `PUT /api/settings` `{key:"auto_download", value:"off"}` — lazy on-play downloads remain as fallback
 - Auto-delete: Videos watched >7 days ago without keep_flag are deleted
-- PWA support via `vite-plugin-pwa`
-- Audio mode uses Wake Lock API to allow screen-off listening
-- PWA download uses Web Downloads API to save files to device
 - Music downloads preserve original format (mp3, webm, m4a, ogg, flac, wav) via yt-dlp
-- Import script (`import_music.py`) supports mp3, webm, flac, wav, m4a, ogg formats
-- MusicHome.vue: "My Songs" and "All Songs" appear as clickable virtual playlists
-- PlaylistView.vue UI:
-  - Displays first song's album art at top
-  - Shows current song title/artist when playing
-  - Playback controls row (prev/play-pause/next) appears when a song is playing
-  - Play and Shuffle buttons always visible
-  - Shuffle and Repeat toggle buttons
-  - Clickable song list to select and play tracks
-- State Persistence (localStorage):
-  - App state: active tab, sub-pages, selected playlist ID
-  - Virtual playlist view ("My Songs"/"All Songs") persisted
-  - Per-playlist shuffle state (key: `playlist_{id}_shuffled`)
-  - Video player state (key: `videoPlayerState`): queue ids, index, shuffle/repeat, position; restored on reload
-  - State restores automatically on page refresh
-- **Video experience**: equals the music/podcast model
-  - Videos carry `thumbnail`, `duration`, `filename`, and `position` (resume point, seconds) alongside `watched_at` (binomial watched flag). Auto-watch at ~95% / ended
-  - `kind:"video"` playlists (generalized Playlist model). Membership JSON: `{music_id, position}` for music, `{video_id, position, type:"video"}` for video
-  - Watch API semantic: `POST /api/videos/{id}/watch` with `{watched:true}` marks watched; `{position}` only persists resume position (bare POST is a no-op)
-  - PWA: single persistent `<video>` element in `VideoPlayer.vue` (always mounted in App.vue so playback survives navigation); queue/shuffle/repeat in `stores/video.js`; `VideoHome.vue` (Playlists/Feed segments) + `VideoPlaylistView.vue`; lazy play via `GET /api/videos/{id}/file` (auto-downloads on first play)
-  - Mobile: feed thumbnails + resume badges + keep filter, player resumes from `position` and flushes progress (30s), auto-watches on `playToEnd`, and video playlists screens (`app/(tabs)/videos/playlists.tsx`, `playlist/[id].tsx`). Local-mode resolution fixed in `LocalProvider.getVideoUrl` (uses `video_{video_id}` file keys)
-  - Offline: PWA caches `/api/videos` metadata; device cache/download flags marked on the video row
+- **Video experience** equals the music/podcast model: videos carry `thumbnail`, `duration`, `filename`, `position` (resume point, seconds) alongside `watched_at`. Auto-watch at ~95% / ended. `kind:"video"` playlists; mobile player resumes from `position`, flushes progress (30s), auto-watches on `playToEnd`
+- Offline: mobile caches metadata in its SQLite local DB; device cache/download flags marked on the video row
 
-### Server Mode vs Local Mode
+### Server Mode vs Local Mode (mobile)
 
-The frontend can operate in two modes:
+The mobile app can operate in two modes:
 
-- **Server Mode** (default): Connects to the Python FastAPI backend via HTTP. Uses `ServerProvider` which makes REST calls to the backend URL stored in `localStorage` (`backendUrl`). Supports ServiceWorker caching for offline-capable music/playlist access.
+- **Server Mode** (default): Connects to the Bun server via HTTP (`ServerProvider`, backend URL in app storage). Supports LAN pairing via QR token.
+- **Local Mode**: Fully offline with SQLite (`hometube-local.db`, `LocalProvider`). Media stored as files; `.ht` imports populate the DB.
 
-- **Local Mode**: Runs entirely offline. PWA uses IndexedDB (`hometube-local`), mobile app uses SQLite (`hometube-local.db`). Both use the same provider pattern with stores for: users, channels, subscriptions, videos, music, playlists, settings, files, meta. Media files stored as blobs (IndexedDB/PWA) or filesystem files (SQLite/mobile).
-
-Users choose the mode on the `SetupBackend.vue` page on first launch. Mode can be toggled later in `SettingsPage.vue`. Data from `.ht` files can be imported in either mode.
+Users choose the mode on the welcome `setup-backend` screen. Mode can be toggled later in Settings.
 
 ### `.ht` File Format
 
-`.ht` files are zip archives used to transfer HomeTube data between instances and between modes. Structure inside the zip:
+`.ht` files are zip archives used to transfer HomeTube data between instances and into mobile local mode. Structure inside the zip:
 
 ```
 file.ht
@@ -393,15 +272,15 @@ file.ht
     └── ...
 ```
 
-Export sources:
-- `POST /api/export` endpoint (server mode API)
-- `python cli.py export` (terminal CLI, works directly on SQLite DB)
-- Frontend export in local mode (packs IndexedDB data)
+Export sources: `POST /api/export` endpoint; `ht export` CLI.
+Import targets: `POST /api/import` endpoint; `ht import` CLI; mobile local-mode import.
 
-Import targets:
-- `POST /api/import` endpoint (server mode API)
-- `python cli.py import <file.ht>` (terminal CLI, writes to SQLite DB)
-- Frontend import in local mode (populates IndexedDB)
-- Mobile app import in local mode (populates SQLite)
+### Intentional divergences from the retired Python backend
 
-- No test framework is currently configured
+- Unknown `/api/*` paths return JSON 404 (Python had an SPA catch-all); `PUT` endpoints return the updated row; `/api/files/*` and `.ht` zip extraction have path-traversal guards; the JS scheduler keeps ticking after errors; export sends `content-length` (Python chunked)
+- CLI music metadata uses **ffprobe** instead of mutagen
+- Naive-UTC DB writes carry 6 fractional digits to match `datetime.utcnow()` formatting
+- Python quirks kept for parity: `timedelta.seconds` mod-86400 date-window semantics; channels never deduped on import; settings import is insert-only with `jwt_secret` skipped; dangling `playlist_id` yields 500
+- bun 1.1.15 quirks: hono/cors re-wraps responses (breaks sliced-BunFile bodies), `BunFile.slice()` stream/arrayBuffer ignore the window, explicit content-length dropped on stream bodies → media range responses use explicit `node:fs` positional reads into a buffered `Uint8Array`
+
+- No test framework; the parity harness (`server/parity.sh` + `htcmp.py`) is the regression net

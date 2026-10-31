@@ -1,6 +1,6 @@
 # HomeTube Mobile (React Native / Expo)
 
-A React Native companion app for HomeTube using Expo SDK 56. Coexists with the Vue PWA (`frontend/`).
+A React Native companion app for HomeTube using Expo SDK 56. Talks to the Bun server (`server/`) in server mode.
 
 ## Development
 
@@ -36,7 +36,7 @@ mobile/
 ├── src/
 │   ├── providers/
 │   │   ├── DataProvider.ts       # Abstract provider interface
-│   │   ├── ServerProvider.ts     # HTTP provider (talks to FastAPI backend)
+│   │   ├── ServerProvider.ts     # HTTP provider (talks to Bun server)
 │   │   ├── LocalProvider.ts      # SQLite provider (offline mode)
 │   │   └── index.ts             # Provider factory (detect mode, build)
 │   ├── downloads.ts              # waitForServerDownload(): polls GET /api/downloads until a job finishes
@@ -74,11 +74,11 @@ The provider pattern is identical to the Vue PWA:
 
 ```
 Component → api.ts (Proxy) → Provider Factory
-                             ├── ServerProvider (fetch → FastAPI backend)
+                             ├── ServerProvider (fetch → Bun server)
                              └── LocalProvider  (SQLite + expo-file-system)
 ```
 
-- **Server Mode**: Makes HTTP requests to the Python FastAPI backend. Same REST API.
+- **Server Mode**: Makes HTTP requests to the Bun server. Same REST API.
 - **Local Mode**: Uses SQLite via `expo-sqlite` for structured data and `expo-file-system` for media files.
 - **`.ht` files**: Same import/export format as the PWA (zip with `metadata.json` + media files).
 

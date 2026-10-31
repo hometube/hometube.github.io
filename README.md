@@ -1,275 +1,159 @@
 # HomeTube
 
-A self-hosted YouTube media downloader with a mobile-friendly web interface. Download videos and music from YouTube for offline viewing/listening, subscribe to channels, and automatically detect new uploads. Works in **server mode** (Python backend with SQLite) or **local mode** (fully offline in the browser via IndexedDB).
+A self-hosted YouTube media downloader with desktop and mobile apps. Download videos and music from YouTube, subscribe to channels and podcasts, and automatically detect new uploads. Runs on your own hardware — a single Bun server plus a desktop app, an Android app, and a full CLI.
 
 ## Features
 
 - **Video Downloads** - Paste YouTube URLs to download MP4 files with selectable quality (1080p/720p/480p/best)
-- **Music Downloads** - Extract audio from videos/playlists, preserve original format (mp3, webm, m4a, ogg, flac, wav), organize into playlists
-- **Import Existing Music** - Import songs from existing folders with automatic metadata extraction
-- **Mobile Companion App** - React Native / Expo app for iOS and Android with full offline support
+- **Music Downloads** - Extract audio from videos/playlists, organize into playlists, resume playback where you left off
+- **Podcasts** - Subscribe to podcast feeds; new episodes are detected and pre-downloaded automatically
+- **Import Existing Music** - Import songs from local folders with automatic metadata extraction
 - **Channel Subscriptions** - Subscribe to channels and auto-detect new videos with keyword/length/quality filters
-- **Video Player** - In-app player with speed control (0.5x-2x), audio mode (screen-off listening), fullscreen
+- **Background Downloads** - Server-side download queue with live progress; pre-downloads on add by default
 - **Smart Feed** - Video feed sorted by recency, filter by "My Feed" / "All Videos" / "Unwatched"
 - **Watch Tracking** - Videos auto-marked as watched, with "Keep" flag to prevent auto-delete
 - **Auto-Cleanup** - Watched videos automatically deleted after 7 days (unless kept)
-- **Playlist Management** - Create playlists, add songs, shuffle/repeat playback
+- **Playlist Management** - Create music and video playlists, shuffle/repeat playback
 - **Multi-User Support** - Multiple users with separate collections
-- **Server Mode** - Connect to a Python/FastAPI backend with SQLite storage, yt-dlp downloads, background scheduler
-- **Local Mode** - Fully offline operation in the browser via IndexedDB, no server needed
-- **Portable Data (.ht)** - Export/import your entire collection as `.ht` archive files to move between modes and instances
-- **CLI Tool** - Full terminal interface with `ht` command: download, export/import, manage songs/playlists/videos
-- **Progressive Web App** - Mobile-optimized, installable on phones, download files to device
-- **Automatic Scheduling** - Background service checks subscriptions every 60 seconds
+- **LAN Pairing** - Connect devices over your LAN with one-time pairing tokens (QR on desktop, `ht pair` in the terminal)
+- **Portable Data (.ht)** - Export/import your entire collection as `.ht` archive files to move between instances
+- **CLI Tool** - Full terminal interface with `ht`: download, export/import, manage songs/playlists/videos, serve
 
-## Tech Stack
+## Apps
 
-- **Backend**: Python, FastAPI, SQLAlchemy, SQLite
-- **Frontend (PWA)**: Vue 3, Vite, Tailwind CSS, Plyr.js, Pinia
-- **Mobile App**: React Native, Expo SDK 56, TypeScript, expo-router, Zustand
-- **Icons**: Font Awesome (PWA) / @expo/vector-icons (Mobile)
-- **Audio**: HTML5 + MSE + Wake Lock (PWA) / react-native-track-player (Mobile)
-- **Downloads**: yt-dlp
+| App | What it is | Get it |
+|-----|-----------|--------|
+| **Desktop** | All-in-one Tauri app: bundled Bun server + UI, log viewer, QR pairing | [GitHub Releases](https://github.com/hometube/hometube.github.io/releases/latest) |
+| **Mobile** | Android app (Expo/React Native) with offline mode, pairs via QR or token | [GitHub Releases](https://github.com/hometube/hometube.github.io/releases?q=mobile&expanded=true) |
+| **Server + CLI** | Headless Bun server, systemd-friendly, driven by the `ht` command | `bash install.sh` (below) |
 
-## Setup
+## Quick Start (Server + CLI)
+
+```bash
+git clone https://github.com/hometube/hometube.github.io hometube
+cd hometube
+bash install.sh          # installs bun if needed, server deps, and the ht command
+
+ht init                  # configure data directory and default user
+ht serve                 # http://localhost:8000, reachable on your LAN
+ht pair                  # mint a one-time token to connect a device
+```
+
+Windows is experimental: `powershell -ExecutionPolicy Bypass -File install.ps1`.
 
 ### Prerequisites
 
-- Python 3 with pip
-- Node.js with npm
-
-### Quick Start (Local Mode)
-
-The easiest way to use HomeTube is to run the CLI and then import from the created exports into the frontend.
-This allows for the app to be a PWA on any device without also requiring `ngrok` or setting up your own HTTPS / hosting.
-
-```bash
-# Install everything (venv, deps, frontend build, ht command)
-bash install.sh
-
-# Configure your data directory and default user
-ht init
-
-# Download some music
-ht download "https://www.youtube.com/playlist?list=..." --playlist "Chill Vibes"
-
-# Export for importing into the PWA
-ht export -o my-collection.ht
-```
-
-Then open the frontend, choose **Local Mode**, and import the `.ht` file.
-
-### Quick Start (Self Hosted)
-
-```bash
-# One-shot install (venv + deps + frontend build + ht command)
-bash install.sh
-
-# Start the server
-cd backend && source cli.sh && python main.py
-```
-
-Open `http://localhost:8000` in your browser.
+- **Bun** — installed automatically by `install.sh` / `install.ps1`
+- **yt-dlp** — the download engine (`brew install yt-dlp` / `winget install yt-dlp.yt-dlp`)
+- **ffmpeg** — music conversion and cover-art embedding (`brew install ffmpeg`)
+- **A JS runtime for yt-dlp** — newer YouTube formats need one (Deno recommended)
 
 ### Development Mode
 
-#### Option 1: Standard Development (Hot Reload)
-Run both servers in separate terminals:
+```bash
+cd server
+bun install
+bun run src/index.ts     # server on :8000
+bunx tsc --noEmit        # typecheck
+./parity.sh              # response-level regression checks (offline mode)
+```
+
+Desktop development (spawns the server from the repo automatically):
 
 ```bash
-# Terminal 1: Backend (with auto-reload)
-cd backend && source cli.sh
-uvicorn main:app --reload
-# Runs on http://localhost:8000
-
-# Terminal 2: Frontend (with hot reload)
-cd frontend
+cd desktop
 npm install
-npm run dev
-# Runs on http://localhost:5173
-```
-
-#### Option 2: Development with Public URL (for GitHub Pages testing)
-This mode automatically sets up an ngrok tunnel to expose your local backend securely:
-
-```bash
-# Terminal: Backend with ngrok tunnel
-cd backend && source cli.sh
-python main.py --dev
-# This will show you a public URL to use with your GitHub Pages frontend
-```
-
-When running with `--dev`, the backend will:
-1. Automatically start an ngrok tunnel to your local port
-2. Display a secure public URL with an embedded token
-3. You can use this URL directly in your GitHub Pages frontend
-4. The token provides basic protection against unauthorized access
-
-Example output:
-```
-============================================================
-🚀 HomeTube Development Server Ready!
-============================================================
-Local API:     http://localhost:8000
-Public URL:    https://abc123.ngrok.io
-For github.io: https://abc123.ngrok.io/api?token=your-secret-token-here
-============================================================
-Share the 'For github.io' URL with your frontend to enable
-secure access to your local backend via GitHub Pages.
-============================================================
+npm run tauri dev
 ```
 
 ### Environment Variables
 
-- `DB_PATH` - SQLite database path (default: `data/db.sqlite`)
-- `DL_DIR` - Download directory (default: `data/downloads`)
+- `DATA_DIR` - data directory (default: `data_dir` in `~/.config/hometube/config.json`, else `./data`)
+- `DB_PATH` - SQLite database path (default: `$DATA_DIR/db.sqlite`)
+- `DL_DIR` - download directory (default: `$DATA_DIR/downloads`)
+- `PORT` - server port (default: 8000)
 
-## Usage
-
-1. Open the web interface and create/select a user
-2. **Video Home**: View your feed, filter videos, tap to play with built-in player
-3. **Add Video**: Paste YouTube URL, select quality, download to server and device
-4. **Add Channel**: Browse channel videos or subscribe with auto-download rules
-5. **Music Home**: View playlists ("My Songs" / "All Songs"), create new playlists
-6. **Add Music**: Paste song/playlist URL, add to playlist, download to device
-7. **Playlist View**: Full player with album art, shuffle/repeat, song queue management
-
-### Server Mode vs Local Mode
-
-- **Server Mode** (default): Connect to a Python backend. Enter the backend URL on setup or paste one shared via `--dev` mode. All data is stored in SQLite on the server. Media downloads use yt-dlp.
-- **Local Mode**: Runs entirely in your browser using IndexedDB — no server needed. Import an `.ht` file on setup to populate your local collection. Media and metadata are stored client-side. Switch modes in Settings at any time.
-
-### CLI Tool (`ht`)
-
-The `ht` command provides a full terminal interface for HomeTube:
+## CLI Tool (`ht`)
 
 ```bash
-# Install the command (done by install.sh, or manually:)
-cd backend && bash cli.sh install
-
-# Initialize configuration
-ht init                         # Interactive: data dir, default user, mode
-
-# User management
+ht init                         # Interactive: data dir, default user
 ht login <username>             # Switch active user (creates if not exists)
-ht login <username> --yes       # Create without prompting
 
-# Downloads (auto-detects video vs music vs playlist)
 ht download "https://youtube.com/watch?v=..."                   # Single video
 ht download "https://youtube.com/watch?v=..." --type music      # Force music
-ht download "https://youtube.com/playlist?list=..."             # Auto playlist
-ht download "https://youtube.com/playlist?list=..." -p "Chill"  # Music + playlist
+ht download "https://youtube.com/playlist?list=..." -p "Chill"  # Music playlist
 
-# Browse your library
-ht songs                        # List music for active user
-ht playlists                    # List playlists for active user
-ht videos                       # List videos for active user
+ht songs / ht playlists / ht videos / ht podcasts               # Browse library
+ht videos watched <id|name>     # Mark watched (--unwatch to clear)
+ht videos keep <id|name>        # Prevent auto-delete (--unkeep to clear)
 
-# Export / Import
 ht export -o backup.ht          # Export all data for active user
 ht export --week -o week.ht     # Last 7 days only
-ht export --month -o month.ht   # Last 30 days only
-ht export --day -o day.ht       # Last 24 hours only
 ht import backup.ht             # Import .ht file
-ht import --music ~/Music       # Import music files from folder
-ht import --music ~/Music -p "Favorites" --move  # Import + playlist + move
+ht import --music ~/Music -p "Favorites" --move                 # Local folder import
+
+ht settings get / set <key> <value>   # Server settings (e.g. auto_download)
+ht serve [--host H] [--port P]        # Start the server
+ht pair [--port P] [--ttl S]          # One-time pairing token for a device
 ```
 
-Data can also be transferred via the frontend UI in both modes.
+## `.ht` Files
 
-### Import Existing Music Collection
+`.ht` files are zip archives used to move data between instances and into app
+offline modes:
 
-Import songs from an existing folder into HomeTube with automatic metadata extraction:
-
-```bash
-cd backend && source cli.sh
-
-# List users to get your user ID
-python import_music.py --list-users
-
-# (Optional) List playlists
-python import_music.py --list-playlists --user-id 1
-
-# Import music files (copies by default)
-python import_music.py --folder /path/to/your/music --user-id 1
-
-# Import and add to a specific playlist
-python import_music.py --folder /path/to/your/music --user-id 1 --playlist-id 1
-
-# Move files instead of copying
-python import_music.py --folder /path/to/your/music --user-id 1 --move
 ```
-
-Supports: MP3, FLAC, WAV, M4A, AAC, OGG. Extracts title, artist, and album from file metadata.
+file.ht
+├── metadata.json   # version, users, channels, subscriptions, videos, music, playlists, settings
+├── videos/         # downloaded video files
+└── music/          # downloaded music files
+```
 
 ## Project Structure
 
 ```
 hometube/
-├── install.sh                # One-shot install: venv, deps, frontend build, ht command
-├── .github/workflows/
-│   └── deploy.yml            # GitHub Actions deploy workflow
-├── backend/
-│   ├── main.py               # FastAPI app with REST endpoints
-│   ├── models.py             # DB models (User, Video, Music, Channel, Subscription, Playlist)
-│   ├── database.py           # SQLite configuration
-│   ├── cli.py                # CLI: install, init, login, download, export/import, songs, playlists, videos
-│   ├── cli.sh                # Helper script: manages venv and installs ht command
-│   ├── run-dev.sh            # Dev runner with ngrok tunnel
-│   ├── import_music.py       # Import existing music files
-│   ├── requirements.txt      # Python dependencies
-│   └── services/
-│       ├── ytdlp.py          # yt-dlp wrapper for downloads
-│       └── scheduler.py      # Background subscription checker + auto-delete
-├── frontend/
+├── install.sh / install.ps1   # One-shot install: bun, deps, ht command
+├── server/                    # Bun + Hono server (the whole backend)
 │   ├── src/
-│   │   ├── App.vue           # Main Vue app with slide-out nav menu
-│   │   ├── api.js            # API proxy – delegates to active provider
-│   │   ├── localDb.js        # IndexedDB wrapper (local mode storage)
-│   │   ├── providers/
-│   │   │   ├── DataProvider.js    # Abstract provider interface
-│   │   │   ├── ServerProvider.js  # HTTP provider for server mode
-│   │   │   ├── LocalProvider.js   # IndexedDB provider for local mode
-│   │   │   └── index.js          # Provider factory (detect, build, switch)
-│   │   ├── components/
-│   │   │   ├── GlobalMusicPlayer.vue  # Persistent mini-player across the app
-│   │   │   ├── WaveformVisual.vue     # Audio waveform visualization
-│   │   │   ├── BackendMenu.vue        # Backend URL configuration modal
-│   │   │   ├── PlaylistMenu.vue       # Playlist context menu
-│   │   │   └── SongMenu.vue           # Song context menu
-│   │   ├── pages/
-│   │   │   ├── UserPage.vue           # User selection/creation
-│   │   │   ├── SetupUser.vue          # User setup wizard
-│   │   │   ├── SetupBackend.vue       # Initial mode selection
-│   │   │   ├── VideoHome.vue          # Video feed + player (Plyr.js)
-│   │   │   ├── AddVideo.vue           # Add video by URL
-│   │   │   ├── AddChannel.vue         # Channel browser + subscribe
-│   │   │   ├── MusicHome.vue          # Playlists + songs
-│   │   │   ├── AddMusic.vue           # Add music by URL
-│   │   │   ├── PlaylistView.vue       # Music player with queue
-│   │   │   ├── ExportPage.vue         # Export .ht files
-│   │   │   ├── ImportPage.vue         # Import .ht files
-│   │   │   ├── SettingsPage.vue       # Mode toggle, settings
-│   │   │   ├── DebugPage.vue          # Debug/info page
-│   │   │   └── AboutPage.vue          # App info and version
-│   │   ├── stores/                    # Pinia stores (music, video, user, errors)
-│   │   └── style.css
-│   ├── package.json
-│   └── vite.config.js       # Vite + PWA config
-├── mobile/                   # React Native companion app (Expo SDK 56)
-│   ├── app/                  # Expo Router file-based routing
-│   ├── src/
-│   │   ├── providers/        # DataProvider, ServerProvider, LocalProvider
-│   │   ├── stores/           # Zustand stores (user, music, video, ui)
-│   │   ├── db/localDb.ts     # SQLite wrapper
-│   │   ├── services/         # TrackPlayer background audio
-│   │   ├── components/       # Shared UI components
-│   │   ├── api.ts            # Provider proxy
-│   │   └── types.ts          # TypeScript interfaces
-│   ├── app.json              # Expo config
-│   ├── babel.config.js
-│   └── tsconfig.json
-└── data/
-    ├── db.sqlite            # SQLite database
-    └── downloads/           # Downloaded media files
+│   │   ├── index.ts           # Entry: schema, JWT secret, boot token, listen
+│   │   ├── app.ts             # Hono factory + auth middleware (LAN pairing JWTs)
+│   │   ├── db.ts              # bun:sqlite, byte-identical schema to the old Python backend
+│   │   ├── cli.ts             # The `ht` command
+│   │   ├── hts.ts             # Shared .ht import core
+│   │   ├── routes/            # core, library, media, podcasts, files, export
+│   │   └── services/          # ytdlp (CLI spawn), downloader (job queue), scheduler
+│   └── parity.sh              # Response-level regression harness
+├── desktop/                   # Tauri v2 desktop app (server sidecar + Vue UI)
+├── mobile/                    # React Native companion app (Expo SDK 56)
+├── docs/                      # GitHub Pages site (documentation-only)
+└── .github/workflows/         # Pages deploy, desktop builds, mobile builds
 ```
+
+## Running as a systemd service (Linux)
+
+```ini
+# /etc/systemd/system/hometube.service
+[Unit]
+Description=HomeTube server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hometube
+WorkingDirectory=/opt/hometube/server
+ExecStart=/usr/local/bin/bun run src/index.ts
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+One unit = the full server (scheduler + download queue run as in-process
+tasks; don't run two instances against one data dir). Tail with
+`journalctl -u hometube -f`, health-check with `curl -s localhost:8000/api/status`.
+
+Remote access beyond the LAN is out of scope: use a user-side reverse proxy or Tailscale.
