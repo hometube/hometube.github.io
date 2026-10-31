@@ -590,13 +590,18 @@ fn main() {
             let open_item = tauri::menu::MenuItem::with_id(app, "open", "Open HomeTube", true, None::<&str>)?;
             let quit_item = tauri::menu::MenuItem::with_id(app, "quit", "Quit HomeTube", true, None::<&str>)?;
             let tray_menu = tauri::menu::Menu::with_items(app, &[&open_item, &quit_item])?;
+            // Menu-bar glyph derived from mobile/assets/foreground-icon.png:
+            // a black silhouette (rendered as a template so macOS tints it
+            // for light/dark menu bars) with a brand-gradient fallback for
+            // platforms without template support.
+            #[cfg(target_os = "macos")]
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+            #[cfg(not(target_os = "macos"))]
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon-color.png"))?;
             tauri::tray::TrayIconBuilder::with_id("main-tray")
                 .tooltip("HomeTube")
-                .icon(
-                    app.default_window_icon()
-                        .cloned()
-                        .ok_or("no bundled window icon")?,
-                )
+                .icon(tray_icon)
+                .icon_as_template(cfg!(target_os = "macos"))
                 .menu(&tray_menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
