@@ -1424,21 +1424,21 @@ def serve_music(filename: str, token_valid: bool = Depends(verify_token)):
     media_type = media_types.get(ext, "audio/mpeg")
     return FileResponse(path, media_type=media_type, filename=filename)
 
-# Serve frontend
+# Serve frontend (optional: the desktop shell ships its own UI, so a
+# missing/ unbundled PWA must degrade to a clean 404, not a 500 per request).
 frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
 
 @app.get("/{fullpath:path}")
 async def serve_spa(fullpath: str):
     # Try to serve static file first
     file_path = os.path.join(frontend_dist, fullpath)
-    print(f"[DEBUG] serve_spa: fullpath='{fullpath}', file_path='{file_path}', exists={os.path.isfile(file_path)}")
     if os.path.isfile(file_path):
         return FileResponse(file_path)
     # SPA fallback - return index.html for client-side routing
     index_path = os.path.join(frontend_dist, "index.html")
-    print(f"[DEBUG] serve_spa fallback: index_path='{index_path}', exists={os.path.isfile(index_path)}")
     if os.path.isfile(index_path):
         return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Not found")
 
 if __name__ == "__main__":
     import uvicorn
