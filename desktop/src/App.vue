@@ -1,10 +1,12 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import QRCode from "qrcode";
 
 const status = ref(null);
 const logs = ref([]);
 const pairInfo = ref(null);
+const pairQr = ref("");
 const users = ref(null);
 const apiError = ref("");
 let timers = [];
@@ -44,6 +46,11 @@ async function pairDevice() {
     method: "POST",
   });
   pairInfo.value = await res.json();
+  // Same payload scheme as the terminal QR (deep link on M2 mobile work).
+  pairQr.value = await QRCode.toDataURL(
+    `hometube://pair?url=${pairInfo.value.url}&token=${pairInfo.value.token}`,
+    { margin: 1, width: 220, color: { dark: "#0f1115", light: "#ffffff" } }
+  );
 }
 
 async function stopServer() {
@@ -101,12 +108,14 @@ onUnmounted(() => timers.forEach(clearInterval));
       <div class="card">
         <h2>Connect a device</h2>
         <template v-if="pairInfo">
+          <img v-if="pairQr" :src="pairQr" class="pair-qr" alt="Pairing QR code" />
           <p class="pair-url">{{ pairInfo.url }}?token={{ pairInfo.token }}</p>
           <p class="hint">
-            Single use, expires in {{ pairInfo.expires_in }}s. Enter it in the
-            mobile app's backend URL screen.
+            Scan with the mobile app, or enter the URL+token above. Single use,
+            expires in {{ pairInfo.expires_in }}s.
           </p>
           <button @click="copyPair">Copy</button>
+          <button class="secondary" @click="pairDevice">New token</button>
         </template>
         <template v-else>
           <p class="hint">Mint a one-time pairing token for the mobile app.</p>
@@ -159,6 +168,12 @@ button {
 }
 button:disabled { opacity: 0.4; cursor: default; }
 button:hover:not(:disabled) { background: #1d4ed8; }
+button.secondary { background: #2a3140; }
+button.secondary:hover { background: #343d50; }
+.pair-qr {
+  display: block; width: 180px; height: 180px; border-radius: 8px;
+  margin-bottom: 10px; background: #fff;
+}
 .hint { font-size: 13px; color: #9aa0aa; }
 .pair-url {
   font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all;
