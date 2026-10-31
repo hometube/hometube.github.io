@@ -15,6 +15,7 @@ const storage = ref(null);
 const storageError = ref("");
 const mobile = ref(null);
 const mobileChecked = ref(false);
+const jobs = ref([]);
 let timers = [];
 
 const REPO = "hometube/hometube.github.io";
@@ -70,6 +71,19 @@ async function refreshApi() {
   } catch (e) {
     users.value = null;
     apiError.value = String(e);
+  }
+}
+
+async function refreshDownloads() {
+  if (!apiBase.value || !healthy.value) {
+    jobs.value = [];
+    return;
+  }
+  try {
+    const res = await fetch(`${apiBase.value}/api/downloads`);
+    jobs.value = res.ok ? await res.json() : [];
+  } catch {
+    jobs.value = [];
   }
 }
 
@@ -139,6 +153,8 @@ onMounted(() => {
   timers.push(setInterval(refreshStatus, 2000));
   timers.push(setInterval(refreshLogs, 2000));
   timers.push(setInterval(refreshApi, 3000));
+  timers.push(setInterval(refreshDownloads, 2500));
+  refreshDownloads();
 });
 
 onUnmounted(() => timers.forEach(clearInterval));
@@ -250,6 +266,33 @@ onUnmounted(() => timers.forEach(clearInterval));
       </div>
 
       <div class="card">
+        <h2>Downloads</h2>
+        <template v-if="jobs.length">
+          <div v-for="j in jobs.slice(0, 8)" :key="j.id" class="job">
+            <span class="job-label">{{ j.type }} #{{ j.item_id }}</span>
+            <div class="bar">
+              <div
+                class="fill"
+                :class="j.status"
+                :style="{ width: (j.status === 'done' ? 100 : j.progress || 0) + '%' }"
+              />
+            </div>
+            <span class="job-state" :class="j.status">
+              {{
+                j.status === "error"
+                  ? String(j.error || "error").slice(0, 48)
+                  : j.status === "running"
+                    ? (j.progress || 0) + "%"
+                    : j.status
+              }}
+            </span>
+          </div>
+          <p v-if="jobs.length > 8" class="hint">+{{ jobs.length - 8 }} more</p>
+        </template>
+        <p v-else class="hint">No download activity.</p>
+      </div>
+
+      <div class="card">
         <h2>Storage</h2>
         <template v-if="storage">
           <p class="pair-url">{{ storage.data_dir || "backend default (./data)" }}</p>
@@ -311,6 +354,20 @@ button.secondary:hover { background: #343d50; }
   border-radius: 6px; padding: 8px 14px; font-size: 14px;
 }
 .btnlink:hover { background: #1d4ed8; }
+.job {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; padding: 3px 0;
+}
+.job-label { width: 84px; color: #9aa3b2; flex: none; }
+.bar {
+  flex: 1; height: 6px; border-radius: 3px; background: #2a3140; overflow: hidden;
+}
+.fill { height: 100%; background: #2563eb; transition: width 0.4s; }
+.fill.done { background: #16a34a; }
+.fill.error { background: #dc2626; }
+.job-state { width: 110px; flex: none; color: #9aa3b2; }
+.job-state.done { color: #4ade80; }
+.job-state.error { color: #f87171; }
 .pair-qr {
   display: block; width: 180px; height: 180px; border-radius: 8px;
   margin-bottom: 10px; background: #fff;
