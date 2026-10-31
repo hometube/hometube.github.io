@@ -5,7 +5,7 @@ import type { Env } from "../app";
 import { serialize, type Row } from "../db";
 import { fail } from "../errors";
 import * as ytdlp from "../services/ytdlp";
-import { backfillPodcastEpisodes } from "../services/scheduler";
+import { backfillPodcastEpisodes, naiveNow } from "../services/scheduler";
 
 type App = Hono<Env>;
 
@@ -183,7 +183,7 @@ export function registerPodcasts(app: App) {
     const channel = getChannel(c, Number(sub.channel_id));
     const added = await backfillPodcastEpisodes(channel, sub.user_id as number | null, parseCriteria(sub.criteria));
     c.env.db.run("UPDATE subscriptions SET last_checked = ? WHERE id = ?", [
-      new Date().toISOString().replace("T", " ").slice(0, 19),
+      naiveNow(),
       Number(sub.id),
     ]);
     return c.json({ ok: true, added });

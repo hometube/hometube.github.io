@@ -253,6 +253,60 @@ check "GET /api/podcasts/999/episodes (404)" GET /api/podcasts/999/episodes
 check "POST /api/podcasts/999/check (404)" POST /api/podcasts/999/check '{}'
 check "DELETE /api/podcasts/1 (not podcast -> 404)" DELETE /api/podcasts/1
 
+# --- export/import .ht ---
+exp_headers() { # export response headers (minus volatile filename timestamp)
+  curl -s --max-time 60 -D - -o "$2" -X POST "$1/api/export" \
+    -H 'content-type: application/json' -d "$3" \
+    | tr -d '\r' | grep -iE "^(HTTP/|content-type:|content-disposition:)" \
+    | awk -F: '{print tolower($1)":"substr($0,index($0,":")+1)}' | sort \
+    | sed -E 's/hometube-export-[0-9]+-[0-9]+\.ht/X.ht/'
+}
+exp_check() { # exp_check <label> <json body>: zips must match structurally
+  local label=$1 hp hj
+  hp=$(exp_headers "$P" "$SCRATCH/exp-p.ht" "$2")
+  hj=$(exp_headers "$J" "$SCRATCH/exp-j.ht" "$2")
+  if [ "$hp" = "$hj" ] && python3 "$HERE/htcmp.py" "$SCRATCH/exp-p.ht" "$SCRATCH/exp-j.ht"; then
+    echo "OK   $label"
+  else
+    echo "FAIL $label"; fail=1
+  fi
+}
+imp_raw() { # imp_raw <base> <file> -> "code<TAB>body"
+  local code
+  code=$(curl -s -o "$SCRATCH/imp-body.tmp" -w '%{http_code}' --max-time 30 -X POST -F "file=@$2" "$1/api/import")
+  printf '%s\t%s' "$code" "$(cat "$SCRATCH/imp-body.tmp")"
+}
+cmp_imp() { # cmp_imp <label> <file> <mode full|code>
+  local label=$1 rp rj
+  rp=$(imp_raw "$P" "$2"); rj=$(imp_raw "$J" "$2")
+  [ "$3" = code ] && { rp=${rp%%$'\t'*}; rj=${rj%%$'\t'*}; }
+  if [ "$rp" = "$rj" ]; then echo "OK   $label"; else echo "FAIL $label: [$rp] vs [$rj]"; fail=1; fi
+}
+exp_check "POST /api/export {}" '{}'
+exp_check "POST /api/export type=music" '{"type":"music"}'
+exp_check "POST /api/export type=videos video_ids=[1]" '{"type":"videos","video_ids":[1]}'
+exp_check "POST /api/export user_id=1" '{"user_id":1}'
+exp_check "POST /api/export date_from" '{"date_from":"2026-01-01"}'
+exp_check "POST /api/export date_to past" '{"date_to":"2000-01-01"}'
+# bad imports first (rejected before any DB change)
+cp "$SCRATCH/exp-p.ht" "$SCRATCH/bad-name.zip"
+cmp_imp "POST /api/import wrong extension" "$SCRATCH/bad-name.zip" full
+printf 'not a zip at all' > "$SCRATCH/bad-zip.ht"
+cmp_imp "POST /api/import not a zip" "$SCRATCH/bad-zip.ht" code
+python3 -c "import zipfile; z=zipfile.ZipFile('$SCRATCH/no-meta.ht','w'); z.writestr('stuff.txt','x')"
+cmp_imp "POST /api/import missing metadata.json" "$SCRATCH/no-meta.ht" full
+# real import: feed Python's full export into both, then diff the libraries
+curl -s --max-time 60 -o "$SCRATCH/exp-import.ht" -X POST "$P/api/export" -H 'content-type: application/json' -d '{}'
+rp=$(curl -s --max-time 30 -X POST -F "file=@$SCRATCH/exp-import.ht" "$P/api/import")
+rj=$(curl -s --max-time 30 -X POST -F "file=@$SCRATCH/exp-import.ht" "$J/api/import")
+if [ "$rp" = "$rj" ]; then echo "OK   POST /api/import (summary match: $rp)"; else echo "FAIL import: $rp vs $rj"; fail=1; fi
+check "GET /api/users (after import)" GET /api/users
+check "GET /api/podcasts (after import)" GET /api/podcasts '' norm
+check "GET /api/videos (after import)" GET /api/videos '' norm2
+check "GET /api/music (after import)" GET /api/music '' norm2
+check "GET /api/playlists (after import)" GET /api/playlists '' norm2
+check "GET /api/subscriptions (after import)" GET /api/subscriptions '' norm
+
 # intentional deviation: Python's SPA catch-all serves index.html (200) for
 # unknown routes incl. /api/*; the JS server returns a proper JSON 404.
 code=$(status_of "$J/api/nope")

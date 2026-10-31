@@ -21,9 +21,10 @@ function dbHandle(): Database {
   return _db;
 }
 
-// SQLite DATETIME columns hold naive UTC ("YYYY-MM-DD HH:MM:SS[.ffffff]").
-function naiveNow(): string {
-  return new Date().toISOString().replace("T", " ").slice(0, 19);
+// SQLite DATETIME columns hold naive UTC ("YYYY-MM-DD HH:MM:SS.ffffff") —
+// Python wrote these with datetime.utcnow(), so keep 6 fractional digits.
+export function naiveNow(): string {
+  return `${new Date().toISOString().replace("T", " ").replace("Z", "")}000`;
 }
 
 function parseNaiveUtc(s: string): number {
@@ -133,7 +134,7 @@ export async function checkOnce(): Promise<void> {
   }
 
   // Auto-delete videos watched >7 days ago without the keep flag.
-  const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString().replace("T", " ").slice(0, 19);
+  const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString().replace("T", " ").replace("Z", "000");
   const stale = db
     .query<Row, [string]>(
       "SELECT * FROM videos WHERE watched_at IS NOT NULL AND watched_at < ? AND keep_flag = 0",

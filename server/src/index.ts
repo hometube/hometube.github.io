@@ -10,6 +10,7 @@ import { registerLibrary } from "./routes/library";
 import { registerMedia } from "./routes/media";
 import { registerPodcasts } from "./routes/podcasts";
 import { registerFiles } from "./routes/files";
+import { registerExportImport } from "./routes/export";
 import { initDownloader } from "./services/downloader";
 import { initScheduler, startScheduler } from "./services/scheduler";
 import { lanIp } from "./auth";
@@ -26,6 +27,7 @@ registerLibrary(app);
 registerMedia(app);
 registerPodcasts(app);
 registerFiles(app);
+registerExportImport(app);
 startScheduler();
 
 const port = Number(process.env.PORT ?? 8000);

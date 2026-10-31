@@ -8,6 +8,7 @@ import type { Env } from "../app";
 import { serialize, type Row } from "../db";
 import { fail } from "../errors";
 import { downloadsDir } from "../paths";
+import { naiveNow } from "../services/scheduler";
 
 type App = Hono<Env>;
 
@@ -95,7 +96,10 @@ export function registerLibrary(app: App) {
     const sets: string[] = [];
     const params: (string | number | null)[] = [];
     if (data.watched === true) {
-      sets.push("watched_at = datetime('now')");
+      // datetime('now') would truncate to whole seconds; Python stored
+      // datetime.utcnow() with microseconds.
+      sets.push("watched_at = ?");
+      params.push(naiveNow());
     } else if (data.watched === false) {
       sets.push("watched_at = NULL");
     }
