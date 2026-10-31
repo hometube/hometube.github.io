@@ -561,7 +561,7 @@ def add_video(data: VideoAdd, token_valid: bool = Depends(verify_token), db: Ses
         if data.playlist_id:
             playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
             if playlist:
-                songs = playlist.songs or []
+                songs = list(playlist.songs or [])
                 for vid_id in video_ids:
                     songs.append({"video_id": vid_id, "position": 0, "type": "video"})
                 playlist.songs = songs
@@ -592,7 +592,7 @@ def add_video(data: VideoAdd, token_valid: bool = Depends(verify_token), db: Ses
     if data.playlist_id:
         playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
         if playlist:
-            songs = playlist.songs or []
+            songs = list(playlist.songs or [])
             songs.append({"video_id": vid.id, "position": 0, "type": "video"})
             playlist.songs = songs
             db.commit()
@@ -791,7 +791,10 @@ def add_to_playlist(playlist_id: int, data: PlaylistAddItem, token_valid: bool =
     playlist = db.query(models.Playlist).filter(models.Playlist.id == playlist_id).first()
     if not playlist:
         raise HTTPException(404)
-    songs = playlist.songs or []
+    # Copy, not reuse: reassigning the same list object leaves the JSON
+    # column's change history empty, so appends were silently dropped for
+    # playlists that already had items (found by the JS parity harness).
+    songs = list(playlist.songs or [])
     if data.video_id is not None:
         vid = db.query(models.Video).filter(models.Video.id == data.video_id).first()
         if not vid:
@@ -895,7 +898,7 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
         if data.playlist_id:
             playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
             if playlist:
-                songs = playlist.songs or []
+                songs = list(playlist.songs or [])
                 for mid in music_ids:
                     songs.append({"music_id": mid, "position": 0})
                 playlist.songs = songs
@@ -933,7 +936,7 @@ def add_music(data: MusicAdd, token_valid: bool = Depends(verify_token), db: Ses
     if data.playlist_id:
         playlist = db.query(models.Playlist).filter(models.Playlist.id == data.playlist_id).first()
         if playlist:
-            songs = playlist.songs or []
+            songs = list(playlist.songs or [])
             songs.append({"music_id": music.id, "position": 0})
             playlist.songs = songs
             db.commit()
