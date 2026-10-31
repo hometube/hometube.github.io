@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import QRCode from "qrcode";
 
 const status = ref(null);
@@ -10,6 +11,8 @@ const pairQr = ref("");
 const users = ref(null);
 const apiError = ref("");
 const logPath = ref("");
+const storage = ref(null);
+const storageError = ref("");
 let timers = [];
 
 const apiBase = computed(() =>
@@ -74,8 +77,36 @@ function copyLogPath() {
   navigator.clipboard.writeText(logPath.value);
 }
 
+async function refreshStorage() {
+  storage.value = await invoke("storage_info");
+}
+
+async function useSuggestedDir() {
+  await applyDataDir(storage.value.suggested_dir);
+}
+
+async function chooseDir() {
+  const picked = await open({
+    directory: true,
+    title: "Choose HomeTube data folder",
+    defaultPath: storage.value?.data_dir || storage.value?.suggested_dir,
+  });
+  if (picked) await applyDataDir(picked);
+}
+
+async function applyDataDir(dir) {
+  storageError.value = "";
+  try {
+    storage.value = await invoke("set_data_dir", { dir });
+    await refreshStatus();
+  } catch (e) {
+    storageError.value = String(e);
+  }
+}
+
 onMounted(() => {
   refreshStatus();
+  refreshStorage();
   timers.push(setInterval(refreshStatus, 2000));
   timers.push(setInterval(refreshLogs, 2000));
   timers.push(setInterval(refreshApi, 3000));
@@ -93,6 +124,20 @@ onUnmounted(() => timers.forEach(clearInterval));
       </span>
       <span v-else class="badge">…</span>
     </header>
+
+    <section v-if="storage && !storage.configured" class="card onboard">
+      <h2>Where should your library live?</h2>
+      <p class="hint">
+        HomeTube stores its database and all downloaded media in one folder.
+        Have an existing library (from the CLI or another install)? Pick the
+        folder that contains its <code>db.sqlite</code>.
+      </p>
+      <div class="actions">
+        <button @click="useSuggestedDir">Use {{ storage.suggested_dir }}</button>
+        <button class="secondary" @click="chooseDir">Choose another folder…</button>
+      </div>
+      <p v-if="storageError" class="error">{{ storageError }}</p>
+    </section>
 
     <section class="grid">
       <div class="card">
@@ -141,6 +186,20 @@ onUnmounted(() => timers.forEach(clearInterval));
         </template>
         <p v-else class="hint">{{ apiError || "waiting for the server…" }}</p>
       </div>
+
+      <div class="card">
+        <h2>Storage</h2>
+        <template v-if="storage">
+          <p class="pair-url">{{ storage.data_dir || "backend default (./data)" }}</p>
+          <p class="hint">
+            <template v-if="storage.db_exists">Existing library detected here.</template>
+            <template v-else-if="storage.configured">No database in this folder yet — created on first use.</template>
+            <template v-else>Using the backend's built-in default; set a folder to manage it here.</template>
+          </p>
+          <button class="secondary" @click="chooseDir">Change folder…</button>
+          <p v-if="storageError" class="error">{{ storageError }}</p>
+        </template>
+      </div>
     </section>
 
     <section class="card logs-card">
@@ -169,8 +228,11 @@ h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .badge.ok { color: #4ade80; }
 .badge.bad { color: #f87171; }
 .badge.ext { color: #fbbf24; }
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 16px; }
 .card { background: #171a21; border: 1px solid #262b36; border-radius: 10px; padding: 16px; }
+.onboard { margin-bottom: 16px; border-color: #3b4658; }
+code { font-family: ui-monospace, monospace; font-size: 12px; }
+.error { color: #f87171; font-size: 13px; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0 0 12px; font-size: 14px; }
 dt { color: #9aa0aa; }
 dd { margin: 0; }
