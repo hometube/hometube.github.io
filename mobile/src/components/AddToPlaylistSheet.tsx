@@ -147,8 +147,8 @@ export function AddToPlaylistSheet({ song, onClose, kind = "music" }: Props) {
                 style={styles.sheetItem}
                 onPress={() => setCreateMode(true)}
               >
-                <Ionicons name="add-circle" size={22} color="#4ecca3" />
-                <Text style={[styles.sheetLabel, { color: "#4ecca3" }]}>
+                <Ionicons name="add-circle" size={22} color="#56d364" />
+                <Text style={[styles.sheetLabel, { color: "#56d364" }]}>
                   Create New Playlist
                 </Text>
               </TouchableOpacity>
@@ -164,7 +164,7 @@ export function AddToPlaylistSheet({ song, onClose, kind = "music" }: Props) {
                       style={styles.sheetItem}
                       onPress={() => handlePick(p.id)}
                     >
-                      <Ionicons name="folder" size={20} color="#e94560" />
+                      <Ionicons name="folder" size={20} color="#e0559b" />
                       <Text style={styles.sheetLabel}>{p.name}</Text>
                     </TouchableOpacity>
                   ))}
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   createInput: {
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -242,9 +242,9 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: "center",
   },
-  createCancelBtn: { backgroundColor: "#0f3460" },
+  createCancelBtn: { backgroundColor: "#9b2fbf" },
   createCancelText: { color: "#888", fontSize: 16, fontWeight: "600" },
-  createSaveBtn: { backgroundColor: "#e94560" },
+  createSaveBtn: { backgroundColor: "#e0559b" },
   createSaveText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   createBtnDisabled: { opacity: 0.6 },
 });

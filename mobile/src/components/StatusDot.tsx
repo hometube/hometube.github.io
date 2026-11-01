@@ -29,7 +29,7 @@ export default function StatusDot({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: online ? "#4ecca3" : "#666",
+          backgroundColor: online ? "#56d364" : "#666",
         },
         style,
       ]}

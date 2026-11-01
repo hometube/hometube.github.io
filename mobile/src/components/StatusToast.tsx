@@ -61,7 +61,7 @@ export default function StatusToast() {
   if (localMode || !visible) return null;
 
   const online = status === "online";
-  const color = online ? "#4ecca3" : "#888";
+  const color = online ? "#56d364" : "#888";
 
   return (
     <View
@@ -91,9 +91,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderWidth: 1,
-    borderColor: "#0f3460",
+    borderColor: "#9b2fbf",
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,

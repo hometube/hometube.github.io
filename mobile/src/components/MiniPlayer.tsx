@@ -196,12 +196,12 @@ export default function MiniPlayer({ scope = "music" }: Props) {
                 }}
               >
                 {buffering ? (
-                  <ActivityIndicator size="small" color="#16213e" />
+                  <ActivityIndicator size="small" color="#1c1922" />
                 ) : (
                   <Ionicons
                     name={isPlaying ? "pause" : "play"}
                     size={30}
-                    color="#16213e"
+                    color="#1c1922"
                     style={!isPlaying ? styles.playIconNudge : undefined}
                   />
                 )}
@@ -235,9 +235,9 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   container: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopWidth: 1,
-    borderTopColor: "#0f3460",
+    borderTopColor: "#9b2fbf",
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 30,
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
     top: 8,
     left: 0,
     height: 4,
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 2,
   },
   thumb: {
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     height: 18,
     marginLeft: -9,
     borderRadius: 9,
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
   },
   marquee: {
     color: "#fff",
