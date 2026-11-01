@@ -132,9 +132,9 @@ function onSeek(e) {
   border-top: 1px solid var(--border);
   background: var(--panel);
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(320px, 2fr) minmax(160px, 1fr);
+  grid-template-columns: minmax(90px, 1fr) minmax(180px, 2fr) minmax(110px, 1fr);
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 10px 18px;
 }
 .meta { display: flex; align-items: center; gap: 12px; min-width: 0; }

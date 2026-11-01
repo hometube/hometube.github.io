@@ -194,7 +194,8 @@ onUnmounted(() => {
   --grad: linear-gradient(135deg, #f4614f, #d0379f, #9b2fbf);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); }
+/* App shell: scrolling belongs to main/nav, never the page itself. */
+html, body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); }
 a { color: var(--accent); }
 button {
   background-image: var(--grad); color: #fff; border: 0; border-radius: 8px;
