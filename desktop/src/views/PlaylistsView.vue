@@ -2,10 +2,13 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { api, currentUser, healthy, state } from "../store";
 import { playList, player, toggleShuffle } from "../player";
+import AddMusicModal from "../components/AddMusicModal.vue";
 
 const playlists = ref([]);
 const musicById = ref(new Map());
 const videoById = ref(new Map());
+const showAdd = ref(false);
+const addDest = ref(0); // 0 = library, preselected playlist when opened from a detail
 let timer = null;
 
 const user = computed(() => currentUser());
@@ -58,6 +61,11 @@ async function removeItem(id) {
   await load();
 }
 
+function openAdd(dest) {
+  addDest.value = dest;
+  showAdd.value = true;
+}
+
 watch(user, load);
 onMounted(() => {
   load();
@@ -68,7 +76,10 @@ onUnmounted(() => clearInterval(timer));
 
 <template>
   <div v-if="!selected">
-    <h2>Music</h2>
+    <div class="list-head">
+      <h2>Music</h2>
+      <button class="add-music" @click="openAdd(0)">+ Add music</button>
+    </div>
     <div v-if="playlists.length" class="cards">
       <div v-for="p in playlists" :key="p.id" class="card" @click="state.openPlaylistId = p.id">
         <strong>{{ p.name }}</strong>
@@ -80,8 +91,9 @@ onUnmounted(() => clearInterval(timer));
       </div>
     </div>
     <p v-else class="hint">
-      No playlists for {{ user?.username || "you" }} yet. Adding a playlist
-      URL creates one automatically.
+      No playlists for {{ user?.username || "you" }} yet. Use
+      <em>+ Add music</em> — paste a playlist URL or pick <em>As a new
+      playlist</em> to create one.
     </p>
   </div>
 
@@ -109,6 +121,13 @@ onUnmounted(() => clearInterval(timer));
         <h2 class="pl-name">{{ selected.name }}</h2>
         <p class="hint">{{ items.length }} {{ items.length === 1 ? "item" : "items" }}</p>
       </div>
+      <button
+        v-if="!isVideoList"
+        class="secondary add-music"
+        @click="openAdd(selected.id)"
+      >
+        + Add music
+      </button>
     </div>
 
     <p v-if="isVideoList" class="hint padded">
@@ -143,9 +162,18 @@ onUnmounted(() => clearInterval(timer));
     </div>
     <p v-else class="hint padded">This playlist is empty.</p>
   </div>
+
+  <AddMusicModal
+    v-if="showAdd"
+    :initial-playlist="addDest"
+    @close="showAdd = false"
+    @added="load"
+  />
 </template>
 
 <style scoped>
+.list-head { display: flex; align-items: center; margin-bottom: 14px; }
+.add-music { margin-left: auto; flex: none; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .card {
   padding: 16px; display: flex; flex-direction: column; gap: 5px; cursor: pointer;

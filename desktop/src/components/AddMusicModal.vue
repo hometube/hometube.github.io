@@ -1,11 +1,16 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
-import { api, currentUser, healthy } from "../store";
+import { api, currentUser, healthy, refreshPlaylists } from "../store";
 
+const props = defineProps({ initialPlaylist: { type: Number, default: 0 } });
 const emit = defineEmits(["close", "added"]);
 
+// Destination select sentinel: 0 = library, -1 = brand-new playlist, >0 = existing.
+const NEW_PLAYLIST = -1;
+
 const url = ref("");
-const playlistId = ref(0);
+const playlistId = ref(props.initialPlaylist);
+const newListName = ref("");
 const busy = ref(false);
 const error = ref("");
 const done = ref("");
@@ -25,6 +30,35 @@ async function loadPlaylists() {
   }
 }
 
+// "As a new playlist": never pass playlist_id — the server creates one for
+// playlist URLs. A single track needs explicit create + add; a server-created
+// playlist only needs a PUT when the user supplied a custom name.
+async function placeInNewPlaylist(res) {
+  const name = newListName.value.trim();
+  if (res.is_playlist) {
+    if (name) {
+      await api(`/api/playlists/${res.playlist_id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+    }
+    return name;
+  }
+  const pl = await api("/api/playlists", {
+    method: "POST",
+    body: JSON.stringify({
+      name: name || res.title || "New Playlist",
+      user_id: currentUser()?.id,
+      kind: "music",
+    }),
+  });
+  await api(`/api/playlists/${pl.id}/add`, {
+    method: "POST",
+    body: JSON.stringify({ music_id: res.id, position: 0 }),
+  });
+  return pl.name;
+}
+
 async function add() {
   const link = url.value.trim();
   if (!link || busy.value) return;
@@ -33,9 +67,14 @@ async function add() {
   done.value = "";
   try {
     const body = { url: link, user_id: currentUser()?.id };
-    if (playlistId.value) body.playlist_id = playlistId.value;
+    if (playlistId.value > 0) body.playlist_id = playlistId.value;
     const res = await api("/api/music/add", { method: "POST", body: JSON.stringify(body) });
-    if (res.is_playlist) {
+    if (playlistId.value === NEW_PLAYLIST) {
+      const name = await placeInNewPlaylist(res);
+      done.value = res.is_playlist
+        ? `Added ${res.count} songs${name ? ` to “${name}”` : " as a new playlist"}. Downloads are running in the background.`
+        : `Added “${res.title || "your song"}” to “${name || "New Playlist"}”. It will be ready to play once downloaded.`;
+    } else if (res.is_playlist) {
       done.value = `Added ${res.count} songs${
         playlistId.value ? "" : ' as a new playlist'
       }. Downloads are running in the background.`;
@@ -43,6 +82,7 @@ async function add() {
       done.value = `Added "${res.title || "your song"}". It will be ready to play once downloaded.`;
     }
     url.value = "";
+    refreshPlaylists(); // sidebar sub-nav shows a newly created playlist right away
     emit("added");
   } catch (e) {
     error.value = `Could not add that link (${e.message}). Is it a music video or playlist URL?`;
@@ -73,10 +113,19 @@ onMounted(() => {
       />
       <select v-model.number="playlistId" :disabled="busy">
         <option :value="0">Add to library</option>
+        <option :value="-1">As a new playlist…</option>
         <option v-for="p in playlists" :key="p.id" :value="p.id">
           Into “{{ p.name }}”
         </option>
       </select>
+      <input
+        v-if="playlistId === -1"
+        v-model="newListName"
+        placeholder="Playlist name (optional)"
+        maxlength="200"
+        :disabled="busy"
+        @keydown.enter="add"
+      />
       <p v-if="busy" class="hint status">Fetching info from YouTube…</p>
       <p v-else-if="done" class="ok">{{ done }}</p>
       <p v-else-if="error" class="error">{{ error }}</p>
