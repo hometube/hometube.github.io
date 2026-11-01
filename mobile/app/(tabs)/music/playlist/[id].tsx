@@ -95,7 +95,7 @@ const SongRow = memo(function SongRow({
         </Text>
       </View>
       {item.downloaded && (
-        <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+        <Ionicons name="checkmark-circle" size={16} color="#56d364" />
       )}
       <TouchableOpacity
         style={styles.rowMenuBtn}
@@ -107,10 +107,10 @@ const SongRow = memo(function SongRow({
       {manageMode && (
         <View style={styles.reorderBtns}>
           <TouchableOpacity onPress={() => onMoveUp(index)} disabled={index === 0}>
-            <Ionicons name="chevron-up" size={18} color={index === 0 ? "#333" : "#4ecca3"} />
+            <Ionicons name="chevron-up" size={18} color={index === 0 ? "#333" : "#56d364"} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => onMoveDown(index)} disabled={isLast}>
-            <Ionicons name="chevron-down" size={18} color={isLast ? "#333" : "#4ecca3"} />
+            <Ionicons name="chevron-down" size={18} color={isLast ? "#333" : "#56d364"} />
           </TouchableOpacity>
         </View>
       )}
@@ -554,7 +554,7 @@ export default function PlaylistView() {
   if (isLoading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#e94560" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#e0559b" style={{ marginTop: 40 }} />
       </View>
     );
   }
@@ -610,7 +610,7 @@ export default function PlaylistView() {
         <View style={styles.filterRow}>
           {serverOffline ? (
             <View style={styles.offlineBar}>
-              <Ionicons name="cloud-offline" size={14} color="#e94560" />
+              <Ionicons name="cloud-offline" size={14} color="#e0559b" />
               <Text style={styles.offlineBarText} numberOfLines={1}>
                 Server unreachable — only downloaded songs can play
               </Text>
@@ -623,7 +623,7 @@ export default function PlaylistView() {
             <Ionicons
               name="cloud-offline"
               size={15}
-              color={offlineOnly ? "#0f3460" : "#888"}
+              color={offlineOnly ? "#9b2fbf" : "#888"}
             />
             <Text style={[styles.filterText, offlineOnly && styles.filterTextActive]}>
               Offline only
@@ -634,7 +634,7 @@ export default function PlaylistView() {
 
       {manageMode && (
         <View style={styles.manageBar}>
-          <Ionicons name="reorder-three" size={16} color="#4ecca3" />
+          <Ionicons name="reorder-three" size={16} color="#56d364" />
           <Text style={styles.manageText}>Use the song menu to remove/download. Use arrows to reorder.</Text>
         </View>
       )}
@@ -678,9 +678,9 @@ export default function PlaylistView() {
                 <Ionicons
                   name={item.icon as any}
                   size={22}
-                  color={item.destructive ? "#e94560" : "#fff"}
+                  color={item.destructive ? "#e0559b" : "#fff"}
                 />
-                <Text style={[styles.sheetLabel, item.destructive && { color: "#e94560" }]}>
+                <Text style={[styles.sheetLabel, item.destructive && { color: "#e0559b" }]}>
                   {item.label}
                 </Text>
               </TouchableOpacity>
@@ -742,9 +742,9 @@ export default function PlaylistView() {
                   <Ionicons
                     name={item.icon as any}
                     size={22}
-                    color={item.destructive ? "#e94560" : "#fff"}
+                    color={item.destructive ? "#e0559b" : "#fff"}
                   />
-                  <Text style={[styles.sheetLabel, item.destructive && { color: "#e94560" }]}>
+                  <Text style={[styles.sheetLabel, item.destructive && { color: "#e0559b" }]}>
                     {item.label}
                   </Text>
                 </TouchableOpacity>
@@ -761,7 +761,7 @@ export default function PlaylistView() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   header: {
     flexDirection: "row",
     padding: 16,
@@ -792,7 +792,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 12,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -823,21 +823,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  offlineBarText: { color: "#e94560", fontSize: 12, flexShrink: 1 },
+  offlineBarText: { color: "#e0559b", fontSize: 12, flexShrink: 1 },
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderColor: "#333",
     borderWidth: 1,
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  filterChipActive: { backgroundColor: "#4ecca3", borderColor: "#4ecca3" },
+  filterChipActive: { backgroundColor: "#56d364", borderColor: "#56d364" },
   filterText: { color: "#888", fontSize: 12, fontWeight: "600" },
-  filterTextActive: { color: "#0f3460" },
+  filterTextActive: { color: "#9b2fbf" },
   filterEmpty: {
     alignItems: "center",
     paddingTop: 40,
@@ -849,13 +849,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
   },
-  shuffleBtn: { backgroundColor: "#0f3460" },
-  menuBtn: { backgroundColor: "#16213e", paddingHorizontal: 14 },
+  shuffleBtn: { backgroundColor: "#9b2fbf" },
+  menuBtn: { backgroundColor: "#1c1922", paddingHorizontal: 14 },
   controlText: { color: "#fff", fontSize: 14, fontWeight: "600" },
   manageBar: {
     flexDirection: "row",
@@ -864,7 +864,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
-  manageText: { color: "#4ecca3", fontSize: 12 },
+  manageText: { color: "#56d364", fontSize: 12 },
   songItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -881,7 +881,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 6,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -905,7 +905,7 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   songTitle: { color: "#fff", fontSize: 14, fontWeight: "500" },
-  songTitleActive: { color: "#e94560" },
+  songTitleActive: { color: "#e0559b" },
   songArtist: { color: "#888", fontSize: 12, marginTop: 2 },
   reorderBtns: {
     flexDirection: "column",
@@ -918,7 +918,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
@@ -946,7 +946,7 @@ const styles = StyleSheet.create({
   },
   sheetLabel: { color: "#fff", fontSize: 16 },
   renameInput: {
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -963,9 +963,9 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: "center",
   },
-  renameCancelBtn: { backgroundColor: "#0f3460" },
+  renameCancelBtn: { backgroundColor: "#9b2fbf" },
   renameCancelText: { color: "#888", fontSize: 16, fontWeight: "600" },
-  renameSaveBtn: { backgroundColor: "#e94560" },
+  renameSaveBtn: { backgroundColor: "#e0559b" },
   renameSaveText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   renameBtnDisabled: { opacity: 0.6 },
 });

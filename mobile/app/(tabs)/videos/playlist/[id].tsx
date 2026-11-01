@@ -127,12 +127,12 @@ export default function VideoPlaylistDetail() {
           <Text style={styles.title} numberOfLines={2}>{item.video.title}</Text>
           <View style={styles.metaRow}>
             {item.video.watched_at ? (
-              <Ionicons name="checkmark-circle" size={13} color="#4ecca3" />
+              <Ionicons name="checkmark-circle" size={13} color="#56d364" />
             ) : item.video.position ? (
               <Text style={styles.resume}>{Math.round(item.video.position / 60)}m in</Text>
             ) : null}
             {item.video.downloaded ? (
-              <Ionicons name="download" size={13} color="#4ecca3" />
+              <Ionicons name="download" size={13} color="#56d364" />
             ) : null}
           </View>
         </TouchableOpacity>
@@ -155,7 +155,7 @@ export default function VideoPlaylistDetail() {
           </View>
         ) : (
           <TouchableOpacity onPress={() => removeMember(item)} style={styles.removeBtn}>
-            <Ionicons name="close" size={18} color="#e94560" />
+            <Ionicons name="close" size={18} color="#e0559b" />
           </TouchableOpacity>
         )}
       </View>
@@ -176,7 +176,7 @@ export default function VideoPlaylistDetail() {
           <Ionicons name="pencil" size={20} color="#aaa" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.deleteBtn} onPress={checkDelete}>
-          <Ionicons name="trash" size={20} color="#e94560" />
+          <Ionicons name="trash" size={20} color="#e0559b" />
         </TouchableOpacity>
       </View>
 
@@ -197,7 +197,7 @@ export default function VideoPlaylistDetail() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#e94560" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#e0559b" style={{ marginTop: 40 }} />
       ) : localMembers.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="albums-outline" size={48} color="#444" />
@@ -219,7 +219,7 @@ export default function VideoPlaylistDetail() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
@@ -251,17 +251,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
   },
-  manageBtnActive: { backgroundColor: "#0f3460" },
+  manageBtnActive: { backgroundColor: "#9b2fbf" },
   manageText: { color: "#fff", fontSize: 13 },
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     marginHorizontal: 12,
     marginBottom: 8,
     borderRadius: 10,
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 8,
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   thumbText: { color: "#fff", fontSize: 18 },
   title: { color: "#fff", fontSize: 14, fontWeight: "500" },
   metaRow: { flexDirection: "row", gap: 6, marginTop: 4, alignItems: "center" },
-  resume: { color: "#4ecca3", fontSize: 12 },
+  resume: { color: "#56d364", fontSize: 12 },
   moveCol: { flexDirection: "row" },
   moveBtn: { padding: 6 },
   removeBtn: { padding: 8 },

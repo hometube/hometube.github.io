@@ -136,7 +136,7 @@ export default function AddPodcast() {
             >
               <Text style={styles.playlistItemText}>{item.name}</Text>
               {selectedPlaylist === item.id && (
-                <Ionicons name="checkmark-circle" size={20} color="#9070e9" />
+                <Ionicons name="checkmark-circle" size={20} color="#b95fd0" />
               )}
             </TouchableOpacity>
           )}
@@ -155,7 +155,7 @@ export default function AddPodcast() {
         <Ionicons
           name={createNewPlaylist ? "checkbox" : "square-outline"}
           size={20}
-          color={createNewPlaylist ? "#9070e9" : "#666"}
+          color={createNewPlaylist ? "#b95fd0" : "#666"}
         />
         <Text style={styles.checkLabel}>Create new playlist</Text>
       </TouchableOpacity>
@@ -191,7 +191,7 @@ export default function AddPodcast() {
           <Ionicons
             name="radio"
             size={16}
-            color={tab === "subscribe" ? "#0f3460" : "#888"}
+            color={tab === "subscribe" ? "#9b2fbf" : "#888"}
           />
           <Text style={[styles.tabText, tab === "subscribe" && styles.tabTextActive]}>
             Subscribe
@@ -204,7 +204,7 @@ export default function AddPodcast() {
           <Ionicons
             name="musical-note"
             size={16}
-            color={tab === "episode" ? "#0f3460" : "#888"}
+            color={tab === "episode" ? "#9b2fbf" : "#888"}
           />
           <Text style={[styles.tabText, tab === "episode" && styles.tabTextActive]}>
             Add Episode
@@ -220,7 +220,7 @@ export default function AddPodcast() {
           <View style={styles.form}>
             {isLocal && (
               <View style={styles.localBanner}>
-                <Ionicons name="cloud-offline" size={16} color="#e94560" />
+                <Ionicons name="cloud-offline" size={16} color="#e0559b" />
                 <Text style={styles.localBannerText}>
                   Local mode — subscribing and adding episodes require server
                   mode. Switch modes in Settings.
@@ -317,7 +317,7 @@ export default function AddPodcast() {
 
             {infoMessage && (
               <View style={styles.infoBox}>
-                <Ionicons name="checkmark-circle" size={18} color="#4ecca3" />
+                <Ionicons name="checkmark-circle" size={18} color="#56d364" />
                 <Text style={styles.infoText}>{infoMessage}</Text>
               </View>
             )}
@@ -330,7 +330,7 @@ export default function AddPodcast() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   tabs: {
     flexDirection: "row",
     gap: 8,
@@ -341,19 +341,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  tabActive: { backgroundColor: "#9070e9" },
+  tabActive: { backgroundColor: "#b95fd0" },
   tabText: { color: "#888", fontSize: 14, fontWeight: "600" },
-  tabTextActive: { color: "#0f3460" },
+  tabTextActive: { color: "#9b2fbf" },
   form: { padding: 16, gap: 12 },
   label: { color: "#fff", fontSize: 14, fontWeight: "600" },
   urlHint: { color: "#666", fontSize: 12, marginTop: -8 },
   input: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -367,12 +367,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 12,
     marginBottom: 6,
   },
-  playlistItemActive: { borderColor: "#9070e9", borderWidth: 1 },
+  playlistItemActive: { borderColor: "#b95fd0", borderWidth: 1 },
   playlistItemText: { color: "#fff", fontSize: 14 },
   noPlaylists: { color: "#666", fontSize: 13, paddingVertical: 8 },
   checkRow: {
@@ -392,9 +392,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
   },
-  localBannerText: { color: "#e94560", fontSize: 12, flex: 1 },
+  localBannerText: { color: "#e0559b", fontSize: 12, flex: 1 },
   button: {
-    backgroundColor: "#9070e9",
+    backgroundColor: "#b95fd0",
     borderRadius: 8,
     padding: 14,
     alignItems: "center",
@@ -411,5 +411,5 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 8,
   },
-  infoText: { color: "#4ecca3", fontSize: 13, flex: 1 },
+  infoText: { color: "#56d364", fontSize: 13, flex: 1 },
 });

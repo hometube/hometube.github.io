@@ -119,7 +119,7 @@ export default function Settings() {
         <Ionicons
           name={icon as any}
           size={20}
-          color={danger ? "#e94560" : "#888"}
+          color={danger ? "#e0559b" : "#888"}
         />
         <Text style={[styles.rowLabel, danger && styles.dangerText]}>
           {label}
@@ -211,8 +211,8 @@ export default function Settings() {
           <Switch
             value={showVirtualPlaylists}
             onValueChange={setShowVirtualPlaylists}
-            trackColor={{ false: "#333", true: "#0f3460" }}
-            thumbColor={showVirtualPlaylists ? "#4ecca3" : "#555"}
+            trackColor={{ false: "#333", true: "#9b2fbf" }}
+            thumbColor={showVirtualPlaylists ? "#56d364" : "#555"}
           />
         </View>
       </View>
@@ -278,7 +278,7 @@ export default function Settings() {
                     {sec} seconds
                   </Text>
                   {active && (
-                    <Ionicons name="checkmark-circle" size={20} color="#e94560" />
+                    <Ionicons name="checkmark-circle" size={20} color="#e0559b" />
                   )}
                 </TouchableOpacity>
               );
@@ -291,7 +291,7 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   section: {
     marginBottom: 24,
     paddingHorizontal: 16,
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 10,
     padding: 14,
     marginBottom: 6,
@@ -326,16 +326,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rowValue: { color: "#888", fontSize: 13 },
-  onlineText: { color: "#4ecca3" },
+  onlineText: { color: "#56d364" },
   offlineText: { color: "#888" },
-  dangerText: { color: "#e94560" },
+  dangerText: { color: "#e0559b" },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   sheetLabel: { color: "#fff", fontSize: 16 },
-  sheetLabelActive: { color: "#e94560", fontWeight: "600" },
+  sheetLabelActive: { color: "#e0559b", fontWeight: "600" },
   version: {
     color: "#444",
     fontSize: 12,

@@ -165,13 +165,13 @@ export default function VideoFeed() {
         )}
         <View style={styles.videoMeta}>
           {item.keep_flag && (
-            <Ionicons name="bookmark" size={14} color="#e94560" />
+            <Ionicons name="bookmark" size={14} color="#e0559b" />
           )}
           {item.downloaded && (
-            <Ionicons name="download" size={14} color="#4ecca3" />
+            <Ionicons name="download" size={14} color="#56d364" />
           )}
           {downloadingIds.includes(item.id) && (
-            <ActivityIndicator size="small" color="#4ecca3" />
+            <ActivityIndicator size="small" color="#56d364" />
           )}
         </View>
       </View>
@@ -289,7 +289,7 @@ export default function VideoFeed() {
           />
         )
       ) : isLoading && videos.length === 0 ? (
-        <ActivityIndicator size="large" color="#e94560" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#e0559b" style={{ marginTop: 40 }} />
       ) : videos.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="videocam-outline" size={48} color="#444" />
@@ -305,7 +305,7 @@ export default function VideoFeed() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#e94560"
+              tintColor="#e0559b"
             />
           }
           contentContainerStyle={{ paddingBottom: 20 }}
@@ -316,7 +316,7 @@ export default function VideoFeed() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   resultsLabel: {
     color: "#888",
     fontSize: 13,
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 10,
     paddingHorizontal: 10,
     gap: 6,
@@ -355,16 +355,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
   },
-  filterBtnActive: { backgroundColor: "#e94560" },
+  filterBtnActive: { backgroundColor: "#e0559b" },
   filterText: { color: "#888", fontSize: 13 },
   filterTextActive: { color: "#fff", fontWeight: "600" },
   addBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     justifyContent: "center",
     alignItems: "center",
     flexShrink: 0,
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
   videoCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     marginHorizontal: 12,
     marginBottom: 8,
     borderRadius: 10,
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 8,
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -4,
     right: -4,
-    backgroundColor: "#4ecca3",
+    backgroundColor: "#56d364",
     borderRadius: 10,
     width: 18,
     height: 18,
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     justifyContent: "center",
     alignItems: "center",
   },

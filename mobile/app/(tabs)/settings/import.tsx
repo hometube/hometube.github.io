@@ -54,7 +54,7 @@ export default function ImportPage() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Ionicons name="cloud-upload" size={40} color="#e94560" />
+        <Ionicons name="cloud-upload" size={40} color="#e0559b" />
         <Text style={styles.title}>Import Data</Text>
         <Text style={styles.desc}>
           Import a .ht file to restore your HomeTube data. This will replace
@@ -77,9 +77,9 @@ export default function ImportPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e", padding: 16 },
+  container: { flex: 1, backgroundColor: "#121016", padding: 16 },
   card: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 12,
     padding: 24,
     alignItems: "center",
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   title: { color: "#fff", fontSize: 20, fontWeight: "700", marginTop: 12, marginBottom: 8 },
   desc: { color: "#888", fontSize: 14, textAlign: "center", lineHeight: 20, marginBottom: 20 },
   button: {
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     paddingHorizontal: 32,
     paddingVertical: 14,

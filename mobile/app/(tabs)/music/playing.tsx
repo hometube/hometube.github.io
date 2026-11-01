@@ -57,9 +57,9 @@ function PlayingRow({
         </Text>
       </View>
       {item.downloaded && (
-        <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+        <Ionicons name="checkmark-circle" size={16} color="#56d364" />
       )}
-      {active && <Ionicons name="volume-high" size={18} color="#e94560" />}
+      {active && <Ionicons name="volume-high" size={18} color="#e0559b" />}
       <TouchableOpacity
         style={styles.rowMenuBtn}
         onPress={() => onMenu(item)}
@@ -172,7 +172,7 @@ export default function PlayingView() {
             <Ionicons
               name={repeat ? "repeat" : "repeat-outline"}
               size={20}
-              color={repeat ? "#e94560" : "#888"}
+              color={repeat ? "#e0559b" : "#888"}
             />
             <Text
               style={[styles.repeatText, repeat && styles.repeatTextActive]}
@@ -185,8 +185,8 @@ export default function PlayingView() {
             onPress={clearQueue}
             disabled={queue.length === 0}
           >
-            <Ionicons name="trash-outline" size={18} color="#e94560" />
-            <Text style={[styles.repeatText, { color: "#e94560" }]}>
+            <Ionicons name="trash-outline" size={18} color="#e0559b" />
+            <Text style={[styles.repeatText, { color: "#e0559b" }]}>
               Clear Queue
             </Text>
           </TouchableOpacity>
@@ -195,7 +195,7 @@ export default function PlayingView() {
 
       {error && (
         <TouchableOpacity style={styles.errorBanner} onPress={() => setPlaybackError(null)}>
-          <Ionicons name="alert-circle" size={16} color="#ff6b6b" />
+          <Ionicons name="alert-circle" size={16} color="#ff7b72" />
           <Text style={styles.errorBannerText} numberOfLines={2}>
             {error}
           </Text>
@@ -246,12 +246,12 @@ export default function PlayingView() {
                   <Ionicons
                     name={item.icon as any}
                     size={22}
-                    color={item.destructive ? "#e94560" : "#fff"}
+                    color={item.destructive ? "#e0559b" : "#fff"}
                   />
                   <Text
                     style={[
                       styles.sheetLabel,
-                      item.destructive && { color: "#e94560" },
+                      item.destructive && { color: "#e0559b" },
                     ]}
                   >
                     {item.label}
@@ -266,7 +266,7 @@ export default function PlayingView() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
   },
   errorBannerText: {
     flex: 1,
-    color: "#ff6b6b",
+    color: "#ff7b72",
     fontSize: 13,
   },
   header: {
@@ -296,14 +296,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
   },
   repeatBtnActive: { backgroundColor: "rgba(233,69,96,0.15)" },
   repeatText: { color: "#888", fontSize: 13, fontWeight: "600" },
-  repeatTextActive: { color: "#e94560" },
+  repeatTextActive: { color: "#e0559b" },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 6,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   songTitle: { color: "#fff", fontSize: 14, fontWeight: "500" },
-  songTitleActive: { color: "#e94560" },
+  songTitleActive: { color: "#e0559b" },
   songArtist: { color: "#888", fontSize: 12, marginTop: 2 },
   overlay: {
     flex: 1,
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,

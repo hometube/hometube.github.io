@@ -108,7 +108,7 @@ export default function VideoPlaylists() {
           onLongPress={() => checkDelete(item)}
         >
           <View style={styles.iconWrap}>
-            <Ionicons name="list" size={22} color="#4ecca3" />
+            <Ionicons name="list" size={22} color="#56d364" />
           </View>
           <View style={styles.cardInfo}>
             <Text style={styles.cardTitle} numberOfLines={1}>
@@ -136,7 +136,7 @@ export default function VideoPlaylists() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#e94560" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#e0559b" style={{ marginTop: 40 }} />
       </View>
     );
   }
@@ -200,7 +200,7 @@ export default function VideoPlaylists() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     marginHorizontal: 12,
     marginBottom: 8,
     borderRadius: 10,
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 8,
@@ -251,13 +251,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalCard: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 14,
     padding: 20,
   },
   modalTitle: { color: "#fff", fontSize: 18, fontWeight: "700", marginBottom: 16 },
   input: {
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 10,
     padding: 12,
     color: "#fff",
@@ -267,5 +267,5 @@ const styles = StyleSheet.create({
   cancelBtn: { padding: 12 },
   cancelText: { color: "#888", fontSize: 15 },
   confirmBtn: { padding: 12 },
-  confirmText: { color: "#e94560", fontSize: 15, fontWeight: "600" },
+  confirmText: { color: "#e0559b", fontSize: 15, fontWeight: "600" },
 });

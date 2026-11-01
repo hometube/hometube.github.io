@@ -173,7 +173,9 @@ onUnmounted(() => clearInterval(timer));
       </section>
     </template>
 
-    <AddMusicModal v-if="showAdd" @close="showAdd = false" @added="load" />
+    <Transition name="modal">
+      <AddMusicModal v-if="showAdd" @close="showAdd = false" @added="load" />
+    </Transition>
   </div>
 </template>
 

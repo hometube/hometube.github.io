@@ -120,7 +120,7 @@ export default function VideoPlayer() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#e94560" />
+        <ActivityIndicator size="large" color="#e0559b" />
       </View>
     );
   }
@@ -163,7 +163,7 @@ export default function VideoPlayer() {
             <Ionicons
               name={video.keep_flag ? "bookmark" : "bookmark-outline"}
               size={18}
-              color={video.keep_flag ? "#e94560" : "#aaa"}
+              color={video.keep_flag ? "#e0559b" : "#aaa"}
             />
             <Text style={styles.actionText}>{video.keep_flag ? "Kept" : "Keep"}</Text>
           </TouchableOpacity>
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   errorText: {
-    color: "#e94560",
+    color: "#e0559b",
     fontSize: 16,
     textAlign: "center",
     marginTop: 100,
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   backText: {
-    color: "#e94560",
+    color: "#e0559b",
     fontSize: 16,
   },
 });

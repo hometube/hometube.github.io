@@ -5,7 +5,7 @@ export default function WelcomeLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: "#1a1a2e" },
+        contentStyle: { backgroundColor: "#121016" },
       }}
     >
       <Stack.Screen name="setup-backend" />

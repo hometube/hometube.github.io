@@ -219,7 +219,7 @@ export default function MusicHome() {
             </Text>
           </View>
           {item.downloaded && (
-            <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+            <Ionicons name="checkmark-circle" size={16} color="#56d364" />
           )}
           <TouchableOpacity
             style={styles.rowMenuBtn}
@@ -321,14 +321,14 @@ export default function MusicHome() {
             <Ionicons
               name={item._virtual ? "musical-notes" : "folder"}
               size={24}
-              color={item._virtual ? "#4ecca3" : "#e94560"}
+              color={item._virtual ? "#56d364" : "#e0559b"}
             />
           </View>
           <View style={styles.playlistInfo}>
             <View style={styles.playlistTitleRow}>
               <Text style={styles.playlistName}>{item.name}</Text>
               {allOffline && (
-                <Ionicons name="checkmark-circle" size={14} color="#4ecca3" />
+                <Ionicons name="checkmark-circle" size={14} color="#56d364" />
               )}
             </View>
             <Text style={[styles.songCount, allOffline && styles.songCountOffline]}>
@@ -411,7 +411,7 @@ export default function MusicHome() {
           />
         )
       ) : isLoading && playlists.length === 0 ? (
-        <ActivityIndicator size="large" color="#e94560" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#e0559b" style={{ marginTop: 40 }} />
       ) : allPlaylists.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="musical-notes-outline" size={48} color="#444" />
@@ -427,7 +427,7 @@ export default function MusicHome() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#e94560"
+              tintColor="#e0559b"
             />
           }
           contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
@@ -463,13 +463,13 @@ export default function MusicHome() {
                   <Ionicons
                     name={item.icon as any}
                     size={22}
-                    color={item.disabled ? "#555" : item.destructive ? "#e94560" : "#fff"}
+                    color={item.disabled ? "#555" : item.destructive ? "#e0559b" : "#fff"}
                   />
                   <Text
                     style={[
                       styles.sheetLabel,
                       item.disabled && { color: "#555" },
-                      item.destructive && !item.disabled && { color: "#e94560" },
+                      item.destructive && !item.disabled && { color: "#e0559b" },
                     ]}
                   >
                     {item.label}
@@ -489,7 +489,7 @@ export default function MusicHome() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   resultsLabel: {
     color: "#888",
     fontSize: 13,
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 6,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 10,
     paddingHorizontal: 10,
     gap: 6,
@@ -580,7 +580,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     justifyContent: "center",
     alignItems: "center",
     flexShrink: 0,
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
   playlistCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 10,
     padding: 14,
     marginBottom: 8,
@@ -597,7 +597,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
   },
   playlistName: { color: "#fff", fontSize: 16, fontWeight: "500", marginBottom: 2 },
   songCount: { color: "#888", fontSize: 12 },
-  songCountOffline: { color: "#4ecca3" },
+  songCountOffline: { color: "#56d364" },
   empty: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { color: "#666", fontSize: 16, marginTop: 12 },
   emptyHint: { color: "#444", fontSize: 13, marginTop: 4 },

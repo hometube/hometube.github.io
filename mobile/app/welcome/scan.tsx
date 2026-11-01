@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
   camera: { flex: 1 },
   center: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#121016",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     height: 240,
     borderRadius: 16,
     borderWidth: 3,
-    borderColor: "#e94560",
+    borderColor: "#e0559b",
   },
   hint: {
     color: "#fff",
@@ -96,13 +96,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   button: {
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 28,
   },
   secondary: {
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 28,
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 44,
     alignSelf: "center",
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 24,

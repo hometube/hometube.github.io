@@ -96,7 +96,7 @@ export default function AddMusic() {
             >
               <Text style={styles.playlistItemText}>{item.name}</Text>
               {selectedPlaylist === item.id && (
-                <Ionicons name="checkmark-circle" size={20} color="#e94560" />
+                <Ionicons name="checkmark-circle" size={20} color="#e0559b" />
               )}
             </TouchableOpacity>
           )}
@@ -112,7 +112,7 @@ export default function AddMusic() {
           <Ionicons
             name={createNewPlaylist ? "checkbox" : "square-outline"}
             size={20}
-            color={createNewPlaylist ? "#e94560" : "#666"}
+            color={createNewPlaylist ? "#e0559b" : "#666"}
           />
           <Text style={styles.checkLabel}>Create new playlist</Text>
         </TouchableOpacity>
@@ -144,11 +144,11 @@ export default function AddMusic() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   form: { padding: 16, gap: 12, paddingBottom: 80 },
   label: { color: "#fff", fontSize: 14, fontWeight: "600" },
   input: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -159,12 +159,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 12,
     marginBottom: 6,
   },
-  playlistItemActive: { borderColor: "#e94560", borderWidth: 1 },
+  playlistItemActive: { borderColor: "#e0559b", borderWidth: 1 },
   playlistItemText: { color: "#fff", fontSize: 14 },
   checkRow: {
     flexDirection: "row",
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   checkRowActive: {},
   checkLabel: { color: "#ccc", fontSize: 14 },
   button: {
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     padding: 14,
     alignItems: "center",

@@ -113,11 +113,17 @@ onUnmounted(() => {
     <div class="body">
       <div class="content">
         <main>
-          <component :is="view" />
+          <Transition name="view" mode="out-in">
+            <component :is="view" :key="state.view" />
+          </Transition>
         </main>
-        <TransportBar v-if="player.queue.length" />
+        <Transition name="bar">
+          <TransportBar v-if="player.queue.length" />
+        </Transition>
       </div>
-      <QueuePanel v-if="player.queue.length && state.queueOpen" />
+      <Transition name="panel">
+        <QueuePanel v-if="player.queue.length && state.queueOpen" />
+      </Transition>
     </div>
   </div>
 </template>
@@ -192,4 +198,22 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 .body { flex: 1; display: flex; flex-direction: row; min-width: 0; }
 .content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 main { flex: 1; overflow-y: auto; padding: 16px 30px 24px; }
+
+/* --- motion: quick, soft, never showy --- */
+.view-enter-active { transition: opacity 0.16s ease, transform 0.16s ease; }
+.view-leave-active { transition: opacity 0.12s ease; }
+.view-enter-from { opacity: 0; transform: translateY(6px); }
+.view-leave-to { opacity: 0; }
+.bar-enter-active, .bar-leave-active { transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.22s ease; }
+.bar-enter-from, .bar-leave-to { transform: translateY(100%); opacity: 0; }
+.panel-enter-active, .panel-leave-active { transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.22s ease; }
+.panel-enter-from, .panel-leave-to { transform: translateX(24px); opacity: 0; }
+.modal-enter-active, .modal-leave-active { transition: opacity 0.16s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-active .modal, .modal-leave-active .modal { transition: transform 0.16s cubic-bezier(0.22, 0.61, 0.36, 1); }
+.modal-enter-from .modal, .modal-leave-to .modal { transform: scale(0.97); }
+@media (prefers-reduced-motion: reduce) {
+  .view-enter-active, .view-leave-active, .bar-enter-active, .bar-leave-active,
+  .panel-enter-active, .panel-leave-active, .modal-enter-active, .modal-leave-active { transition: none; }
+}
 </style>

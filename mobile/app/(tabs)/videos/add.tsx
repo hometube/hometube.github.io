@@ -109,7 +109,7 @@ export default function AddVideo() {
                 <Text style={styles.formatExt}>{fmt.ext}</Text>
               </View>
               {selectedQuality === fmt.format_id && (
-                <Ionicons name="checkmark-circle" size={20} color="#e94560" />
+                <Ionicons name="checkmark-circle" size={20} color="#e0559b" />
               )}
             </TouchableOpacity>
           ))}
@@ -132,10 +132,10 @@ export default function AddVideo() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   label: { color: "#fff", fontSize: 14, fontWeight: "600", marginBottom: 8 },
   input: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -143,13 +143,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   button: {
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     padding: 14,
     alignItems: "center",
     marginTop: 12,
   },
-  secondaryBtn: { backgroundColor: "#0f3460", marginTop: 0 },
+  secondaryBtn: { backgroundColor: "#9b2fbf", marginTop: 0 },
   disabled: { opacity: 0.6 },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   formatsSection: { marginTop: 20, marginBottom: 12 },
@@ -164,12 +164,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 12,
     marginBottom: 6,
   },
-  formatItemActive: { borderColor: "#e94560", borderWidth: 1 },
+  formatItemActive: { borderColor: "#e0559b", borderWidth: 1 },
   formatInfo: { flexDirection: "row", gap: 8, alignItems: "center" },
   formatName: { color: "#fff", fontSize: 14 },
   formatExt: { color: "#888", fontSize: 12 },

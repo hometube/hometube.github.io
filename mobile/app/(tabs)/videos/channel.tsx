@@ -116,7 +116,7 @@ export default function AddChannel() {
         </TouchableOpacity>
       </View>
 
-      {loading && <ActivityIndicator size="large" color="#e94560" style={{ marginTop: 20 }} />}
+      {loading && <ActivityIndicator size="large" color="#e0559b" style={{ marginTop: 20 }} />}
 
       {channelInfo && !loading && (
         <View style={styles.channelCard}>
@@ -199,7 +199,7 @@ export default function AddChannel() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   searchRow: {
     flexDirection: "row",
     padding: 16,
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -217,12 +217,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 8,
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     justifyContent: "center",
     alignItems: "center",
   },
   channelCard: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     margin: 16,
     borderRadius: 12,
     padding: 16,
@@ -233,12 +233,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 8,
   },
-  subscribeBtn: { backgroundColor: "#e94560" },
+  subscribeBtn: { backgroundColor: "#e0559b" },
   actionText: { color: "#fff", fontSize: 13, fontWeight: "500" },
   subscribeForm: { padding: 16, gap: 12 },
   sectionTitle: {
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   lengthRow: { flexDirection: "row", gap: 8 },
   lengthInput: { flex: 1 },
   button: {
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     padding: 14,
     alignItems: "center",
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   videoItem: {
     flexDirection: "row",
     justifyContent: "space-between",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 12,
     marginBottom: 6,

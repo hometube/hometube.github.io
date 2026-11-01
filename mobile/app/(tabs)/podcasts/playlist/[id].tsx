@@ -192,7 +192,7 @@ export default function PodcastPlaylistView() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#9070e9" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#b95fd0" style={{ marginTop: 40 }} />
       </View>
     );
   }
@@ -236,7 +236,7 @@ export default function PodcastPlaylistView() {
           <Ionicons name="pencil" size={18} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity style={styles.menuBtn} onPress={handleDelete}>
-          <Ionicons name="trash" size={18} color="#e94560" />
+          <Ionicons name="trash" size={18} color="#e0559b" />
         </TouchableOpacity>
       </View>
 
@@ -278,7 +278,7 @@ export default function PodcastPlaylistView() {
                   </Text>
                 </View>
                 {item.downloaded && (
-                  <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+                  <Ionicons name="checkmark-circle" size={16} color="#56d364" />
                 )}
                 <TouchableOpacity
                   style={styles.rowMenuBtn}
@@ -316,8 +316,8 @@ export default function PodcastPlaylistView() {
                     item.onPress();
                   }}
                 >
-                  <Ionicons name={item.icon as any} size={22} color={item.destructive ? "#e94560" : "#fff"} />
-                  <Text style={[styles.sheetLabel, item.destructive && { color: "#e94560" }]}>
+                  <Ionicons name={item.icon as any} size={22} color={item.destructive ? "#e0559b" : "#fff"} />
+                  <Text style={[styles.sheetLabel, item.destructive && { color: "#e0559b" }]}>
                     {item.label}
                   </Text>
                 </TouchableOpacity>
@@ -368,7 +368,7 @@ export default function PodcastPlaylistView() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   header: {
     flexDirection: "row",
     padding: 16,
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 12,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -397,16 +397,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#9070e9",
+    backgroundColor: "#b95fd0",
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
   },
-  shuffleBtn: { backgroundColor: "#0f3460" },
+  shuffleBtn: { backgroundColor: "#9b2fbf" },
   menuBtn: {
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     paddingHorizontal: 14,
     borderRadius: 8,
   },
@@ -426,13 +426,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 6,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     justifyContent: "center",
     alignItems: "center",
   },
   songInfo: { flex: 1 },
   songTitle: { color: "#fff", fontSize: 14, fontWeight: "500" },
-  songTitleActive: { color: "#c4a9ff" },
+  songTitleActive: { color: "#d7b8f0" },
   songTitleDisabled: { color: "#555" },
   songArtist: { color: "#888", fontSize: 12, marginTop: 2 },
   rowMenuBtn: { padding: 6 },
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   },
   sheetLabel: { color: "#fff", fontSize: 16 },
   renameInput: {
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -489,9 +489,9 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: "center",
   },
-  renameCancelBtn: { backgroundColor: "#0f3460" },
+  renameCancelBtn: { backgroundColor: "#9b2fbf" },
   renameCancelText: { color: "#888", fontSize: 16, fontWeight: "600" },
-  renameSaveBtn: { backgroundColor: "#9070e9" },
+  renameSaveBtn: { backgroundColor: "#b95fd0" },
   renameSaveText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   renameBtnDisabled: { opacity: 0.6 },
 });

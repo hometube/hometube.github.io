@@ -164,13 +164,13 @@ export default function PodcastsHome() {
     {
       icon: "refresh",
       label: "Check for new episodes",
-      color: "#4ecca3",
+      color: "#56d364",
       onPress: () => handleCheckNow(feed),
     },
     {
       icon: "trash",
       label: "Unsubscribe",
-      color: "#e94560",
+      color: "#e0559b",
       onPress: () => handleUnsubscribe(feed),
     },
   ];
@@ -273,7 +273,7 @@ export default function PodcastsHome() {
           onPress={() => playEpisode(item)}
         >
           <View style={styles.episodeIcon}>
-            <Ionicons name="radio" size={20} color="#9070e9" />
+            <Ionicons name="radio" size={20} color="#b95fd0" />
           </View>
           <View style={styles.feedInfo}>
             <Text style={styles.episodeTitle} numberOfLines={2}>
@@ -286,7 +286,7 @@ export default function PodcastsHome() {
             ) : null}
           </View>
           {item.downloaded && (
-            <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+            <Ionicons name="checkmark-circle" size={16} color="#56d364" />
           )}
           <TouchableOpacity
             style={styles.rowMenuBtn}
@@ -354,7 +354,7 @@ export default function PodcastsHome() {
             <Text style={styles.emptyHint}>Search by feed, episode title, or playlist</Text>
           </View>
         ) : cacheLoading && matchedEpisodes.length === 0 ? (
-          <ActivityIndicator size="large" color="#9070e9" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color="#b95fd0" style={{ marginTop: 40 }} />
         ) : matchedEpisodes.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="search" size={48} color="#444" />
@@ -380,13 +380,13 @@ export default function PodcastsHome() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#9070e9"
+            tintColor="#b95fd0"
           />
         }
         contentContainerStyle={{ paddingBottom: 120 }}
       >
         {isLoading && feeds.length === 0 && playlists.length === 0 && standaloneEpisodes.length === 0 ? (
-          <ActivityIndicator size="large" color="#9070e9" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color="#b95fd0" style={{ marginTop: 40 }} />
         ) : feeds.length === 0 && playlists.length === 0 && standaloneEpisodes.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="radio-outline" size={48} color="#444" />
@@ -407,7 +407,7 @@ export default function PodcastsHome() {
                     }
                   >
                     <View style={styles.feedIcon}>
-                      <Ionicons name="radio" size={24} color="#9070e9" />
+                      <Ionicons name="radio" size={24} color="#b95fd0" />
                     </View>
                     <View style={styles.feedInfo}>
                       <Text style={styles.feedName} numberOfLines={1}>
@@ -429,7 +429,7 @@ export default function PodcastsHome() {
                       )}
                     </View>
                     {isChecking ? (
-                      <ActivityIndicator size="small" color="#9070e9" />
+                      <ActivityIndicator size="small" color="#b95fd0" />
                     ) : (
                       <TouchableOpacity
                         style={styles.feedMenuBtn}
@@ -456,7 +456,7 @@ export default function PodcastsHome() {
                       onPress={() => playEpisode(ep)}
                     >
                       <View style={styles.episodeIcon}>
-                        <Ionicons name="radio" size={20} color="#9070e9" />
+                        <Ionicons name="radio" size={20} color="#b95fd0" />
                       </View>
                       <View style={styles.feedInfo}>
                         <Text style={styles.episodeTitle} numberOfLines={2}>
@@ -469,7 +469,7 @@ export default function PodcastsHome() {
                         ) : null}
                       </View>
                       {ep.downloaded && (
-                        <Ionicons name="checkmark-circle" size={16} color="#4ecca3" />
+                        <Ionicons name="checkmark-circle" size={16} color="#56d364" />
                       )}
                       <TouchableOpacity
                         style={styles.rowMenuBtn}
@@ -494,7 +494,7 @@ export default function PodcastsHome() {
                     onPress={() => handlePlaylistPress(playlist)}
                   >
                     <View style={[styles.feedIcon, styles.playlistIcon]}>
-                      <Ionicons name="folder" size={24} color="#4ecca3" />
+                      <Ionicons name="folder" size={24} color="#56d364" />
                     </View>
                     <View style={styles.feedInfo}>
                       <Text style={styles.feedName} numberOfLines={1}>
@@ -576,13 +576,13 @@ export default function PodcastsHome() {
                   <Ionicons
                     name={item.icon as any}
                     size={22}
-                    color={item.disabled ? "#555" : item.destructive ? "#e94560" : "#fff"}
+                    color={item.disabled ? "#555" : item.destructive ? "#e0559b" : "#fff"}
                   />
                   <Text
                     style={[
                       styles.sheetLabel,
                       item.disabled && { color: "#555" },
-                      item.destructive && !item.disabled && { color: "#e94560" },
+                      item.destructive && !item.disabled && { color: "#e0559b" },
                     ]}
                   >
                     {item.label}
@@ -603,7 +603,7 @@ export default function PodcastsHome() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: "#121016" },
   resultsLabel: {
     color: "#888",
     fontSize: 13,
@@ -617,7 +617,7 @@ const styles = StyleSheet.create({
   episodeItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 10,
     padding: 14,
     marginHorizontal: 16,
@@ -647,7 +647,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 10,
     paddingHorizontal: 10,
     gap: 6,
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#9070e9",
+    backgroundColor: "#b95fd0",
     justifyContent: "center",
     alignItems: "center",
     flexShrink: 0,
@@ -678,7 +678,7 @@ const styles = StyleSheet.create({
   feedCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 10,
     padding: 14,
     marginHorizontal: 16,
@@ -708,7 +708,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   bottomSheet: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 20,

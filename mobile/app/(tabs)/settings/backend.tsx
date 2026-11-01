@@ -78,7 +78,7 @@ export default function BackendSettings() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Ionicons name="server" size={36} color="#e94560" />
+        <Ionicons name="server" size={36} color="#e0559b" />
         <Text style={styles.title}>Backend URL</Text>
         <Text style={styles.desc}>
           The URL where your HomeTube backend is running (e.g.
@@ -119,12 +119,12 @@ export default function BackendSettings() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#121016",
     padding: 16,
     justifyContent: "center",
   },
   card: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 12,
     padding: 20,
     alignItems: "center",
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   },
   input: {
     alignSelf: "stretch",
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   },
   button: {
     alignSelf: "stretch",
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     padding: 14,
     alignItems: "center",

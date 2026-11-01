@@ -7,10 +7,10 @@ export default function VideosLayout() {
     <Stack
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: "#16213e" },
+        headerStyle: { backgroundColor: "#1c1922" },
         headerTintColor: "#fff",
         headerTitleStyle: { fontWeight: "600" },
-        contentStyle: { backgroundColor: "#1a1a2e" },
+        contentStyle: { backgroundColor: "#121016" },
         headerRight: () => <SettingsButton />,
       }}
     >

@@ -69,7 +69,7 @@ export default function ExportPage() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Ionicons name="download" size={40} color="#e94560" />
+        <Ionicons name="download" size={40} color="#e0559b" />
         <Text style={styles.title}>Export Data</Text>
         <Text style={styles.desc}>
           Export your HomeTube data as a .ht file. This includes your videos,
@@ -100,9 +100,9 @@ function arrayToBase64(arr: Uint8Array): string {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#1a1a2e", padding: 16 },
+  container: { flex: 1, backgroundColor: "#121016", padding: 16 },
   card: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 12,
     padding: 24,
     alignItems: "center",
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   title: { color: "#fff", fontSize: 20, fontWeight: "700", marginTop: 12, marginBottom: 8 },
   desc: { color: "#888", fontSize: 14, textAlign: "center", lineHeight: 20, marginBottom: 20 },
   button: {
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     paddingHorizontal: 32,
     paddingVertical: 14,

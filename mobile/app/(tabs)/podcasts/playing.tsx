@@ -130,7 +130,7 @@ export default function PodcastPlayingView() {
   if (!isPodcast) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#9070e9" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#b95fd0" style={{ marginTop: 40 }} />
       </View>
     );
   }
@@ -184,7 +184,7 @@ export default function PodcastPlayingView() {
           <Image source={{ uri: currentSong.album_art }} style={styles.art} />
         ) : (
           <View style={[styles.art, styles.artPlaceholder]}>
-            <Ionicons name="radio" size={64} color="#9070e9" />
+            <Ionicons name="radio" size={64} color="#b95fd0" />
           </View>
         )}
       </View>
@@ -198,7 +198,7 @@ export default function PodcastPlayingView() {
 
       {error && (
         <TouchableOpacity style={styles.errorBanner} onPress={() => setPlaybackError(null)}>
-          <Ionicons name="alert-circle" size={16} color="#ff6b6b" />
+          <Ionicons name="alert-circle" size={16} color="#ff7b72" />
           <Text style={styles.errorBannerText} numberOfLines={2}>
             {error}
           </Text>
@@ -238,12 +238,12 @@ export default function PodcastPlayingView() {
         </TouchableOpacity>
         <TouchableOpacity style={styles.mainBtn} onPress={togglePlayPause}>
           {buffering ? (
-            <ActivityIndicator size="small" color="#16213e" />
+            <ActivityIndicator size="small" color="#1c1922" />
           ) : (
             <Ionicons
               name={isPlaying ? "pause" : "play"}
               size={38}
-              color="#16213e"
+              color="#1c1922"
               style={!isPlaying ? styles.playIconNudge : undefined}
             />
           )}
@@ -288,7 +288,7 @@ export default function PodcastPlayingView() {
           style={styles.queueLink}
           onPress={() => router.navigate("/(tabs)/music/playing" as any)}
         >
-          <Ionicons name="list" size={14} color="#9070e9" />
+          <Ionicons name="list" size={14} color="#b95fd0" />
           <Text style={styles.queueLinkText}>View Queue</Text>
         </TouchableOpacity>
       </View>
@@ -299,7 +299,7 @@ export default function PodcastPlayingView() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#121016",
     paddingHorizontal: 24,
     paddingTop: 8,
   },
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
   },
   errorBannerText: {
     flex: 1,
-    color: "#ff6b6b",
+    color: "#ff7b72",
     fontSize: 13,
   },
   header: {
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
   },
   heading: {
     color: "#fff",
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   artPlaceholder: {
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
     top: 18,
     left: 0,
     height: 4,
-    backgroundColor: "#9070e9",
+    backgroundColor: "#b95fd0",
     borderRadius: 2,
   },
   thumb: {
@@ -398,7 +398,7 @@ const styles = StyleSheet.create({
     height: 18,
     marginLeft: -9,
     borderRadius: 9,
-    backgroundColor: "#9070e9",
+    backgroundColor: "#b95fd0",
   },
   timeRow: {
     flexDirection: "row",
@@ -451,11 +451,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     alignItems: "center",
   },
   speedBtnActive: {
-    backgroundColor: "#9070e9",
+    backgroundColor: "#b95fd0",
   },
   speedText: {
     color: "#888",
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   queueLinkText: {
-    color: "#9070e9",
+    color: "#b95fd0",
     fontSize: 14,
     fontWeight: "600",
   },

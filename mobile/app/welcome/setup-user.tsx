@@ -126,14 +126,14 @@ export default function SetupUser() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#121016",
     padding: 20,
     justifyContent: "center",
   },
   title: {
     fontSize: 36,
     fontWeight: "bold",
-    color: "#e94560",
+    color: "#e0559b",
     textAlign: "center",
     marginBottom: 4,
   },
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#16213e",
+    backgroundColor: "#1c1922",
     borderRadius: 8,
     padding: 14,
     marginBottom: 8,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   input: {
-    backgroundColor: "#0f3460",
+    backgroundColor: "#9b2fbf",
     borderRadius: 8,
     padding: 14,
     fontSize: 15,
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   button: {
-    backgroundColor: "#e94560",
+    backgroundColor: "#e0559b",
     borderRadius: 8,
     padding: 14,
     alignItems: "center",
