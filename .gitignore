@@ -2,3 +2,6 @@ frontend/docs/
 data
 .venv
 .DS_Store
+
+# local parity harness checkout (git worktree add backend python-backend-final)
+/backend/

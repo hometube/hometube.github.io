@@ -2,8 +2,9 @@
 # Parity harness: Python backend vs JS/Bun server serving identical seeded
 # libraries. Resets both copies, boots each server, diffs every response.
 # The Python backend was retired from main (tag: python-backend-final) — to
-# run this again, check it out next to the repo first:
-#   git worktree add backend python-backend-final && cd backend && \
+# run this again, check it out next to the repo first (the tag holds the
+# whole tree, so main.py lands one level deeper):
+#   git worktree add backend python-backend-final && cd backend/backend && \
 #     python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 # Set PARITY_NET=1 to also exercise live yt-dlp calls (info + full background
 # downloads); those hit YouTube and take ~30s.
@@ -17,7 +18,7 @@ JS_PORT=${PARITY_JS:-8213}
 P="http://127.0.0.1:$PY_PORT"
 J="http://127.0.0.1:$JS_PORT"
 LAN=$(ipconfig getifaddr en0 2>/dev/null || echo 127.0.0.1)
-PY="$ROOT/backend/.venv/bin/python"
+PY="$ROOT/backend/backend/.venv/bin/python"
 fail=0
 
 # --- reset: two fresh, identical seeded copies ---
@@ -42,7 +43,7 @@ for d in p j; do
 done
 
 # --- boot both servers ---
-(cd "$ROOT/backend" && DATA_DIR="$SCRATCH/p" PORT=$PY_PORT nohup "$PY" main.py >"$SCRATCH/py.log" 2>&1 &)
+(cd "$ROOT/backend/backend" && DATA_DIR="$SCRATCH/p" PORT=$PY_PORT nohup "$PY" main.py >"$SCRATCH/py.log" 2>&1 &)
 (cd "$HERE" && DATA_DIR="$SCRATCH/j" PORT=$JS_PORT nohup bun run src/index.ts >"$SCRATCH/js.log" 2>&1 &)
 for spec in "$PY_PORT py" "$JS_PORT js"; do
   set -- $spec
@@ -61,7 +62,9 @@ done
 norm() { # drop volatile runtime fields (scheduler last_checked, pairing state)
   python3 -c '
 import sys, json
-VOLATILE = ("pairing_tokens", "last_checked")
+# duration: JS-era music.duration (Python never had it); videos carry the
+# column on both sides with seeded-equal values, so dropping loses nothing.
+VOLATILE = ("pairing_tokens", "last_checked", "duration")
 def strip(x):
     if isinstance(x, dict):
         return {k: strip(v) for k, v in x.items() if k not in VOLATILE}
@@ -74,7 +77,7 @@ print(json.dumps(strip(json.load(sys.stdin)), sort_keys=True))'
 norm2() { # also drop wall-clock stamps (mutated-row responses)
   python3 -c '
 import sys, json
-VOLATILE = ("created_at", "watched_at", "last_checked")
+VOLATILE = ("created_at", "watched_at", "last_checked", "duration")  # duration: see norm()
 def strip(x):
     if isinstance(x, dict):
         return {k: strip(v) for k, v in x.items() if k not in VOLATILE}
