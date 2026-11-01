@@ -59,6 +59,38 @@ function baseArgs(): string[] {
   return args;
 }
 
+// Verify the configured cookie source actually authenticates with a YouTube
+// account: the Music library only exists while logged in, so extracting one
+// entry of it proves the cookies are live (and catches Keychain denials).
+export async function testCookies(): Promise<{ ok: boolean; detail: string }> {
+  const { cookies } = readConfig();
+  if (!cookies.length) return { ok: false, detail: "No cookie source configured." };
+  let proc;
+  try {
+    proc = Bun.spawn(
+      [
+        ytDlpPath(),
+        ...baseArgs(),
+        "--quiet",
+        "--no-progress",
+        "--flat-playlist",
+        "--playlist-end",
+        "1",
+        "-J",
+        "https://music.youtube.com/library/playlists",
+      ],
+      { stdout: "pipe", stderr: "pipe", timeout: 30_000 },
+    );
+  } catch (e) {
+    return { ok: false, detail: `yt-dlp is not runnable: ${e}` };
+  }
+  const errText = await new Response(proc.stderr).text();
+  await proc.exited;
+  if (proc.exitCode === 0) return { ok: true, detail: "Cookies work — YouTube account reached." };
+  const lines = errText.trim().split("\n").filter(Boolean);
+  return { ok: false, detail: lines[lines.length - 1] || `yt-dlp exited with code ${proc.exitCode}` };
+}
+
 // User-facing self-update for yt-dlp (the desktop equivalent of the yt-dlp
 // half of `ht update`): upstream fixes extractor breakage in days, app
 // releases take weeks. "nightly" opts into bleeding-edge fixes.

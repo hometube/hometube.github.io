@@ -108,6 +108,10 @@ export function registerCore(app: App) {
     return c.json({ ok: true, key, value });
   });
 
+  // Try the configured cookie source against the account-gated Music
+  // library; always 200 with {ok, detail} for direct display.
+  app.post("/api/settings/cookies/test", async (c) => c.json(await ytdlp.testCookies()));
+
   // Self-update yt-dlp (channel: "stable" default, or "nightly"). Always
   // 200 with {ok, version?, error?} so clients can show the yt-dlp message
   // verbatim (package-manager installs refuse -U, etc.).

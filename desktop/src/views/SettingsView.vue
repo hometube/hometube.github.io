@@ -17,6 +17,55 @@ const version = ref("");
 const ytdlpUpdating = ref(false);
 const ytdlpMsg = ref("");
 
+// Account cookies for Premium/age-gated downloads. Browser source follows
+// the browser's login automatically; a cookies.txt file takes precedence.
+const COOKIE_BROWSERS = ["safari", "chrome", "edge", "brave", "firefox", "chromium", "vivaldi", "opera"];
+const cookiesBrowser = ref("");
+const cookiesFile = ref("");
+const cookiesTest = ref(null);
+const cookiesTesting = ref(false);
+
+async function loadCookies() {
+  if (!healthy()) return;
+  try {
+    const s = await api("/api/settings");
+    cookiesBrowser.value = s.cookies_browser || "";
+    cookiesFile.value = s.cookies_file || "";
+  } catch {
+    /* keep defaults */
+  }
+}
+
+async function setCookies(key, value) {
+  if (key === "cookies_browser") cookiesBrowser.value = value;
+  else cookiesFile.value = value;
+  cookiesTest.value = null;
+  try {
+    await api("/api/settings", { method: "PUT", body: JSON.stringify({ key, value }) });
+  } catch (e) {
+    cookiesTest.value = { ok: false, detail: String(e) };
+  }
+}
+
+async function chooseCookiesFile() {
+  const picked = await open({
+    title: "Netscape cookies.txt export",
+    filters: [{ name: "cookies.txt", extensions: ["txt"] }],
+  });
+  if (picked) setCookies("cookies_file", String(picked));
+}
+
+async function testCookies() {
+  cookiesTesting.value = true;
+  try {
+    cookiesTest.value = await api("/api/settings/cookies/test", { method: "POST" });
+  } catch (e) {
+    cookiesTest.value = { ok: false, detail: String(e) };
+  } finally {
+    cookiesTesting.value = false;
+  }
+}
+
 // yt-dlp fix the YouTube breakage upstream in days; update without a new app
 // build. "Nightly" opts into fixes still baking on the nightly channel.
 async function updateYtdlp(channel = "stable") {
@@ -133,6 +182,7 @@ onMounted(async () => {
   refreshJobs();
   refreshSubs();
   loadAutoDownload();
+  loadCookies();
   version.value = await getVersion().catch(() => "");
   autoStart.value = await invoke("autostart_get").catch(() => false);
   timers.push(setInterval(refreshLogs, 2000));
@@ -204,6 +254,52 @@ onUnmounted(() => timers.forEach(clearInterval));
         <button v-if="!status?.running" @click="startServer">Start</button>
         <button v-else-if="status.adopted" disabled>Stop</button>
         <button v-else class="secondary" @click="stopServer">Stop</button>
+      </div>
+
+      <div class="cookies">
+        <h3 class="sec-sub">Cookies</h3>
+        <p class="hint">
+          Premium and age-gated tracks download with YouTube account cookies;
+          the browser you pick must already be signed in to YouTube.
+        </p>
+        <dl>
+          <dt>Browser</dt>
+          <dd>
+            <select
+              :value="cookiesBrowser"
+              :disabled="!healthy()"
+              @change="setCookies('cookies_browser', $event.target.value)"
+            >
+              <option value="">None</option>
+              <option v-for="b in COOKIE_BROWSERS" :key="b" :value="b">{{ b }}</option>
+            </select>
+          </dd>
+          <dt>cookies.txt</dt>
+          <dd>
+            <span class="path small">{{ cookiesFile || "not set" }}</span>
+            <button class="link-btn" :disabled="!healthy()" @click="chooseCookiesFile">
+              {{ cookiesFile ? "Change…" : "Choose…" }}
+            </button>
+            <button v-if="cookiesFile" class="link-btn" :disabled="!healthy()" @click="setCookies('cookies_file', '')">
+              Clear
+            </button>
+          </dd>
+        </dl>
+        <p class="hint">
+          A cookies.txt file wins over the browser. On macOS, Safari and Chrome need
+          Full Disk Access for HomeTube (<em>System Settings &rarr; Privacy &amp; Security</em>)
+          and a Keychain prompt appears on first read — click <em>Always Allow</em>;
+          Firefox needs neither. A <code>cookies.txt</code> in the library folder is
+          picked up automatically.
+        </p>
+        <div class="actions">
+          <button class="secondary" :disabled="!healthy() || cookiesTesting" @click="testCookies">
+            {{ cookiesTesting ? "Testing…" : "Test cookies" }}
+          </button>
+          <span v-if="cookiesTest" class="test-state" :class="cookiesTest.ok ? 'ok' : 'bad'">
+            {{ cookiesTest.detail }}
+          </span>
+        </div>
       </div>
     </details>
 
@@ -342,6 +438,19 @@ dd { margin: 0; }
   background: var(--inset); border: 1px solid var(--border);
   padding: 8px; border-radius: 6px;
 }
+.path.small { display: inline-block; padding: 2px 8px; font-size: 11px; vertical-align: middle; }
+.cookies select {
+  background: var(--inset); color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 5px 8px; font-size: 13px;
+}
+.sec-sub {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--muted); margin: 16px 0 8px;
+}
+.cookies .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.test-state { font-size: 13px; }
+.test-state.ok { color: #56d364; }
+.test-state.bad { color: #ff7b72; }
 .sub { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
 .sub-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-count { color: var(--muted); }
