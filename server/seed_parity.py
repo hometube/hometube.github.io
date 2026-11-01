@@ -8,7 +8,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend", "backend"))
 
 import models  # noqa: E402
 from database import Base, SessionLocal, engine  # noqa: E402
