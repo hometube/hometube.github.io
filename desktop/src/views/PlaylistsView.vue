@@ -85,7 +85,7 @@ onUnmounted(() => clearInterval(timer));
     </p>
   </div>
 
-  <div v-else>
+  <div v-else class="detail">
     <div class="detail-head">
       <template v-if="!isVideoList">
         <button class="big-play" :disabled="!items.length" title="Play" @click="playAll(0)">
@@ -111,35 +111,37 @@ onUnmounted(() => clearInterval(timer));
       </div>
     </div>
 
-    <p v-if="isVideoList" class="hint">
+    <p v-if="isVideoList" class="hint padded">
       Video playback on desktop arrives with the next release.
     </p>
 
-    <div v-else-if="items.length" class="rows">
-      <div
-        v-for="(t, i) in items"
-        :key="t.id"
-        class="row-item"
-        :class="{ playing: t.id === playingId }"
-        @click="playAll(i)"
-      >
-        <span class="thumb" :class="{ art: !!t.album_art }">
-          <img v-if="t.album_art" :src="t.album_art" loading="lazy" alt="" />
-          <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="rgba(255,255,255,.92)"
-            ><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>
-          <span class="go">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"
-              ><path d="M8 5v14l11-7z" /></svg>
+    <div v-else-if="items.length" class="rows-scroll">
+      <div class="rows">
+        <div
+          v-for="(t, i) in items"
+          :key="t.id"
+          class="row-item"
+          :class="{ playing: t.id === playingId }"
+          @click="playAll(i)"
+        >
+          <span class="thumb" :class="{ art: !!t.album_art }">
+            <img v-if="t.album_art" :src="t.album_art" loading="lazy" alt="" />
+            <svg v-else viewBox="0 0 24 24" width="15" height="15" fill="rgba(255,255,255,.92)"
+              ><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>
+            <span class="go">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="#fff"
+                ><path d="M8 5v14l11-7z" /></svg>
+            </span>
           </span>
-        </span>
-        <span class="title" :title="t.title">{{ t.title || "Untitled" }}</span>
-        <span class="artist">{{ t.artist || "—" }}</span>
-        <button class="remove" title="Remove from playlist" @click.stop="removeItem(t.id)">
-          ×
-        </button>
+          <span class="title" :title="t.title">{{ t.title || "Untitled" }}</span>
+          <span class="artist">{{ t.artist || "—" }}</span>
+          <button class="remove" title="Remove from playlist" @click.stop="removeItem(t.id)">
+            ×
+          </button>
+        </div>
       </div>
     </div>
-    <p v-else class="hint">This playlist is empty.</p>
+    <p v-else class="hint padded">This playlist is empty.</p>
   </div>
 </template>
 
@@ -151,16 +153,24 @@ onUnmounted(() => clearInterval(timer));
 }
 .card:hover { border-color: #4b3f5a; }
 .card strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Sticky while the rows scroll. No negative margin: with top:0 a negative
-   margin edge parks the visible background a few px below the top, leaving
-   rows peeking through above it. Solid bg, flush parking, soft shadow so
-   content sliding under it reads as intentional depth. */
+/* Fixed header band: main.flush (App.vue) hands us the full viewport, the
+   header sits above the list's scroll area, and only .rows-scroll scrolls.
+   Rows physically cannot render above the band — no stickiness involved.
+   Own 30px side padding matches main; z-index lifts the shadow over the
+   list edge so content sliding under reads as depth. */
+.detail {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
 .detail-head {
-  position: sticky; top: 0; z-index: 2; background: var(--bg);
+  position: relative; z-index: 2; background: var(--bg); flex: none;
   display: flex; align-items: center; gap: 14px;
-  padding: 12px 0 10px; margin: 0 0 6px;
+  padding: 16px 30px 10px; margin: 0 0 6px;
   box-shadow: 0 10px 14px -12px rgba(0, 0, 0, 0.65);
 }
+/* The only scroller: rows start below the band and vanish below it. */
+.rows-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 30px 24px; }
+/* Hints in detail mode sit outside main's padding, so supply it. */
+.padded { padding-left: 30px; padding-right: 30px; }
 .head-text { min-width: 0; }
 .pl-name { font-size: 20px; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 2px; }
 .head-text .hint { margin: 0; }

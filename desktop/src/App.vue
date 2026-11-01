@@ -164,7 +164,7 @@ onUnmounted(() => {
     </aside>
     <div class="body">
       <div class="content">
-        <main>
+        <main :class="{ flush: state.view === 'playlists' && state.openPlaylistId }">
           <Transition name="view" mode="out-in">
             <component :is="view" :key="state.view" />
           </Transition>
@@ -259,6 +259,12 @@ nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-hei
 .body { flex: 1; display: flex; flex-direction: row; min-width: 0; }
 .content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 main { flex: 1; overflow-y: auto; padding: 16px 30px 24px; }
+/* Playlist detail: main stops scrolling and hands its full height to the
+   view, which splits into a fixed header band + internally-scrolling list.
+   Sticky headers misbehave against this padding in WKWebView (rows peek
+   above the parked header); with no shared scroller it's structurally
+   impossible. The view supplies its own 30px side padding in this mode. */
+main.flush { overflow: hidden; padding: 0; display: flex; flex-direction: column; }
 
 /* --- motion: quick, soft, never showy --- */
 .view-enter-active { transition: opacity 0.16s ease, transform 0.16s ease; }
