@@ -151,9 +151,15 @@ onUnmounted(() => clearInterval(timer));
 }
 .card:hover { border-color: #4b3f5a; }
 .card strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Sticky while the rows scroll. No negative margin: with top:0 a negative
+   margin edge parks the visible background a few px below the top, leaving
+   rows peeking through above it. Solid bg, flush parking, soft shadow so
+   content sliding under it reads as intentional depth. */
 .detail-head {
   position: sticky; top: 0; z-index: 2; background: var(--bg);
-  display: flex; align-items: center; gap: 14px; padding: 12px 0 10px; margin: -12px 0 12px;
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0 10px; margin: 0 0 6px;
+  box-shadow: 0 10px 14px -12px rgba(0, 0, 0, 0.65);
 }
 .head-text { min-width: 0; }
 .pl-name { font-size: 20px; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 2px; }
