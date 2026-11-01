@@ -14,6 +14,29 @@ const autoStart = ref(false);
 const autoDownload = ref(true);
 const storageError = ref("");
 const version = ref("");
+const ytdlpUpdating = ref(false);
+const ytdlpMsg = ref("");
+
+// yt-dlp fix the YouTube breakage upstream in days; update without a new app
+// build. "Nightly" opts into fixes still baking on the nightly channel.
+async function updateYtdlp(channel = "stable") {
+  ytdlpUpdating.value = true;
+  ytdlpMsg.value = "";
+  try {
+    const res = await api("/api/settings/ytdlp/update", {
+      method: "POST",
+      body: JSON.stringify({ channel }),
+    });
+    ytdlpMsg.value = res.ok
+      ? `Now on ${res.version || "?"}.`
+      : res.error || "Update failed.";
+  } catch (e) {
+    ytdlpMsg.value = String(e);
+  } finally {
+    ytdlpUpdating.value = false;
+    refreshStatus();
+  }
+}
 
 const status = computed(() => state.status);
 const storage = computed(() => state.storage);
@@ -156,6 +179,20 @@ onUnmounted(() => timers.forEach(clearInterval));
           <dd>
             {{ status.tools.ffmpeg ? "ffmpeg ✓" : "ffmpeg missing" }} ·
             {{ status.tools.js_runtime ? status.tools.js_runtime + " ✓" : "no JS runtime" }}
+          </dd>
+          <dt>yt-dlp</dt>
+          <dd>
+            <template v-if="status.tools.yt_dlp_version">
+              {{ status.tools.yt_dlp_version }}
+              <button class="link-btn" :disabled="ytdlpUpdating" @click="updateYtdlp('stable')">
+                {{ ytdlpUpdating ? "Updating…" : "Update" }}
+              </button>
+              <button class="link-btn" :disabled="ytdlpUpdating" @click="updateYtdlp('nightly')">
+                Nightly
+              </button>
+            </template>
+            <template v-else>missing — install with <code>brew install yt-dlp</code></template>
+            <span v-if="ytdlpMsg" class="hint"> {{ ytdlpMsg }}</span>
           </dd>
         </template>
       </dl>

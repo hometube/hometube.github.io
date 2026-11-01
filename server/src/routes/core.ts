@@ -7,6 +7,7 @@ import { consumePairingToken, issuePairingToken, createJwt, isLocal, lanIp, mdns
 import { serialize, setSetting, type Row } from "../db";
 import { toolStatus } from "../tools";
 import * as downloader from "../services/downloader";
+import * as ytdlp from "../services/ytdlp";
 
 type App = Hono<Env>;
 
@@ -99,7 +100,21 @@ export function registerCore(app: App) {
     const key = String(data.key ?? "");
     const value = String(data.value ?? "");
     setSetting(c.env.db, key, value);
+    // Settings that feed yt-dlp's per-call args usually refresh within ~10s;
+    // drop the cache so saves apply instantly.
+    if (["cookies_file", "cookies_browser", "player_client"].includes(key)) {
+      ytdlp.resetYtdlpConfig();
+    }
     return c.json({ ok: true, key, value });
+  });
+
+  // Self-update yt-dlp (channel: "stable" default, or "nightly"). Always
+  // 200 with {ok, version?, error?} so clients can show the yt-dlp message
+  // verbatim (package-manager installs refuse -U, etc.).
+  app.post("/api/settings/ytdlp/update", async (c) => {
+    const data = await body(c);
+    const channel = String(data.channel ?? "stable") === "nightly" ? "nightly" : "stable";
+    return c.json(await ytdlp.updateYtDlp(channel));
   });
 
   app.get("/api/subscriptions", (c) => {

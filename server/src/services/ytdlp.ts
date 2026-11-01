@@ -6,48 +6,82 @@ import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { dataDir, downloadsDir } from "../paths";
 import { getSetting, openDb } from "../db";
-import { which } from "../tools";
+import { which, ytDlpVersion, invalidateYtDlpVersion } from "../tools";
+
+const BASE_ARGS = ["--no-warnings", "--no-colors"];
 
 // YouTube has been blocking the android_vr client (HTTP 403). Exclude it so
-// yt-dlp uses the JS-capable web/web_safari clients instead.
-const BASE_ARGS = [
-  "--no-warnings",
-  "--no-colors",
-  "--extractor-args",
-  "youtube:player_client=default,-android_vr",
-];
+// yt-dlp uses the JS-capable web/web_safari clients instead. Overridable via
+// the `player_client` setting: when YouTube breaks a client, users get an
+// escape hatch without waiting for a new build.
+export const DEFAULT_PLAYER_CLIENTS = "default,-android_vr";
 
-// YouTube account cookies, so Music Premium tracks (and age-gated content)
-// become downloadable. Sources, first hit wins:
+// Per-call mutable config: cookies + player client, re-read from the settings
+// table every ~10s so `ht settings set ...` (or the desktop Settings page)
+// takes effect without a server restart and without reopening the DB per call.
+//
+// Cookie sources, first hit wins:
 //   1. setting cookies_file  -> explicit Netscape cookies.txt path
 //   2. <data_dir>/cookies.txt (drop a file, no restart needed)
 //   3. setting cookies_browser -> e.g. "safari" | "chrome" | "firefox"
-// Cached briefly so `ht settings set cookies_browser safari` takes effect
-// without restarting the server, without re-opening the DB per call.
-let cookiesCache: { at: number; args: string[] } | null = null;
+let configCache: { at: number; args: string[] } | null = null;
 
-function cookieArgs(): string[] {
-  if (cookiesCache && Date.now() - cookiesCache.at < 10_000) return cookiesCache.args;
-  let args: string[] = [];
+function readConfig(): { clients: string; cookies: string[] } {
+  let clients = DEFAULT_PLAYER_CLIENTS;
+  let cookies: string[] = [];
   try {
     const db = openDb();
     try {
+      const pc = (getSetting(db, "player_client") || "").trim();
+      if (pc) clients = pc;
       const file = (getSetting(db, "cookies_file") || "").trim() || join(dataDir(), "cookies.txt");
       const browser = (getSetting(db, "cookies_browser") || "").trim();
-      if (existsSync(file)) args = ["--cookies", file];
-      else if (browser) args = ["--cookies-from-browser", browser];
+      if (existsSync(file)) cookies = ["--cookies", file];
+      else if (browser) cookies = ["--cookies-from-browser", browser];
     } finally {
       db.close();
     }
   } catch {
     /* no DB available — anonymous mode */
   }
-  cookiesCache = { at: Date.now(), args };
-  return args;
+  return { clients, cookies };
+}
+
+export function resetYtdlpConfig(): void {
+  configCache = null;
 }
 
 function baseArgs(): string[] {
-  return [...BASE_ARGS, ...cookieArgs()];
+  if (configCache && Date.now() - configCache.at < 10_000) return configCache.args;
+  const { clients, cookies } = readConfig();
+  const args = [...BASE_ARGS, "--extractor-args", `youtube:player_client=${clients}`, ...cookies];
+  configCache = { at: Date.now(), args };
+  return args;
+}
+
+// User-facing self-update for yt-dlp (the desktop equivalent of the yt-dlp
+// half of `ht update`): upstream fixes extractor breakage in days, app
+// releases take weeks. "nightly" opts into bleeding-edge fixes.
+export async function updateYtDlp(
+  channel: "stable" | "nightly" = "stable",
+): Promise<{ ok: boolean; version?: string; error?: string }> {
+  const args = channel === "nightly" ? ["--update-to", "nightly"] : ["-U"];
+  let proc;
+  try {
+    proc = Bun.spawn([ytDlpPath(), ...args], { stdout: "pipe", stderr: "pipe" });
+  } catch (e) {
+    return { ok: false, error: `yt-dlp is not runnable: ${e}` };
+  }
+  const [out, errText] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  await proc.exited;
+  invalidateYtDlpVersion();
+  const version = ytDlpVersion(true);
+  if (proc.exitCode === 0) return { ok: true, version };
+  const lines = `${out}\n${errText}`.trim().split("\n").filter(Boolean);
+  return { ok: false, version, error: lines[lines.length - 1] || `yt-dlp exited with code ${proc.exitCode}` };
 }
 
 export function ytDlpPath(): string {

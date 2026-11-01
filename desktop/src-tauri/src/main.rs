@@ -60,6 +60,8 @@ impl Default for ServerState {
 struct ToolStatus {
     ffmpeg: String,
     js_runtime: String,
+    yt_dlp: String,
+    yt_dlp_version: String,
 }
 
 #[derive(Serialize)]
@@ -452,6 +454,8 @@ fn status_of(state: &ServerState) -> ServerStatus {
                 .map(|t| ToolStatus {
                     ffmpeg: t.get("ffmpeg").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
                     js_runtime: t.get("js_runtime").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
+                    yt_dlp: t.get("yt_dlp").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
+                    yt_dlp_version: t.get("yt_dlp_version").and_then(|s| s.as_str()).unwrap_or_default().to_string(),
                 })
         })
         .flatten();
