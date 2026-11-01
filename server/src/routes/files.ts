@@ -130,7 +130,8 @@ function firstGlobLike(dir: string, needle: string): string | null {
   } catch {
     return null;
   }
-  const hit = names.find((n) => n.includes(needle));
+  // Sidecar thumbnails are never valid media results.
+  const hit = names.find((n) => n.includes(needle) && !/\.(jpe?g|png|webp|gif)$/i.test(n));
   return hit ?? null;
 }
 

@@ -136,6 +136,8 @@ function fileReady(p: string): boolean {
 
 // Newest ready file named `base.*` (preferred extension first), same idea as
 // the Python glob fallback that resolves the stored filename after download.
+// Image thumbnails (--write-thumbnail) land next to media files, so they are
+// never valid results.
 function newestFileMatching(dir: string, base: string, preferredExt?: string): string | null {
   let names: string[];
   try {
@@ -143,7 +145,9 @@ function newestFileMatching(dir: string, base: string, preferredExt?: string): s
   } catch {
     return null;
   }
-  const ready = names.filter((n) => n.startsWith(`${base}.`) && fileReady(join(dir, n)));
+  const ready = names.filter(
+    (n) => n.startsWith(`${base}.`) && !/\.(jpe?g|png|webp|gif)$/i.test(n) && fileReady(join(dir, n)),
+  );
   if (!ready.length) return null;
   const exact = preferredExt ? ready.find((n) => n === `${base}.${preferredExt}`) : undefined;
   if (exact) return exact;
