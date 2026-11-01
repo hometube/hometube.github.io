@@ -255,6 +255,10 @@ Requests from the host itself (127.0.0.1/::1) are always allowed; LAN clients ne
   `cookies_browser` (e.g. `ht settings set cookies_browser safari`). First match wins,
   re-read within ~10s without a server restart
 - Music downloads preserve original format (mp3, webm, m4a, ogg, flac, wav) via yt-dlp
+- **Desktop audio format**: WKWebView cannot decode Opus/Ogg/WebM audio; music downloads
+  force MP3 (`--audio-format mp3`). Legacy Python-era files may still be `.opus` — run
+  `ht fixaudio` to convert the library to MP3 in place (updates `filename`/`file://` rows,
+  removes originals only after a verified conversion)
 - **Video experience** equals the music/podcast model: videos carry `thumbnail`, `duration`, `filename`, `position` (resume point, seconds) alongside `watched_at`. Auto-watch at ~95% / ended. `kind:"video"` playlists; mobile player resumes from `position`, flushes progress (30s), auto-watches on `playToEnd`
 - Offline: mobile caches metadata in its SQLite local DB; device cache/download flags marked on the video row
 

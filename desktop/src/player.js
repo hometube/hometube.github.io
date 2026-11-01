@@ -273,7 +273,14 @@ async function probePlaybackError(url) {
   let msg = "Playback failed — could not fetch the file.";
   try {
     const res = await fetch(url, { headers: { Range: "bytes=0-0" } });
-    if (res.ok) return; // e.g. a lazy download has since finished
+    if (res.ok) {
+      // The file fetches fine but the media element still failed: usually an
+      // undecodable container (WKWebView has no Opus/Ogg/WebM audio).
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (/opus|ogg|webm|x-matroska/.test(ct))
+        player.error = `Can't play ${ct.replace("audio/", "").toUpperCase()} on desktop — convert with: ht fixaudio`;
+      return; // otherwise transient; pressing play again usually recovers
+    }
     let detail = "";
     try {
       detail = String((await res.json()).detail || "");

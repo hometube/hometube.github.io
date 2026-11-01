@@ -4,7 +4,7 @@
 //
 //   ht install | init | login | download | export | import | songs |
 //   playlists | videos | podcasts | settings | update | serve | pair |
-//   mobile | build-server | fixart
+//   mobile | build-server | fixart | fixaudio
 import { Database } from "bun:sqlite";
 import {
   chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync,
@@ -1301,6 +1301,80 @@ async function cmdFixart(dataDirArg: string | null): Promise<void> {
   console.log(`Updated ${fixed} tracks.`);
 }
 
+// WKWebView (the desktop player) cannot decode Opus/Ogg/WebM audio. Legacy
+// downloads preserved the source format; convert every such file on disk to
+// MP3 (what current music downloads produce) and update the rows. Safe to
+// re-run.
+async function cmdFixaudio(dataDirArg: string | null): Promise<void> {
+  const ffmpeg = which("ffmpeg");
+  if (!ffmpeg) die("ffmpeg not found on PATH — install it first (e.g. brew install ffmpeg).");
+  const db: Database = dataDirArg ? openDb(join(resolve(dataDirArg), "db.sqlite")) : openDb();
+  const musicDir = join(downloadsDir(), "music");
+  const rows = db
+    .query<Row, []>(
+      `SELECT * FROM music
+       WHERE filename LIKE '%.opus' OR filename LIKE '%.ogg' OR filename LIKE '%.webm'
+          OR url LIKE 'file://%.opus' OR url LIKE 'file://%.ogg' OR url LIKE 'file://%.webm'`,
+    )
+    .all();
+  if (!rows.length) {
+    console.log("Nothing to convert — every track is in a desktop-safe format.");
+    return;
+  }
+  console.log(`Converting ${rows.length} tracks to MP3...`);
+  const srcPathOf = (r: Row): string | null => {
+    if (r.filename) {
+      const p = join(musicDir, String(r.filename));
+      if (existsSync(p)) return p;
+    }
+    const url = String(r.url ?? "");
+    if (url.startsWith("file://")) {
+      const p = decodeURIComponent(url.slice("file://".length));
+      if (existsSync(p)) return p;
+    }
+    return null;
+  };
+  let done = 0;
+  let skipped = 0;
+  let idx = 0;
+  const convert = async (r: Row): Promise<void> => {
+    const src = srcPathOf(r);
+    if (!src) {
+      skipped++;
+      console.log(`  Skipped (file not found): id=${r.id}`);
+      return;
+    }
+    const out = src.replace(/\.[^.]+$/, ".mp3");
+    const proc = Bun.spawn(
+      [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", src, "-vn", "-c:a", "libmp3lame", "-q:a", "0", out],
+      { stdout: "ignore", stderr: "pipe" },
+    );
+    const err = await new Response(proc.stderr).text();
+    await proc.exited;
+    if (proc.exitCode !== 0 || !existsSync(out) || statSync(out).size === 0) {
+      skipped++;
+      rmSync(out, { force: true });
+      console.log(`  Skipped (ffmpeg failed): id=${r.id} ${err.trim().slice(0, 120)}`);
+      return;
+    }
+    rmSync(src);
+    if (r.filename) db.run("UPDATE music SET filename = ? WHERE id = ?", [basename(out), Number(r.id)]);
+    if (String(r.url ?? "").startsWith("file://"))
+      db.run("UPDATE music SET url = ? WHERE id = ?", [`file://${resolve(out)}`, Number(r.id)]);
+    done++;
+    console.log(`  ${done}/${rows.length} converted: ${basename(out)}`);
+  };
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = idx++;
+      if (i >= rows.length) return;
+      await convert(rows[i]);
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  console.log(`\nConverted ${done}, skipped ${skipped}.`);
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -1326,7 +1400,8 @@ Usage:
   ht pair [--port P] [--ttl SECS]            Mint a one-time pairing token
   ht mobile --build|--release|--deploy       Android app workflows
   ht build-server [--clean]                  Compile the server sidecar with Bun
-  ht fixart [--data-dir DIR]                 Backfill missing album art`;
+  ht fixart [--data-dir DIR]                 Backfill missing album art
+  ht fixaudio [--data-dir DIR]               Convert Opus/Ogg/WebM music to MP3 (desktop playback)`;
 
 function main(): void {
   const [, , command, ...rest] = process.argv;
@@ -1472,6 +1547,10 @@ function main(): void {
     case "fixart": {
       const { flags } = parseFlags(rest, { "data-dir": { value: true } });
       return void cmdFixart(s(flags, "data-dir"));
+    }
+    case "fixaudio": {
+      const { flags } = parseFlags(rest, { "data-dir": { value: true } });
+      return void cmdFixaudio(s(flags, "data-dir"));
     }
     default:
       die(`ht: error: unknown command '${command}'\n\n${USAGE}`, 2);
