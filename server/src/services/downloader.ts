@@ -93,6 +93,21 @@ function progressFor(jobId: string) {
   };
 }
 
+// Failures that smell like gating (login required, Premium-only, anti-bot,
+// age-restriction, HTTP 403) get one-line guidance appended at storage time,
+// so every reader — GET /api/downloads, the lazy play 502, Settings — is
+// self-explanatory without duplicating classification across clients.
+const AUTH_HINT =
+  "usually needs a signed-in YouTube account — enable cookies in Settings › Server › Cookies, or `ht settings set cookies_browser safari`";
+
+export function looksAuthGated(msg: string): boolean {
+  return /sign in|cookies|premium|not a bot|age.{0,10}restrict|members.{0,5}only|\b403\b/i.test(msg);
+}
+
+export function decorateAuthError(msg: string): string {
+  return looksAuthGated(msg) && !msg.includes(AUTH_HINT) ? `${msg} — ${AUTH_HINT}` : msg;
+}
+
 async function run(jobId: string): Promise<void> {
   const job = _registry.get(jobId);
   if (!job) return;
@@ -110,7 +125,7 @@ async function run(jobId: string): Promise<void> {
     clearDownloadError(dbHandle(), kind, itemId);
     write(jobId, { status: "done", progress: 100, message: "Done", filename });
   } catch (exc) {
-    const msg = exc instanceof Error ? exc.message : String(exc);
+    const msg = decorateAuthError(exc instanceof Error ? exc.message : String(exc));
     setDownloadError(dbHandle(), kind, itemId, msg);
     write(jobId, { status: "error", message: msg, error: msg });
   }

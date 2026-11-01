@@ -196,7 +196,7 @@ export function registerFiles(app: App) {
           c.env.db.run("UPDATE videos SET filename = ?, downloaded = 1 WHERE id = ?", [filename, id]);
           clearDownloadError(c.env.db, "video", id);
         } catch (exc) {
-          const msg = `Download failed: ${exc instanceof Error ? exc.message : String(exc)}`;
+          const msg = downloader.decorateAuthError(`Download failed: ${exc instanceof Error ? exc.message : String(exc)}`);
           setDownloadError(c.env.db, "video", id, msg);
           fail(502, msg);
         }
@@ -248,7 +248,7 @@ export function registerFiles(app: App) {
           c.env.db.run("UPDATE music SET filename = ?, downloaded = 1 WHERE id = ?", [filename, id]);
           clearDownloadError(c.env.db, "music", id);
         } catch (exc) {
-          const msg = `Download failed: ${exc instanceof Error ? exc.message : String(exc)}`;
+          const msg = downloader.decorateAuthError(`Download failed: ${exc instanceof Error ? exc.message : String(exc)}`);
           setDownloadError(c.env.db, "music", id, msg);
           fail(502, msg);
         }
