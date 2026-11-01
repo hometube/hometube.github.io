@@ -752,6 +752,8 @@ fn main() {
                     kill_server(&app_handle.state::<ServerState>());
                 }
                 // macOS: reopening from the Dock after the window closed.
+                // (Reopen is a macOS-only RunEvent variant.)
+                #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { .. } => {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
