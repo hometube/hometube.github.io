@@ -176,6 +176,8 @@ clients keep working.
 - `GET /api/status` - Health check (open, no auth — reports `pairing_required`)
 - `GET /api/settings` - List server settings as key/value map
 - `PUT /api/settings` - Set a server setting (body: key, value)
+- `POST /api/settings/ytdlp/update` - Self-update the yt-dlp binary (body: `channel`: `"stable"` default or `"nightly"`). Always 200 with `{ok, version?, error?}` (package-manager installs refuse `-U`; the error text is user-facing)
+- `POST /api/settings/cookies/test` - Validate the configured cookie source by extracting the account-gated YTM library; always 200 with `{ok, detail}`
 - `GET /api/downloads` - List background download jobs for active user: `[{id, type, item_id, user_id, status, progress, message, filename, error, created_at}]`. `status`: queued/running/done/error
 - `GET /api/users` - List all users
 - `POST /api/users` - Create user (body: name, image)
@@ -205,6 +207,8 @@ Requests from the host itself (127.0.0.1/::1) are always allowed; LAN clients ne
 - `POST /api/music/add` - Add music (body: url, user_id, playlist_id)
 - `GET /api/music/info?url=` - Get music info
 - `POST /api/music/{id}/download` - Kick off async server download. Returns `202 {job_id, queued}`; poll `GET /api/downloads`
+- `GET /api/music/{id}/alternative` - Search free uploads of the same track (official audio/Topic; yt-dlp `ytsearch6`); `{candidates: [{id, url, title, duration}]}` max 3, official-first
+- `POST /api/music/{id}/alternative` - Re-point the row at a candidate (body: `url`, `video_id` — files are named by extractor id), clear the stored failure, re-queue the download
 - `GET /api/music/{id}/file` - Serve music file with correct MIME type
 - `PUT /api/music/{id}` - Update music metadata
 - `DELETE /api/music/{id}` - Delete music
@@ -253,7 +257,13 @@ Requests from the host itself (127.0.0.1/::1) are always allowed; LAN clients ne
 - **yt-dlp cookies** (Music Premium / age-gated content): yt-dlp gets account cookies from
   setting `cookies_file`, an auto-detected `<data_dir>/cookies.txt`, or setting
   `cookies_browser` (e.g. `ht settings set cookies_browser safari`). First match wins,
-  re-read within ~10s without a server restart
+  re-read within ~10s without a server restart. Desktop Settings › Server › Cookies
+  picks the source and tests it live against the YTM library; gated download failures
+  get cookie guidance appended to the stored error (`decorateAuthError`)
+- **yt-dlp maintenance**: `/api/status` reports `yt_dlp` + `yt_dlp_version` (spawn cached
+  10 min); Settings offers Update/Nightly via `/api/settings/ytdlp/update`. The hardcoded
+  `player_client` default (`default,-android_vr`) is overridable through the `player_client`
+  setting so future client breakage is a config change, not a release
 - Music downloads preserve original format (mp3, webm, m4a, ogg, flac, wav) via yt-dlp
 - **Desktop audio format**: WKWebView cannot decode Opus/Ogg/WebM audio; music downloads
   force MP3 (`--audio-format mp3`). Legacy Python-era files may still be `.opus` — run
