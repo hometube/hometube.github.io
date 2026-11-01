@@ -4,6 +4,33 @@ import { currentTrack, fmtLong, jumpInOrder, player, removeFromOrder } from "../
 import { state } from "../store";
 
 const listEl = ref(null);
+const dragging = ref(false);
+
+const MIN_W = 260;
+const MAX_W = 620;
+
+// Drag the left edge to resize; width persists. Double-click resets.
+function startDrag(e) {
+  e.preventDefault();
+  const startX = e.clientX;
+  const startW = state.queueWidth;
+  dragging.value = true;
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  const move = (ev) => {
+    state.queueWidth = Math.min(MAX_W, Math.max(MIN_W, startW + (startX - ev.clientX)));
+  };
+  const up = () => {
+    dragging.value = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    localStorage.setItem("hometube.queueWidth", String(state.queueWidth));
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
 
 const rows = computed(() =>
   player.order.map((qi, pos) => ({ track: player.queue[qi], pos })).filter((r) => r.track)
@@ -34,7 +61,13 @@ onUnmounted(() => window.removeEventListener("keydown", esc));
 </script>
 
 <template>
-  <aside class="queue-panel">
+  <aside class="queue-panel" :class="{ dragging }" :style="{ width: state.queueWidth + 'px' }">
+    <div
+      class="grip"
+      title="Drag to resize · double-click to reset"
+      @pointerdown="startDrag"
+      @dblclick="state.queueWidth = 330; localStorage.setItem('hometube.queueWidth', '330')"
+    />
     <div class="head">
       <h2>Queue</h2>
       <button class="x" title="Close" @click="state.queueOpen = false">×</button>
@@ -115,9 +148,16 @@ onUnmounted(() => window.removeEventListener("keydown", esc));
 
 <style scoped>
 .queue-panel {
-  width: 330px; flex: none; border-left: 1px solid var(--border);
+  position: relative; flex: none; border-left: 1px solid var(--border);
   background: var(--bg); display: flex; flex-direction: column; min-height: 0;
 }
+/* Left-edge resize grip: invisible until hovered/dragged. */
+.grip {
+  position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; z-index: 2;
+  cursor: col-resize; background: transparent; transition: background 0.12s ease;
+}
+.grip:hover, .queue-panel.dragging .grip { background: var(--accent); }
+.queue-panel.dragging { user-select: none; }
 .head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 16px 10px;

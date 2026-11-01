@@ -10,6 +10,7 @@ export const state = reactive({
   currentUserId: null,
   openPlaylistId: null,
   queueOpen: false,
+  queueWidth: Math.min(620, Math.max(260, Number(localStorage.getItem("hometube.queueWidth")) || 330)),
   view: localStorage.getItem("hometube.view") || "home",
 });
 
