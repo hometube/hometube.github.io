@@ -4,7 +4,7 @@
 // from the same settings row, which keeps JWTs already issued to mobile
 // clients valid across the Python -> JS cutover.
 import { createHash, randomBytes } from "crypto";
-import { networkInterfaces } from "node:os";
+import { hostname as osHostname, networkInterfaces } from "node:os";
 import type { Database } from "bun:sqlite";
 import { getSetting, setSetting } from "./db";
 
@@ -54,6 +54,25 @@ export function lanIp(): string {
     }
   }
   return "127.0.0.1";
+}
+
+export function mdnsHost(): string {
+  // ".local" (RFC 6762 mDNS) resolves natively on macOS/iOS, via Avahi on
+  // Linux, and on Windows 10+ — ".lan" has no standard resolution at all.
+  // On macOS the true Bonjour name is the LocalHostName key: os.hostname()
+  // can report an unrelated configured name (e.g. "mac.lan") that mDNS
+  // never answers for.
+  if (process.platform === "darwin") {
+    try {
+      const r = Bun.spawnSync(["scutil", "--get", "LocalHostName"]);
+      const out = r.exitCode === 0 ? new TextDecoder().decode(r.stdout).trim() : "";
+      if (out) return out.includes(".") ? out : `${out}.local`;
+    } catch {
+      /* fall through to os.hostname() */
+    }
+  }
+  const name = osHostname();
+  return name.includes(".") ? name : `${name}.local`;
 }
 
 export function isLocal(remoteIp: string): boolean {

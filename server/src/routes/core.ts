@@ -3,7 +3,7 @@
 // the FastAPI server exactly, verified by a side-by-side parity harness.
 import type { Hono, Context } from "hono";
 import type { Env } from "../app";
-import { consumePairingToken, issuePairingToken, createJwt, isLocal, lanIp } from "../auth";
+import { consumePairingToken, issuePairingToken, createJwt, isLocal, lanIp, mdnsHost } from "../auth";
 import { serialize, setSetting, type Row } from "../db";
 import { toolStatus } from "../tools";
 import * as downloader from "../services/downloader";
@@ -35,7 +35,15 @@ export function registerCore(app: App) {
     }
     const { token, ttl } = issuePairingToken(c.env.db);
     const port = Number(process.env.PORT ?? 8000);
-    return c.json({ token, expires_in: ttl, url: `http://${lanIp()}:${port}` });
+    // host_url: the mDNS (.local) alternative so clients can pair over a
+    // name that survives DHCP lease changes. Parity-safe: the harness only
+    // extracts `token` from this response.
+    return c.json({
+      token,
+      expires_in: ttl,
+      url: `http://${lanIp()}:${port}`,
+      host_url: `http://${mdnsHost()}:${port}`,
+    });
   });
 
   app.post("/api/auth/exchange", async (c) => {
