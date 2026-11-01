@@ -15,6 +15,9 @@ import {
 import { state } from "../store";
 
 const track = computed(() => currentTrack());
+const seekFill = computed(() =>
+  player.duration ? Math.min(100, (player.currentTime / player.duration) * 100) : 0
+);
 
 function onSeek(e) {
   seek(Number(e.target.value));
@@ -85,6 +88,7 @@ function onSeek(e) {
           step="0.5"
           :value="player.currentTime"
           :disabled="!track || !player.duration"
+          :style="{ '--fill': seekFill + '%' }"
           @input="onSeek"
         />
         <span class="time">{{ fmtTime(player.duration) }}</span>
@@ -103,6 +107,7 @@ function onSeek(e) {
         step="0.01"
         :value="player.volume"
         title="Volume"
+        :style="{ '--fill': (player.volume * 100).toFixed(1) + '%' }"
         @input="setVolume(Number($event.target.value))"
       />
       <button
@@ -168,11 +173,28 @@ button.icon-btn.on { color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .seek { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 460px; }
 .time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; width: 36px; text-align: center; }
+/* Thin filled track + round gradient thumb (WebKit pseudo-elements).
+   --fill (0-100%) paints the progress portion; set inline per slider. */
 input[type="range"] {
-  flex: 1; accent-color: var(--accent); height: 4px; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  flex: 1; height: 14px; margin: 0; background: transparent; cursor: pointer;
 }
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) var(--fill, 0%), var(--border) var(--fill, 0%));
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 11px; height: 11px; border-radius: 50%; margin-top: -4px;
+  background-image: var(--grad); border: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transition: transform 0.1s ease;
+}
+input[type="range"]:hover:not(:disabled)::-webkit-slider-thumb { transform: scale(1.2); }
+input[type="range"]:disabled { opacity: 0.45; cursor: default; }
 .right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-.vol { width: 84px; flex: none; }
+/* input[type=range] sets flex:1 above; same specificity, later wins. */
+input.vol { width: 84px; flex: none; }
 button.queue-btn { position: relative; }
 .count {
   position: absolute; top: -3px; right: -6px; min-width: 15px; line-height: 15px;
