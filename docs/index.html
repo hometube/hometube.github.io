@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>HomeTube — your self-hosted YouTube library</title>
+<title>HomeTube — your self-hosted media library</title>
 <link rel="icon" type="image/png" sizes="48x48" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
@@ -45,7 +45,15 @@
   .app span { display: block; color: var(--muted); font-size: .85rem; margin-top: .2rem; }
   .app em { display: inline-block; font-style: normal; color: var(--accent);
             font-size: .8rem; margin-top: .7rem; border-bottom: 1px solid #59404f; }
-  .app .guide { font-size: .8rem; margin-top: .35rem; }
+  /* The Desktop card carries its own guide link, so it can't be one big
+     anchor (nested <a> breaks out and becomes a stray 4th grid cell):
+     a div shell with the main link plus a sibling guide link. */
+  .app-main { display: block; text-decoration: none; }
+  .app .guide {
+    display: inline-block; font-size: .8rem; margin-top: .7rem;
+    color: var(--accent); border-bottom: 1px solid #59404f; text-decoration: none;
+  }
+  .app .guide:hover { border-bottom-color: var(--accent); }
   pre {
     background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     padding: .9rem 1.1rem; overflow-x: auto; font-size: .85rem; line-height: 1.6; margin: 0;
@@ -66,17 +74,19 @@
     <img src="icon-512.png" alt="HomeTube icon">
     <h1>HomeTube</h1>
   </header>
-  <p class="sub">A self-hosted YouTube media library: download videos and music, subscribe to
+  <p class="sub">A self-hosted media library: download videos and music, subscribe to
   channels and podcasts, and play everything back offline&nbsp;&mdash; on your own hardware.</p>
 
   <h2>Get HomeTube</h2>
   <div class="apps">
-    <a class="app" href="https://github.com/hometube/hometube.github.io/releases/latest">
-      <strong>Desktop</strong>
-      <span>All-in-one: bundled server and UI, QR pairing.</span>
-      <em>macOS &middot; Windows</em>
-      <span class="guide"><a href="desktop.html">Setup guide</a></span>
-    </a>
+    <div class="app">
+      <a class="app-main" href="https://github.com/hometube/hometube.github.io/releases/latest">
+        <strong>Desktop</strong>
+        <span>All-in-one: bundled server and UI, QR pairing.</span>
+        <em>macOS &middot; Windows</em>
+      </a>
+      <a class="guide" href="desktop.html">Setup guide</a>
+    </div>
     <a class="app" href="https://github.com/hometube/hometube.github.io/releases?q=mobile&amp;expanded=true">
       <strong>Mobile</strong>
       <span>Android app that pairs with your server over the LAN.</span>
@@ -110,7 +120,7 @@ ht settings set auto_download off    # disable pre-download on add</code></pre>
     <li><a href="https://bun.sh">Bun</a> &mdash; installed automatically by <code>install.sh</code></li>
     <li><a href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a> and
         <a href="https://ffmpeg.org">ffmpeg</a> for downloads</li>
-    <li>A JavaScript runtime for newer YouTube formats (Deno recommended)</li>
+    <li>A JavaScript runtime for yt-dlp's newer extractors (Deno recommended)</li>
   </ul>
 
   <footer>

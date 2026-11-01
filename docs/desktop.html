@@ -47,10 +47,9 @@
   ul a, ol a { color: var(--text); }
   .note {
     background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent);
-    border-radius: 10px; padding: .8rem 1.1rem; color: var(--muted); font-size: .92rem;
+    border-radius: 0 10px 10px 0; padding: .8rem 1.1rem; color: var(--muted); font-size: .92rem;
     margin: 1rem 0;
   }
-  .crumbs { margin-bottom: 2rem; font-size: .9rem; }
   footer { margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
            color: var(--muted); font-size: .85rem; }
 </style>
@@ -65,9 +64,7 @@
   your library lives on this computer, and phones join over the Wi-Fi with a QR
   code. No terminal needed.</p>
 
-  <p class="crumbs"><a href="./">&larr; back to HomeTube</a></p>
-
-  <h2>1 &middot; Install</h2>
+  <h2>Install</h2>
   <ol>
     <li>Download the latest <strong>HomeTube desktop</strong> release from
         <a href="https://github.com/hometube/hometube.github.io/releases/latest">GitHub Releases</a>
@@ -83,14 +80,14 @@
         target.</li>
   </ol>
 
-  <h2>2 &middot; First run</h2>
+  <h2>First run</h2>
   <ol>
     <li>The setup wizard asks where your library lives. Point it at the folder that
         holds your HomeTube downloads (it reports how many items it finds), or pick a
         fresh folder to start clean.</li>
     <li>Add a <strong>face</strong> &mdash; one per person in the house. Each face gets
         its own feed, playlists, and resume points on the same library.</li>
-    <li>You land on Home. Paste any YouTube video, playlist, or podcast link with
+    <li>You land on Home. Paste any video, playlist, or podcast link with
       <em>+ Add music</em> &mdash; downloads start immediately and everything is ready
       to play, even offline, once the file lands.</li>
   </ol>
@@ -100,7 +97,7 @@
     <em>Start at login</em> in Settings &rarr; Preferences to have it always on.
   </div>
 
-  <h2>3 &middot; Connect your phone</h2>
+  <h2>Connect your phone</h2>
   <ol>
     <li>Install the <a href="https://github.com/hometube/hometube.github.io/releases?q=mobile&amp;expanded=true">HomeTube Android app</a>
         (APK) on a phone on the same Wi-Fi.</li>
@@ -112,7 +109,7 @@
         phones are connected and when they were last seen.</li>
   </ol>
 
-  <h2>4 &middot; Playback</h2>
+  <h2>Playback</h2>
   <ul>
     <li>Click any song row to queue its list from that point; the transport bar
         below the window controls everything &mdash; shuffle, repeat, seek, queue.</li>
@@ -125,7 +122,7 @@
         them <em>keep</em>.</li>
   </ul>
 
-  <h2>5 &middot; Backup and move</h2>
+  <h2>Backup and move</h2>
   <p>Everything &mdash; database and media &mdash; lives in the one library folder you
   chose. To carry your collection to another machine, export a
   <code>.ht</code> archive (Settings &rarr; Backup, or <code>ht export</code> from the
@@ -138,8 +135,8 @@
         and macOS may ask to allow incoming connections for HomeTube on first run
         &mdash; click <em>Allow</em>.</li>
     <li><strong>Downloads stuck:</strong> Settings shows the server's own diagnostics
-        (tools, jobs, logs) under <em>Diagnostics</em>. <code>yt-dlp</code> breaks when
-        YouTube changes; update from the CLI with <code>ht update</code>.</li>
+        (tools, jobs, logs) under <em>Diagnostics</em>. yt-dlp extractors break when
+        the sites change; update from the CLI with <code>ht update</code>.</li>
     <li><strong>Wrong library:</strong> change the data folder in
         Settings &rarr; Preferences, or re-run first-run by resetting the app.</li>
   </ul>
