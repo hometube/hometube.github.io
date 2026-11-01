@@ -113,6 +113,25 @@ onUnmounted(() => clearInterval(timer));
 
     <template v-else>
       <section class="shelf">
+        <h2>Your playlists</h2>
+        <div v-if="playlists.length" class="cards">
+          <div
+            v-for="p in playlists"
+            :key="p.id"
+            class="pl-card"
+            @click="openPlaylist(p.id)"
+          >
+            <strong>{{ p.name }}</strong>
+            <small class="hint">
+              {{ (p.songs || []).length }}
+              {{ (p.songs || []).length === 1 ? "item" : "items" }}
+            </small>
+          </div>
+        </div>
+        <p v-else class="hint">No playlists yet.</p>
+      </section>
+
+      <section class="shelf">
         <h2>Recently added</h2>
         <div v-if="recent.length" class="rows">
           <div
@@ -140,25 +159,6 @@ onUnmounted(() => clearInterval(timer));
           Nothing yet for {{ user?.username }}. Hit
           <strong>+ Add music</strong> above and paste a YouTube link.
         </p>
-      </section>
-
-      <section class="shelf">
-        <h2>Your playlists</h2>
-        <div v-if="playlists.length" class="cards">
-          <div
-            v-for="p in playlists"
-            :key="p.id"
-            class="pl-card"
-            @click="openPlaylist(p.id)"
-          >
-            <strong>{{ p.name }}</strong>
-            <small class="hint">
-              {{ (p.songs || []).length }}
-              {{ (p.songs || []).length === 1 ? "item" : "items" }}
-            </small>
-          </div>
-        </div>
-        <p v-else class="hint">No playlists yet.</p>
       </section>
 
       <section v-if="activeJobs.length" class="shelf">

@@ -110,6 +110,13 @@ CREATE TABLE IF NOT EXISTS devices (
 	PRIMARY KEY (id),
 	UNIQUE (token_hash)
 );
+CREATE TABLE IF NOT EXISTS download_errors (
+	item_type TEXT NOT NULL,
+	item_id INTEGER NOT NULL,
+	error TEXT NOT NULL,
+	at TEXT,
+	PRIMARY KEY (item_type, item_id)
+);
 `;
 
 // Columns the ORM exposes as JSON booleans; SQLite stores 0/1.
@@ -159,6 +166,29 @@ export function getSetting(db: Database, key: string): string | null {
     'SELECT value FROM settings WHERE "key" = ?',
   ).get(key);
   return row?.value ?? null;
+}
+
+// --- Download failure memory ---
+// A failed track must not retry YouTube on every play click: the reason is
+// stored per item, the lazy /file route fails fast with it, and an explicit
+// retry (or a successful download) clears it.
+export function setDownloadError(db: Database, type: string, id: number, error: string): void {
+  db.run(
+    `INSERT INTO download_errors (item_type, item_id, error, at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(item_type, item_id) DO UPDATE SET error = excluded.error, at = excluded.at`,
+    [type, id, error, new Date().toISOString()],
+  );
+}
+
+export function getDownloadError(db: Database, type: string, id: number): string | null {
+  const row = db.query<{ error: string }, [string, number]>(
+    "SELECT error FROM download_errors WHERE item_type = ? AND item_id = ?",
+  ).get(type, id);
+  return row?.error ?? null;
+}
+
+export function clearDownloadError(db: Database, type: string, id: number): void {
+  db.run("DELETE FROM download_errors WHERE item_type = ? AND item_id = ?", [type, id]);
 }
 
 export function setSetting(db: Database, key: string, value: string): void {

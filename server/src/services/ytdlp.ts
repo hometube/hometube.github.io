@@ -2,9 +2,10 @@
 // yt-dlp's Python API (frozen-sidecar constraint); the JS server spawns the
 // official `yt-dlp` binary instead, which is the same extraction engine.
 // Same client exclusions, same format filtering, same thumbnail preference.
-import { mkdirSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { downloadsDir } from "../paths";
+import { dataDir, downloadsDir } from "../paths";
+import { getSetting, openDb } from "../db";
 import { which } from "../tools";
 
 // YouTube has been blocking the android_vr client (HTTP 403). Exclude it so
@@ -16,6 +17,39 @@ const BASE_ARGS = [
   "youtube:player_client=default,-android_vr",
 ];
 
+// YouTube account cookies, so Music Premium tracks (and age-gated content)
+// become downloadable. Sources, first hit wins:
+//   1. setting cookies_file  -> explicit Netscape cookies.txt path
+//   2. <data_dir>/cookies.txt (drop a file, no restart needed)
+//   3. setting cookies_browser -> e.g. "safari" | "chrome" | "firefox"
+// Cached briefly so `ht settings set cookies_browser safari` takes effect
+// without restarting the server, without re-opening the DB per call.
+let cookiesCache: { at: number; args: string[] } | null = null;
+
+function cookieArgs(): string[] {
+  if (cookiesCache && Date.now() - cookiesCache.at < 10_000) return cookiesCache.args;
+  let args: string[] = [];
+  try {
+    const db = openDb();
+    try {
+      const file = (getSetting(db, "cookies_file") || "").trim() || join(dataDir(), "cookies.txt");
+      const browser = (getSetting(db, "cookies_browser") || "").trim();
+      if (existsSync(file)) args = ["--cookies", file];
+      else if (browser) args = ["--cookies-from-browser", browser];
+    } finally {
+      db.close();
+    }
+  } catch {
+    /* no DB available — anonymous mode */
+  }
+  cookiesCache = { at: Date.now(), args };
+  return args;
+}
+
+function baseArgs(): string[] {
+  return [...BASE_ARGS, ...cookieArgs()];
+}
+
 export function ytDlpPath(): string {
   return which("yt-dlp") || "yt-dlp";
 }
@@ -23,7 +57,7 @@ export function ytDlpPath(): string {
 export type Info = Record<string, any>;
 
 async function runJson(extra: string[], url: string): Promise<Info | null> {
-  const proc = Bun.spawn([ytDlpPath(), ...BASE_ARGS, "--quiet", "--no-progress", "-J", ...extra, url], {
+  const proc = Bun.spawn([ytDlpPath(), ...baseArgs(), "--quiet", "--no-progress", "-J", ...extra, url], {
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -155,7 +189,7 @@ function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: string) =>
 // idHint is the extractor id stored on the DB row.
 // (yt-dlp's `--print` mode silences all progress output, hence globbing.)
 async function runDownload(args: string[], url: string, onProgress: ProgressCb, kind: string): Promise<void> {
-  const proc = Bun.spawn([ytDlpPath(), ...BASE_ARGS, "--newline", ...args, url], {
+  const proc = Bun.spawn([ytDlpPath(), ...baseArgs(), "--newline", ...args, url], {
     stdout: "ignore",
     stderr: "pipe",
   });

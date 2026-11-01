@@ -5,13 +5,14 @@ import {
   currentUser,
   healthy,
   navigate,
+  openPlaylist,
   refreshStatus,
   refreshStorage,
   refreshUsers,
   state,
   wizardDone,
 } from "./store";
-import { next, player, prev, toggle } from "./player";
+import { next, player, prev, restorePlayback, seek, toggle } from "./player";
 import { checkForUpdate, updateAvailable } from "./updates";
 import WizardView from "./views/WizardView.vue";
 import HomeView from "./views/HomeView.vue";
@@ -25,7 +26,7 @@ import QueuePanel from "./components/QueuePanel.vue";
 
 const NAV = [
   { id: "home", label: "Home" },
-  { id: "playlists", label: "Playlists" },
+  { id: "playlists", label: "Music" },
   { id: "videos", label: "Videos" },
   { id: "podcasts", label: "Podcasts" },
   { id: "devices", label: "Devices" },
@@ -45,18 +46,55 @@ const view = computed(() => VIEWS[state.view] || HomeView);
 const face = computed(() => currentUser());
 
 // Once the server is healthy, load the household (and keep it fresh for
-// faces added from the CLI or the mobile app).
+// faces added from the CLI or the mobile app), and rehydrate the last
+// playback session exactly once.
+let playbackRestored = false;
 watch(
   () => healthy(),
   (ok) => {
-    if (ok) refreshUsers();
+    if (!ok) return;
+    refreshUsers();
+    if (!playbackRestored) {
+      playbackRestored = true;
+      restorePlayback();
+    }
   }
 );
 
 let timers = [];
 let unlisten = null;
 let unlistenPlayer = null;
+
+// Global keyboard transport. Ignored while typing (inputs, modals' text
+// fields) and on focused buttons, where Space/Enter belong to the control.
+function onKey(e) {
+  if (inWizard.value) return;
+  const t = e.target instanceof HTMLElement ? e.target : null;
+  if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+  const mod = e.metaKey || e.ctrlKey;
+  if (e.code === "Space") {
+    if (t && (t.tagName === "BUTTON" || t.getAttribute("role") === "button")) return;
+    e.preventDefault();
+    toggle();
+  } else if (mod && e.key === "ArrowRight") {
+    e.preventDefault();
+    next();
+  } else if (mod && e.key === "ArrowLeft") {
+    e.preventDefault();
+    prev();
+  } else if (!mod && e.key === "ArrowRight" && player.duration) {
+    e.preventDefault();
+    seek(Math.min(player.duration, player.currentTime + 5));
+  } else if (!mod && e.key === "ArrowLeft" && player.duration) {
+    e.preventDefault();
+    seek(Math.max(0, player.currentTime - 5));
+  } else if (!mod && e.key.toLowerCase() === "q") {
+    state.queueOpen = !state.queueOpen;
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener("keydown", onKey);
   refreshStatus();
   refreshStorage();
   checkForUpdate(); // GitHub Releases check; silent unless something is newer
@@ -73,6 +111,7 @@ onMounted(async () => {
   });
 });
 onUnmounted(() => {
+  window.removeEventListener("keydown", onKey);
   timers.forEach(clearInterval);
   if (unlisten) unlisten();
   if (unlistenPlayer) unlistenPlayer();
@@ -88,18 +127,31 @@ onUnmounted(() => {
         <span>HomeTube</span>
       </div>
       <nav>
-        <button
-          v-for="n in NAV"
-          :key="n.id"
-          class="nav-item"
-          :class="{ active: state.view === n.id }"
-          @click="navigate(n.id)"
-        >
-          {{ n.label }}
-          <span v-if="n.id === 'settings' && updateAvailable()" class="nav-badge"
-            >1</span
+        <template v-for="n in NAV" :key="n.id">
+          <button
+            class="nav-item"
+            :class="{ active: state.view === n.id }"
+            @click="state.openPlaylistId = null; navigate(n.id)"
           >
-        </button>
+            {{ n.label }}
+            <span v-if="n.id === 'settings' && updateAvailable()" class="nav-badge"
+              >1</span
+            >
+          </button>
+          <!-- The current face's playlists, indented under Playlists. -->
+          <div v-if="n.id === 'playlists' && state.playlists.length" class="nav-pls">
+            <button
+              v-for="p in state.playlists"
+              :key="p.id"
+              class="nav-pl"
+              :class="{ active: state.view === 'playlists' && state.openPlaylistId === p.id }"
+              :title="p.name"
+              @click="openPlaylist(p.id)"
+            >
+              {{ p.name }}
+            </button>
+          </div>
+        </template>
       </nav>
       <div class="side-foot">
         <span
@@ -176,7 +228,7 @@ aside {
   background: var(--grad); -webkit-background-clip: text; background-clip: text;
   color: transparent;
 }
-nav { display: flex; flex-direction: column; gap: 2px; }
+nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; margin: 0 -4px; padding: 0 4px; }
 .nav-item {
   background: none; color: var(--muted); text-align: left; border-radius: 8px;
   padding: 9px 12px; font-size: 14px; font-weight: 500;
@@ -184,6 +236,14 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 }
 .nav-item:hover { background: var(--panel); color: var(--text); filter: none; }
 .nav-item.active { background: var(--panel); color: var(--text); font-weight: 600; }
+.nav-pls { display: flex; flex-direction: column; gap: 1px; margin: 1px 0 3px; }
+.nav-pl {
+  background: none; color: var(--muted); text-align: left; border-radius: 7px;
+  padding: 6px 10px 6px 27px; font-size: 13px; font-weight: 450;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nav-pl:hover { background: var(--panel); color: var(--text); filter: none; }
+.nav-pl.active { background: var(--panel); color: var(--accent); font-weight: 600; }
 .nav-badge {
   margin-left: auto; background-image: var(--grad); color: #fff; font-size: 10px;
   font-weight: 700; border-radius: 999px; min-width: 16px; height: 16px;
@@ -206,8 +266,14 @@ main { flex: 1; overflow-y: auto; padding: 16px 30px 24px; }
 .view-leave-to { opacity: 0; }
 .bar-enter-active, .bar-leave-active { transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.22s ease; }
 .bar-enter-from, .bar-leave-to { transform: translateY(100%); opacity: 0; }
-.panel-enter-active, .panel-leave-active { transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.22s ease; }
-.panel-enter-from, .panel-leave-to { transform: translateX(24px); opacity: 0; }
+/* Slide by animating the real width: the content pane flexes along with it
+   instead of snapping when the panel unmounts. !important beats the inline
+   width binding on the from/to frames; the panel clips, rows hold their width. */
+.panel-enter-active, .panel-leave-active {
+  transition: width 0.22s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.18s ease;
+  overflow: hidden;
+}
+.panel-enter-from, .panel-leave-to { width: 0 !important; opacity: 0; }
 .modal-enter-active, .modal-leave-active { transition: opacity 0.16s ease; }
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 .modal-enter-active .modal, .modal-leave-active .modal { transition: transform 0.16s cubic-bezier(0.22, 0.61, 0.36, 1); }

@@ -3,7 +3,7 @@
 // shapes mirror main.py; downloads run through the background job registry.
 import type { Context, Hono } from "hono";
 import type { Env } from "../app";
-import { serialize, type Row } from "../db";
+import { clearDownloadError, serialize, type Row } from "../db";
 import { fail } from "../errors";
 import * as ytdlp from "../services/ytdlp";
 import * as downloader from "../services/downloader";
@@ -194,6 +194,8 @@ export function registerMedia(app: App) {
       .query<Row, [number]>("SELECT * FROM videos WHERE id = ?")
       .get(Number(c.req.param("id")));
     if (!vid) fail(404, "Not Found");
+    // Explicit retry: drop any remembered failure so this attempt goes out.
+    clearDownloadError(c.env.db, "video", Number(vid.id));
     const active = downloader.activeFor("video", Number(vid.id));
     if (active) {
       return c.json({ ok: true, job_id: active.id, queued: true }, 202);
@@ -291,6 +293,8 @@ export function registerMedia(app: App) {
       .query<Row, [number]>("SELECT * FROM music WHERE id = ?")
       .get(Number(c.req.param("id")));
     if (!music) fail(404, "Not Found");
+    // Explicit retry: drop any remembered failure so this attempt goes out.
+    clearDownloadError(c.env.db, "music", Number(music.id));
     const active = downloader.activeFor("music", Number(music.id));
     if (active) {
       return c.json({ ok: true, job_id: active.id, queued: true }, 202);

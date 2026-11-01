@@ -8,7 +8,7 @@ import { join } from "node:path";
 import type { Context, Hono } from "hono";
 import type { Env } from "../app";
 import { fail } from "../errors";
-import type { Row } from "../db";
+import { clearDownloadError, getDownloadError, setDownloadError, type Row } from "../db";
 import { downloadsDir } from "../paths";
 import * as ytdlp from "../services/ytdlp";
 import * as downloader from "../services/downloader";
@@ -170,7 +170,8 @@ export function registerFiles(app: App) {
     const dir = videosDir();
 
     // Auto-download on first play; wait for a running background job rather
-    // than starting a duplicate.
+    // than starting a duplicate. Known-failed tracks fail fast (no repeated
+    // YouTube round-trips) until retried or successfully downloaded.
     if (needsMediaDownload(vid, dir)) {
       const active = downloader.activeFor("video", id);
       if (active) {
@@ -179,6 +180,11 @@ export function registerFiles(app: App) {
         vid = reloadVideo(c, id);
       }
       if (needsMediaDownload(vid!, dir)) {
+        if (c.req.query("retry") === "1") clearDownloadError(c.env.db, "video", id);
+        else {
+          const cached = getDownloadError(c.env.db, "video", id);
+          if (cached) fail(502, cached);
+        }
         const hint = vid!.video_id ? String(vid!.video_id) : String(id);
         try {
           const filename = await ytdlp.downloadVideo(
@@ -187,8 +193,11 @@ export function registerFiles(app: App) {
             (vid!.quality as string) || "best",
           );
           c.env.db.run("UPDATE videos SET filename = ?, downloaded = 1 WHERE id = ?", [filename, id]);
+          clearDownloadError(c.env.db, "video", id);
         } catch (exc) {
-          fail(502, `Download failed: ${exc instanceof Error ? exc.message : String(exc)}`);
+          const msg = `Download failed: ${exc instanceof Error ? exc.message : String(exc)}`;
+          setDownloadError(c.env.db, "video", id, msg);
+          fail(502, msg);
         }
         vid = reloadVideo(c, id);
       }
@@ -218,6 +227,7 @@ export function registerFiles(app: App) {
     const dir = musicDir();
 
     // Auto-download / wait-for-job, same single-flight pattern as videos.
+    // Known-failed tracks fail fast until retried (?retry=1) or fixed.
     if (needsMediaDownload(music, dir)) {
       const active = downloader.activeFor("music", id);
       if (active) {
@@ -226,12 +236,20 @@ export function registerFiles(app: App) {
         music = reloadMusic(c, id);
       }
       if (needsMediaDownload(music!, dir)) {
+        if (c.req.query("retry") === "1") clearDownloadError(c.env.db, "music", id);
+        else {
+          const cached = getDownloadError(c.env.db, "music", id);
+          if (cached) fail(502, cached);
+        }
         const hint = music!.video_id ? String(music!.video_id) : String(id);
         try {
           const filename = await ytdlp.downloadMusic(String(music!.url ?? ""), hint);
           c.env.db.run("UPDATE music SET filename = ?, downloaded = 1 WHERE id = ?", [filename, id]);
+          clearDownloadError(c.env.db, "music", id);
         } catch (exc) {
-          fail(502, `Download failed: ${exc instanceof Error ? exc.message : String(exc)}`);
+          const msg = `Download failed: ${exc instanceof Error ? exc.message : String(exc)}`;
+          setDownloadError(c.env.db, "music", id, msg);
+          fail(502, msg);
         }
         music = reloadMusic(c, id);
       }

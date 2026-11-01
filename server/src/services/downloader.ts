@@ -5,7 +5,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { getSetting } from "../db";
+import { getSetting, setDownloadError, clearDownloadError } from "../db";
 import { downloadsDir } from "../paths";
 import * as ytdlp from "./ytdlp";
 
@@ -107,9 +107,11 @@ async function run(jobId: string): Promise<void> {
         ? await ytdlp.downloadVideoWithProgress(item.url, item.hint, quality, progressFor(jobId))
         : await ytdlp.downloadMusicWithProgress(item.url, item.hint, progressFor(jobId));
     applyToDb(kind, itemId, filename);
+    clearDownloadError(dbHandle(), kind, itemId);
     write(jobId, { status: "done", progress: 100, message: "Done", filename });
   } catch (exc) {
     const msg = exc instanceof Error ? exc.message : String(exc);
+    setDownloadError(dbHandle(), kind, itemId, msg);
     write(jobId, { status: "error", message: msg, error: msg });
   }
 }

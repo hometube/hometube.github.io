@@ -2,10 +2,33 @@
 // module scope so it survives every view change. Serves from
 // GET /api/music/{id}/file, which range-streams and lazy-downloads.
 import { reactive } from "vue";
-import { apiBase } from "./store";
+import { api, apiBase } from "./store";
 
 const audio = new Audio();
 audio.preload = "metadata";
+
+// Session persistence: last queue + play order + position, so a webview
+// reload (or app restart) brings the miniplayer back exactly where it was.
+const SESSION_KEY = "hometube.se…sion";
+let lastSaved = 0;
+let pendingSeek = 0;
+
+function persistSession() {
+  lastSaved = audio.currentTime;
+  try {
+    localStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({
+        q: player.queue.map((x) => x.id),
+        o: player.order,
+        p: player.orderPos,
+        t: player.currentTime,
+      })
+    );
+  } catch {
+    /* storage full — persistence is best-effort */
+  }
+}
 
 export const player = reactive({
   queue: [], // music rows
@@ -18,6 +41,7 @@ export const player = reactive({
   shuffle: localStorage.getItem("hometube.shuffle") === "1",
   repeat: localStorage.getItem("hometube.repeat") || "off", // off | all | one
   loading: false, // file still resolving (server may be lazy-downloading)
+  error: "", // human reason the current track failed (empty = healthy)
 });
 
 export function musicUrl(id) {
@@ -74,6 +98,7 @@ export function removeFromOrder(pos) {
       player.playing = false;
       player.loading = false;
       player.queue = [];
+      localStorage.removeItem(SESSION_KEY);
       return;
     }
     player.orderPos = Math.min(player.orderPos, player.order.length - 1);
@@ -121,9 +146,51 @@ function loadCurrent(play) {
   const t = currentTrack();
   if (!t) return;
   player.loading = true;
+  player.error = "";
   audio.src = musicUrl(t.id);
   if (play) audio.play().catch(() => {});
   updateMediaSession();
+  persistSession();
+}
+
+// Rebuild last session after boot/reload: surviving rows only, old order
+// remapped onto them, resume point applied at loadedmetadata. Deliberately
+// does not autoplay (WKWebView wants a user gesture); the bar + queue come
+// back ready to press play.
+export async function restorePlayback() {
+  if (player.queue.length) return;
+  let s;
+  try {
+    s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+  } catch {
+    return;
+  }
+  if (!s || !Array.isArray(s.q) || !s.q.length) return;
+  let rows;
+  try {
+    rows = await api("/api/music");
+  } catch {
+    return; // server not up yet; the healthy() watcher will retry
+  }
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const keep = new Map(); // old queue index -> new queue index
+  s.q.forEach((id, i) => {
+    if (byId.has(id)) keep.set(i, keep.size);
+  });
+  const queue = s.q.map((id) => byId.get(id)).filter(Boolean);
+  if (!queue.length) {
+    localStorage.removeItem(SESSION_KEY);
+    return;
+  }
+  const order = (Array.isArray(s.o) ? s.o : []).filter((i) => keep.has(i)).map((i) => keep.get(i));
+  player.queue = queue;
+  player.order = order.length ? order : queue.map((_, i) => i);
+  player.orderPos = order.length ? Math.min(Math.max(0, s.p ?? 0), order.length - 1) : -1;
+  if (player.orderPos >= 0) {
+    pendingSeek = Number(s.t) || 0;
+    loadCurrent(false);
+    player.loading = false; // paused resume — no fetch spinner until play
+  }
 }
 
 export function toggle() {
@@ -173,14 +240,61 @@ audio.addEventListener("play", () => {
 });
 audio.addEventListener("pause", () => {
   player.playing = false;
+  persistSession(); // capture the exact paused position
   updateMediaSession();
 });
 audio.addEventListener("waiting", () => (player.loading = true));
 audio.addEventListener("playing", () => (player.loading = false));
-audio.addEventListener("timeupdate", () => (player.currentTime = audio.currentTime));
-audio.addEventListener("loadedmetadata", () => (player.duration = audio.duration || 0));
+audio.addEventListener("timeupdate", () => {
+  player.currentTime = audio.currentTime;
+  if (player.playing && Math.abs(audio.currentTime - lastSaved) >= 5) persistSession();
+});
+audio.addEventListener("loadedmetadata", () => {
+  player.duration = audio.duration || 0;
+  if (pendingSeek > 1) {
+    try {
+      audio.currentTime = Math.min(pendingSeek, Math.max(0, (audio.duration || 0) - 1));
+    } catch {
+      /* seek before stream ready */
+    }
+    pendingSeek = 0;
+  }
+});
 audio.addEventListener("ended", () => next(true));
-audio.addEventListener("error", () => (player.loading = false));
+audio.addEventListener("error", () => {
+  player.loading = false;
+  const t = currentTrack();
+  if (t) void probePlaybackError(musicUrl(t.id));
+});
+
+// The media element swallows the server's reason, so re-probe the URL
+// (server fails fast for known-bad tracks) and translate it into words.
+async function probePlaybackError(url) {
+  let msg = "Playback failed — could not fetch the file.";
+  try {
+    const res = await fetch(url, { headers: { Range: "bytes=0-0" } });
+    if (res.ok) return; // e.g. a lazy download has since finished
+    let detail = "";
+    try {
+      detail = String((await res.json()).detail || "");
+    } catch {
+      /* non-JSON error body */
+    }
+    if (detail) msg = friendlyPlaybackError(detail);
+  } catch {
+    /* server unreachable */
+  }
+  player.error = msg;
+}
+
+function friendlyPlaybackError(detail) {
+  const d = String(detail || "");
+  if (/Premium/i.test(d))
+    return "Needs YouTube Music Premium — give the server browser cookies (ht settings set cookies_browser safari)";
+  if (/unavailable/i.test(d)) return "Video unavailable on YouTube";
+  const m = /ERROR:.*:\s*(.+)$/.exec(d);
+  return (m ? m[1] : d).replace(/^Download failed:\s*/, "").slice(0, 180);
+}
 
 // --- Media Session (media keys / lock screen where WKWebView exposes it) ---
 function updateMediaSession() {

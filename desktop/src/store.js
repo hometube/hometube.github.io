@@ -7,10 +7,11 @@ export const state = reactive({
   status: null, // ServerStatus from the Rust shell
   storage: null, // StorageInfo from the Rust shell
   users: [],
+  playlists: [], // current user's playlists, for the sidebar sub-nav
   currentUserId: null,
   openPlaylistId: null,
   queueOpen: false,
-  queueWidth: Math.min(620, Math.max(260, Number(localStorage.getItem("hometube.queueWidth")) || 330)),
+  queueWidth: Math.min(720, Math.max(300, Number(localStorage.getItem("hometube.queueWidth.v4")) || 400)),
   view: localStorage.getItem("hometube.view") || "home",
 });
 
@@ -82,6 +83,20 @@ export async function refreshUsers() {
     setCurrentUser(state.users[0].id);
   } else {
     state.currentUserId = null;
+  }
+  refreshPlaylists();
+}
+
+export async function refreshPlaylists() {
+  const u = currentUser();
+  if (!healthy() || !u) {
+    state.playlists = [];
+    return;
+  }
+  try {
+    state.playlists = await api(`/api/playlists?user_id=${u.id}`);
+  } catch {
+    /* server may be mid-restart */
   }
 }
 

@@ -31,7 +31,7 @@ function onSeek(e) {
       ></span>
       <div class="text">
         <span class="title">{{ track?.title || "Nothing playing" }}</span>
-        <span class="artist">{{ track?.artist || "" }}</span>
+        <span class="artist" :class="{ err: !!player.error }">{{ player.error || track?.artist || "" }}</span>
       </div>
     </div>
 
@@ -92,19 +92,6 @@ function onSeek(e) {
     </div>
 
     <div class="right">
-      <button
-        class="queue-btn"
-        :class="{ on: state.queueOpen }"
-        title="Show the play queue"
-        @click="state.queueOpen = !state.queueOpen"
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"
-          ><path
-            d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zm12-6v6l4.5-3L15 10z"
-          /></svg>
-        <span>Queue</span>
-        <span class="count">{{ player.order.length }}</span>
-      </button>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--muted)" class="vol-icon"
         ><path d="M3 9v6h4l5 5V4L7 9H3z" /></svg
       >
@@ -118,6 +105,18 @@ function onSeek(e) {
         title="Volume"
         @input="setVolume(Number($event.target.value))"
       />
+      <button
+        class="icon-btn queue-btn"
+        :class="{ on: state.queueOpen }"
+        title="Queue"
+        @click="state.queueOpen = !state.queueOpen"
+      >
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"
+          ><path
+            d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zm12-6v6l4.5-3L15 10z"
+          /></svg>
+        <span class="count">{{ player.order.length }}</span>
+      </button>
     </div>
   </footer>
 </template>
@@ -145,6 +144,7 @@ function onSeek(e) {
 .text { display: flex; flex-direction: column; min-width: 0; }
 .title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artist { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artist.err { color: #ff7b72; }
 .center { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .buttons { display: flex; align-items: center; gap: 10px; }
 button.icon-btn {
@@ -173,16 +173,10 @@ input[type="range"] {
 }
 .right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .vol { width: 84px; flex: none; }
-button.queue-btn {
-  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
-  background: var(--inset); border: 1px solid var(--border); border-radius: 999px;
-  color: var(--muted); font-size: 12px; font-weight: 550;
-}
-button.queue-btn:hover { color: var(--text); background: var(--inset); filter: none; }
-button.queue-btn.on { color: var(--accent); border-color: var(--accent); }
+button.queue-btn { position: relative; }
 .count {
-  background: var(--panel); border-radius: 999px; padding: 0 7px;
-  font-size: 11px; font-variant-numeric: tabular-nums;
+  position: absolute; top: -3px; right: -6px; min-width: 15px; line-height: 15px;
+  padding: 0 4px; border-radius: 999px; background-image: var(--grad); color: #fff;
+  font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums;
 }
-button.queue-btn.on .count { background: rgba(224, 85, 155, 0.18); }
 </style>

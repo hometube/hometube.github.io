@@ -68,7 +68,7 @@ onUnmounted(() => clearInterval(timer));
 
 <template>
   <div v-if="!selected">
-    <h2>Playlists</h2>
+    <h2>Music</h2>
     <div v-if="playlists.length" class="cards">
       <div v-for="p in playlists" :key="p.id" class="card" @click="state.openPlaylistId = p.id">
         <strong>{{ p.name }}</strong>
@@ -86,17 +86,28 @@ onUnmounted(() => clearInterval(timer));
   </div>
 
   <div v-else>
-    <button class="secondary back" @click="state.openPlaylistId = null">← Back</button>
     <div class="detail-head">
-      <div>
+      <template v-if="!isVideoList">
+        <button class="big-play" :disabled="!items.length" title="Play" @click="playAll(0)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"
+            ><path d="M8 5v14l11-7z" /></svg>
+        </button>
+        <button
+          class="shuffle-btn"
+          :class="{ on: player.shuffle }"
+          :disabled="!items.length"
+          title="Shuffle play"
+          @click="shufflePlay"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"
+            ><path
+              d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 8.46 20 10.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"
+            /></svg>
+        </button>
+      </template>
+      <div class="head-text">
         <h2 class="pl-name">{{ selected.name }}</h2>
         <p class="hint">{{ items.length }} {{ items.length === 1 ? "item" : "items" }}</p>
-      </div>
-      <div class="head-actions" v-if="!isVideoList">
-        <button :disabled="!items.length" @click="playAll(0)">Play</button>
-        <button class="secondary" :disabled="!items.length" @click="shufflePlay">
-          Shuffle
-        </button>
       </div>
     </div>
 
@@ -140,10 +151,28 @@ onUnmounted(() => clearInterval(timer));
 }
 .card:hover { border-color: #4b3f5a; }
 .card strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.back { margin-bottom: 16px; }
-.detail-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; gap: 16px; }
-.pl-name { font-size: 20px; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 4px; }
-.head-actions { display: flex; gap: 10px; flex: none; }
+.detail-head {
+  position: sticky; top: 0; z-index: 2; background: var(--bg);
+  display: flex; align-items: center; gap: 14px; padding: 12px 0 10px; margin: -12px 0 12px;
+}
+.head-text { min-width: 0; }
+.pl-name { font-size: 20px; text-transform: none; letter-spacing: -0.01em; color: var(--text); margin: 0 0 2px; }
+.head-text .hint { margin: 0; }
+/* Gradient circle for Play so it pops; Shuffle stays a quiet ghost icon. */
+.big-play {
+  width: 42px; height: 42px; border: 0; border-radius: 50%; color: #fff; flex: none;
+  background-image: var(--grad); display: inline-flex; align-items: center;
+  justify-content: center; padding: 0;
+}
+.big-play:hover:not(:disabled) { background-image: var(--grad); color: #fff; filter: brightness(1.12); }
+.shuffle-btn {
+  width: 36px; height: 36px; background: none; border: 1px solid var(--border);
+  border-radius: 50%; color: var(--muted); flex: none; display: inline-flex;
+  align-items: center; justify-content: center; padding: 0;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.shuffle-btn:hover:not(:disabled) { background: none; filter: none; border-color: var(--accent); color: var(--accent); }
+.shuffle-btn.on { color: var(--accent); border-color: var(--accent); }
 .rows { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .row-item {
   display: flex; align-items: center; gap: 12px; padding: 10px 14px;

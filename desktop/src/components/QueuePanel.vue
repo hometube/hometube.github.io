@@ -6,15 +6,23 @@ import { state } from "../store";
 const listEl = ref(null);
 const dragging = ref(false);
 
-const MIN_W = 260;
-const MAX_W = 620;
+const MIN_W = 300;
+const MAX_W = 720;
+const DEFAULT_W = 400;
 
-// Drag the left edge to resize; width persists. Double-click resets.
+// Drag the handle on the left edge to resize; width persists. Double-click
+// the handle resets. Pointer capture keeps tracking even when the cursor
+// leaves the panel mid-drag.
 function startDrag(e) {
   e.preventDefault();
   const startX = e.clientX;
   const startW = state.queueWidth;
   dragging.value = true;
+  try {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  } catch {
+    /* capture unsupported; window listeners below still work */
+  }
   document.body.style.cursor = "col-resize";
   document.body.style.userSelect = "none";
   const move = (ev) => {
@@ -24,12 +32,17 @@ function startDrag(e) {
     dragging.value = false;
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
-    localStorage.setItem("hometube.queueWidth", String(state.queueWidth));
+    localStorage.setItem("hometube.queueWidth.v4", String(state.queueWidth));
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
+}
+
+function resetWidth() {
+  state.queueWidth = DEFAULT_W;
+  localStorage.setItem("hometube.queueWidth.v4", String(DEFAULT_W));
 }
 
 const rows = computed(() =>
@@ -66,8 +79,11 @@ onUnmounted(() => window.removeEventListener("keydown", esc));
       class="grip"
       title="Drag to resize · double-click to reset"
       @pointerdown="startDrag"
-      @dblclick="state.queueWidth = 330; localStorage.setItem('hometube.queueWidth', '330')"
-    />
+      @dblclick="resetWidth"
+    >
+      <span class="grip-bar" />
+    </div>
+    <div class="q-inner" :style="{ width: state.queueWidth + 'px' }">
     <div class="head">
       <h2>Queue</h2>
       <button class="x" title="Close" @click="state.queueOpen = false">×</button>
@@ -143,6 +159,7 @@ onUnmounted(() => window.removeEventListener("keydown", esc));
         </div>
       </template>
     </div>
+    </div>
   </aside>
 </template>
 
@@ -151,12 +168,25 @@ onUnmounted(() => window.removeEventListener("keydown", esc));
   position: relative; flex: none; border-left: 1px solid var(--border);
   background: var(--bg); display: flex; flex-direction: column; min-height: 0;
 }
-/* Left-edge resize grip: invisible until hovered/dragged. */
-.grip {
-  position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; z-index: 2;
-  cursor: col-resize; background: transparent; transition: background 0.12s ease;
+/* Fixed-width content wrapper so the rows keep their layout while the
+   panel itself animates open/closed (the panel clips, content doesn't squish). */
+.q-inner {
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
 }
-.grip:hover, .queue-panel.dragging .grip { background: var(--accent); }
+/* Left-edge resize grip: a visible pill centered on a wide hit strip
+   that lives just inside the panel so it never fights the window edge. */
+.grip {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 14px; z-index: 3;
+  cursor: col-resize; display: flex; align-items: center; justify-content: center;
+  touch-action: none; background: transparent;
+}
+.grip-bar {
+  width: 4px; height: 56px; border-radius: 4px;
+  background: var(--border); transition: background 0.12s ease, height 0.12s ease;
+}
+.grip:hover .grip-bar, .queue-panel.dragging .grip-bar {
+  background: var(--accent); height: 88px;
+}
 .queue-panel.dragging { user-select: none; }
 .head {
   display: flex; align-items: center; justify-content: space-between;
