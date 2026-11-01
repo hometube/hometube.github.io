@@ -246,6 +246,14 @@ Requests from the host itself (127.0.0.1/::1) are always allowed; LAN clients ne
 - **Background downloads**: server-side downloads run on a worker queue (`server/src/services/downloader.ts`, 2 workers) spawned via `yt_dlp` CLI with progress → job registry. API endpoints return `202 {job_id}`; clients poll `GET /api/downloads` (status + 0-100 progress) via `mobile/src/downloads.ts` (`waitForServerDownload`). Completed jobs write `filename`/`downloaded` back to the DB row. The lazy `/videos/{id}/file` and `/music/{id}/file` paths single-flight off an existing job (wait for it) instead of starting a duplicate download
 - **Pre-download on add**: the `auto_download` server setting (default on) makes add endpoints queue a background download for every added video/music/podcast, so items are usually ready to play instantly. The scheduler also pre-warms newly-detected subscription items, and podcast feed backfill pre-warms only the newest 3 episodes (avoiding mass downloads on subscribe). Turn off with `ht settings set auto_download off` or `PUT /api/settings` `{key:"auto_download", value:"off"}` — lazy on-play downloads remain as fallback
 - Auto-delete: Videos watched >7 days ago without keep_flag are deleted
+- **Download failure memory**: a failed yt-dlp download is recorded per item in the
+  `download_errors` table; lazy `/api/music|videos/{id}/file` then fails fast (502 with the
+  stored reason) instead of retrying YouTube on every play. `POST .../{id}/download` or
+  `?retry=1` on the file route clears the marker and forces a fresh attempt
+- **yt-dlp cookies** (Music Premium / age-gated content): yt-dlp gets account cookies from
+  setting `cookies_file`, an auto-detected `<data_dir>/cookies.txt`, or setting
+  `cookies_browser` (e.g. `ht settings set cookies_browser safari`). First match wins,
+  re-read within ~10s without a server restart
 - Music downloads preserve original format (mp3, webm, m4a, ogg, flac, wav) via yt-dlp
 - **Video experience** equals the music/podcast model: videos carry `thumbnail`, `duration`, `filename`, `position` (resume point, seconds) alongside `watched_at`. Auto-watch at ~95% / ended. `kind:"video"` playlists; mobile player resumes from `position`, flushes progress (30s), auto-watches on `playToEnd`
 - Offline: mobile caches metadata in its SQLite local DB; device cache/download flags marked on the video row
