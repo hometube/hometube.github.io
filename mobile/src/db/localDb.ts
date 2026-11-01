@@ -103,6 +103,7 @@ class LocalDB {
         added_by INTEGER,
         kind TEXT DEFAULT 'music',
         channel_id INTEGER,
+        duration INTEGER,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (added_by) REFERENCES users(id)
       );
@@ -140,6 +141,7 @@ class LocalDB {
       { table: "subscriptions", column: "kind", ddl: "ALTER TABLE subscriptions ADD COLUMN kind TEXT DEFAULT 'video'" },
       { table: "music", column: "kind", ddl: "ALTER TABLE music ADD COLUMN kind TEXT DEFAULT 'music'" },
       { table: "music", column: "channel_id", ddl: "ALTER TABLE music ADD COLUMN channel_id INTEGER" },
+      { table: "music", column: "duration", ddl: "ALTER TABLE music ADD COLUMN duration INTEGER" },
       { table: "playlists", column: "kind", ddl: "ALTER TABLE playlists ADD COLUMN kind TEXT DEFAULT 'music'" },
     ];
     for (const { table, column, ddl } of additions) {

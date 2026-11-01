@@ -1,7 +1,9 @@
 // SQLite layer — bun:sqlite on the same db.sqlite file the Python backend
 // uses. The DDL below is byte-identical to what SQLAlchemy's create_all
 // produced (with IF NOT EXISTS), so this server adopts existing libraries
-// untouched and initializes fresh ones.
+// untouched and initializes fresh ones. The single intentional addition is
+// music.duration (Python-era DDL has none), covered by the ALTER migration
+// in openDb().
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "fs";
 import { dirname, join } from "path";
@@ -75,7 +77,7 @@ CREATE TABLE IF NOT EXISTS music (
 	playlist_id VARCHAR(50),
 	downloaded BOOLEAN,
 	added_by INTEGER,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP, kind VARCHAR(20) DEFAULT 'music', channel_id INTEGER,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP, kind VARCHAR(20) DEFAULT 'music', channel_id INTEGER, duration INTEGER,
 	PRIMARY KEY (id),
 	FOREIGN KEY(added_by) REFERENCES users (id)
 );
@@ -158,6 +160,13 @@ export function openDb(pathOverride?: string): Database {
   const db = new Database(path);
   db.run("PRAGMA journal_mode=WAL");
   db.run(SCHEMA);
+  // music.duration postdates the Python-era DDL: the free-version fallback
+  // (GET /api/music/{id}/alternative) compares candidate lengths against it.
+  // CREATE covers fresh libraries; ALTER adopts existing ones.
+  const musicCols = db.query<{ name: string }, []>("PRAGMA table_info(music)").all();
+  if (!musicCols.some((c) => c.name === "duration")) {
+    db.run("ALTER TABLE music ADD COLUMN duration INTEGER");
+  }
   return db;
 }
 

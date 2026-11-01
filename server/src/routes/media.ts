@@ -85,11 +85,12 @@ function insertMusic(c: Context<Env>, fields: {
   kind: string;
   channel_id: number | null;
   added_by: number | null;
+  duration: number | null;
 }): number {
   const changes = c.env.db.run(
-    `INSERT INTO music (video_id, url, title, artist, album_art, kind, channel_id, is_playlist, downloaded, added_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
-    [fields.video_id, fields.url, fields.title, fields.artist, fields.album_art, fields.kind, fields.channel_id, fields.added_by],
+    `INSERT INTO music (video_id, url, title, artist, album_art, kind, channel_id, is_playlist, downloaded, added_by, duration)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+    [fields.video_id, fields.url, fields.title, fields.artist, fields.album_art, fields.kind, fields.channel_id, fields.added_by, fields.duration],
   );
   return Number(changes.lastInsertRowid);
 }
@@ -242,6 +243,7 @@ export function registerMedia(app: App) {
             kind,
             channel_id: channelId ?? (entryChannel ? Number(entryChannel.id) : null),
             added_by: userId,
+            duration: entry.duration ?? null,
           }),
         );
       }
@@ -279,6 +281,7 @@ export function registerMedia(app: App) {
       kind,
       channel_id: channelId ?? (channel ? Number(channel.id) : null),
       added_by: userId,
+      duration: info.duration ?? null,
     });
     if (data.playlist_id != null) {
       const pl = c.env.db.query("SELECT id FROM playlists WHERE id = ?").get(Number(data.playlist_id));
@@ -314,7 +317,10 @@ export function registerMedia(app: App) {
     if (!music) fail(404, "Not Found");
     const q = `${music.title ?? ""} ${music.artist ?? ""} official audio`.replace(/\s+/g, " ").trim();
     if (!q) return c.json({ candidates: [] });
-    return c.json({ candidates: await ytdlp.searchFreeEquivalent(q) });
+    // The stored duration (original gated upload) filters live/remaster
+    // matches; unknown durations skip the tolerance check entirely.
+    const dur = typeof music.duration === "number" ? music.duration : null;
+    return c.json({ candidates: await ytdlp.searchFreeEquivalent(q, dur) });
   });
 
   app.post("/api/music/:id/alternative", async (c) => {
@@ -326,9 +332,15 @@ export function registerMedia(app: App) {
     const url = String(data.url ?? "");
     const videoId = String(data.video_id ?? "");
     if (!/^https?:\/\//i.test(url) || !videoId) fail(400, "url and video_id required");
+    // Keep the original duration as the reference when the candidate omits
+    // its own; both describe the same recording, so either guards swaps.
+    const dur =
+      data.duration != null && Number.isFinite(Number(data.duration))
+        ? Math.round(Number(data.duration))
+        : (music.duration as number | null) ?? null;
     c.env.db.run(
-      "UPDATE music SET url = ?, video_id = ?, downloaded = 0, filename = NULL WHERE id = ?",
-      [url.slice(0, 500), videoId.slice(0, 20), Number(music.id)],
+      "UPDATE music SET url = ?, video_id = ?, downloaded = 0, filename = NULL, duration = ? WHERE id = ?",
+      [url.slice(0, 500), videoId.slice(0, 20), dur, Number(music.id)],
     );
     clearDownloadError(c.env.db, "music", Number(music.id));
     const jobId = downloader.startMusicDownload(Number(music.id), music.added_by as number | null);

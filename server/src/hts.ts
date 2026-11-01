@@ -18,7 +18,7 @@ export const INSERT_COLS: Record<string, string[]> = {
   ],
   music: [
     "video_id", "url", "title", "artist", "album_art", "filename", "is_playlist",
-    "playlist_id", "downloaded", "added_by", "created_at", "kind", "channel_id",
+    "playlist_id", "downloaded", "added_by", "created_at", "kind", "channel_id", "duration",
   ],
   playlists: ["name", "user_id", "created_at", "songs", "kind"],
 };

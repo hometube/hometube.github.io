@@ -29,6 +29,8 @@ def load(path):
     for v in meta.get("videos", []):
         if v.get("watched_at"):
             v["watched_at"] = "<t>"  # set by harness watch-checks; differs per server
+    for m in meta.get("music", []):
+        m.pop("duration", None)  # JS-era column; the Python-era export never had it
     files = {n: z.read(n) for n in names if n != "metadata.json"}
     return names, meta, files
 

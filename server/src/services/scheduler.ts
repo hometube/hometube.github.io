@@ -93,8 +93,8 @@ export async function checkOnce(): Promise<void> {
       if (!matchesCriteria(criteria, title, duration)) continue;
       if (isPodcast) {
         const changes = db.run(
-          `INSERT INTO music (video_id, title, channel_id, url, artist, album_art, is_playlist, downloaded, added_by, kind)
-           VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, 'podcast')`,
+          `INSERT INTO music (video_id, title, channel_id, url, artist, album_art, is_playlist, downloaded, added_by, kind, duration)
+           VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, 'podcast', ?)`,
           [
             vId,
             title,
@@ -103,6 +103,7 @@ export async function checkOnce(): Promise<void> {
             channel.name == null ? null : String(channel.name),
             ytdlp.pickAlbumArt(v),
             sub.user_id == null ? null : Number(sub.user_id),
+            duration || null,
           ],
         );
         newEpisodeIds.push({ id: Number(changes.lastInsertRowid), user_id: sub.user_id == null ? null : Number(sub.user_id) });
@@ -175,8 +176,8 @@ export async function backfillPodcastEpisodes(
     if (criteria.min_length && duration && duration < criteria.min_length) continue;
     if (criteria.max_length && duration && duration > criteria.max_length) continue;
     const changes = db.run(
-      `INSERT INTO music (video_id, url, title, artist, album_art, is_playlist, downloaded, added_by, kind, channel_id)
-       VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'podcast', ?)`,
+      `INSERT INTO music (video_id, url, title, artist, album_art, is_playlist, downloaded, added_by, kind, channel_id, duration)
+       VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'podcast', ?, ?)`,
       [
         vId,
         entryUrl(entry),
@@ -185,6 +186,7 @@ export async function backfillPodcastEpisodes(
         ytdlp.pickAlbumArt(entry),
         userId,
         Number(channel.id),
+        duration || null,
       ],
     );
     newIds.push(Number(changes.lastInsertRowid));

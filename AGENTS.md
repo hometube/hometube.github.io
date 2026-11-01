@@ -301,6 +301,11 @@ Import targets: `POST /api/import` endpoint; `ht import` CLI; mobile local-mode 
 
 ### Intentional divergences from the retired Python backend
 
+- `music` gained a `duration` column (INTEGER seconds; populated on add/subscribe/import,
+  used by the free-version fallback's ±12s guard). The Python-era DDL has none: `openDb()`
+  ALTERs existing libraries, the parity normalizers strip `duration`, and `htcmp.py` drops
+  it from music rows (Python exports never carry it)
+
 - Unknown `/api/*` paths return JSON 404 (Python had an SPA catch-all); `PUT` endpoints return the updated row; `/api/files/*` and `.ht` zip extraction have path-traversal guards; the JS scheduler keeps ticking after errors; export sends `content-length` (Python chunked)
 - CLI music metadata uses **ffprobe** instead of mutagen
 - Naive-UTC DB writes carry 6 fractional digits to match `datetime.utcnow()` formatting

@@ -74,6 +74,19 @@ def strip(x):
 print(json.dumps(strip(json.load(sys.stdin)), sort_keys=True))'
 }
 
+norm_status() { # also drop the JS-only yt-dlp tool fields (intentional addition)
+  python3 -c '
+import sys, json
+VOLATILE = ("pairing_tokens", "last_checked", "duration", "yt_dlp", "yt_dlp_version")
+def strip(x):
+    if isinstance(x, dict):
+        return {k: strip(v) for k, v in x.items() if k not in VOLATILE}
+    if isinstance(x, list):
+        return [strip(v) for v in x]
+    return x
+print(json.dumps(strip(json.load(sys.stdin)), sort_keys=True))'
+}
+
 norm2() { # also drop wall-clock stamps (mutated-row responses)
   python3 -c '
 import sys, json
@@ -166,7 +179,7 @@ status_of() { curl -s -o /dev/null -w "%{http_code}" "$@"; }
 json_get() { curl -s "$@" | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])"; }
 
 # --- read-only parity against identical seed data (strict) ---
-check "GET /api/status" GET /api/status
+check "GET /api/status" GET /api/status '' norm_status
 check "GET /api/users" GET /api/users
 check "GET /api/settings" GET /api/settings
 check "GET /api/subscriptions" GET /api/subscriptions

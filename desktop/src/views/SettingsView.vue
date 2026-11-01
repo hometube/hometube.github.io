@@ -70,7 +70,7 @@ async function findFree(j) {
     const best = candidates[0];
     await api(`/api/music/${j.item_id}/alternative`, {
       method: "POST",
-      body: JSON.stringify({ url: best.url, video_id: best.id }),
+      body: JSON.stringify({ url: best.url, video_id: best.id, duration: best.duration ?? null }),
     });
     const mm = best.duration
       ? ` (${Math.floor(best.duration / 60)}:${String(Math.round(best.duration % 60)).padStart(2, "0")})`

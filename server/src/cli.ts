@@ -462,8 +462,8 @@ async function cmdDownload(url: string, flags: Record<string, string | boolean>)
       let entryChannel = channel;
       if (entryChannel === null && kind === "podcast") entryChannel = resolveMusicChannel(db, entry);
       const changes = db.run(
-        `INSERT INTO music (video_id, url, title, artist, album_art, added_by, kind, channel_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO music (video_id, url, title, artist, album_art, added_by, kind, channel_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           String(entry.id),
           entryUrl,
@@ -473,6 +473,7 @@ async function cmdDownload(url: string, flags: Record<string, string | boolean>)
           Number(user.id),
           kind,
           entryChannel ? Number(entryChannel.id) : null,
+          Number(entry.duration ?? 0) || null,
         ],
       );
       const id = Number(changes.lastInsertRowid);
@@ -571,8 +572,8 @@ async function cmdDownload(url: string, flags: Record<string, string | boolean>)
   }
   const channel = kind === "podcast" ? resolveMusicChannel(db, info) : null;
   const changes = db.run(
-    `INSERT INTO music (video_id, url, title, artist, album_art, added_by, kind, channel_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO music (video_id, url, title, artist, album_art, added_by, kind, channel_id, duration)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       videoId,
       (info.webpage_url as string) || url,
@@ -582,6 +583,7 @@ async function cmdDownload(url: string, flags: Record<string, string | boolean>)
       Number(user.id),
       kind,
       channel ? Number(channel.id) : null,
+      Number(info.duration ?? 0) || null,
     ],
   );
   const id = Number(changes.lastInsertRowid);
@@ -681,7 +683,7 @@ async function cmdExport(flags: Record<string, string | boolean>): Promise<void>
   );
 }
 
-function extractMetadata(fpath: string): { title: string; artist: string; video_id: string | null } {
+function extractMetadata(fpath: string): { title: string; artist: string; video_id: string | null; duration: number | null } {
   const stem = basename(fpath).replace(/\.[^.]+$/, "");
   let title = stem;
   let videoId: string | null = null;
@@ -691,17 +693,21 @@ function extractMetadata(fpath: string): { title: string; artist: string; video_
     title = stem.replace(/\s*\[([^\]]+)\]\s*$/, "");
   }
   let artist = "Unknown Artist";
+  let duration: number | null = null;
   // mutagen in the Python CLI; ffprobe (a required dep anyway) reads the same
   // ID3/Vorbis/MP4 tag families here.
   try {
     const probe = runOut(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", fpath]);
-    const tags = JSON.parse(probe)?.format?.tags ?? {};
+    const fmt = JSON.parse(probe)?.format ?? {};
+    const tags = fmt.tags ?? {};
     if (tags.title) title = String(tags.title);
     if (tags.artist) artist = String(tags.artist);
+    const d = Number(fmt.duration);
+    if (Number.isFinite(d) && d > 0) duration = Math.round(d);
   } catch {
     /* fall back to filename-derived metadata */
   }
-  return { title, artist, video_id: videoId };
+  return { title, artist, video_id: videoId, duration };
 }
 
 async function cmdImportMusic(folder: string, flags: Record<string, string | boolean>): Promise<void> {
@@ -769,9 +775,9 @@ async function cmdImportMusic(folder: string, flags: Record<string, string | boo
     } else copyFileSync(fpath, destPath);
 
     const changes = db.run(
-      `INSERT INTO music (url, title, artist, video_id, filename, downloaded, added_by)
-       VALUES (?, ?, ?, ?, ?, 1, ?)`,
-      [`file://${dest}`, meta.title, meta.artist, meta.video_id, dest, Number(user.id)],
+      `INSERT INTO music (url, title, artist, video_id, filename, downloaded, added_by, duration)
+       VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+      [`file://${dest}`, meta.title, meta.artist, meta.video_id, dest, Number(user.id), meta.duration],
     );
     if (playlist) {
       const songs = getSongs(db, Number(playlist.id));

@@ -60,6 +60,7 @@ export interface Music {
   added_by: number;
   kind?: "music" | "podcast";
   channel_id?: number;
+  duration?: number | null;
   created_at: string;
 }
 
