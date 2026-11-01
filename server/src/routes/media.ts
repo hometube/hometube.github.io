@@ -303,6 +303,38 @@ export function registerMedia(app: App) {
     return c.json({ ok: true, job_id: jobId, queued: false }, 202);
   });
 
+  // Last-resort fallback for account-gated tracks: search free uploads of
+  // the same recording. GET lists candidates (official-first); POST swaps
+  // the row's source — new video_id, since files are named after it — and
+  // re-queues. Nothing switches without an explicit POST.
+  app.get("/api/music/:id/alternative", async (c) => {
+    const music = c.env.db
+      .query<Row, [number]>("SELECT * FROM music WHERE id = ?")
+      .get(Number(c.req.param("id")));
+    if (!music) fail(404, "Not Found");
+    const q = `${music.title ?? ""} ${music.artist ?? ""} official audio`.replace(/\s+/g, " ").trim();
+    if (!q) return c.json({ candidates: [] });
+    return c.json({ candidates: await ytdlp.searchFreeEquivalent(q) });
+  });
+
+  app.post("/api/music/:id/alternative", async (c) => {
+    const music = c.env.db
+      .query<Row, [number]>("SELECT * FROM music WHERE id = ?")
+      .get(Number(c.req.param("id")));
+    if (!music) fail(404, "Not Found");
+    const data = await body(c);
+    const url = String(data.url ?? "");
+    const videoId = String(data.video_id ?? "");
+    if (!/^https?:\/\//i.test(url) || !videoId) fail(400, "url and video_id required");
+    c.env.db.run(
+      "UPDATE music SET url = ?, video_id = ?, downloaded = 0, filename = NULL WHERE id = ?",
+      [url.slice(0, 500), videoId.slice(0, 20), Number(music.id)],
+    );
+    clearDownloadError(c.env.db, "music", Number(music.id));
+    const jobId = downloader.startMusicDownload(Number(music.id), music.added_by as number | null);
+    return c.json({ ok: true, job_id: jobId });
+  });
+
   // ---- Channels ----
   app.post("/api/channels/add", async (c) => {
     const data = await body(c);

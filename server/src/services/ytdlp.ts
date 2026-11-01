@@ -174,6 +174,34 @@ export async function getChannelVideos(url: string): Promise<Info[]> {
 
 export const getMusicInfo = getVideoInfo;
 
+// Last-resort fallback for account-gated tracks: the same recording usually
+// exists as a free upload on the artist's Topic channel or as the official
+// MV, so search for it. Results are ordered official-first; when a reference
+// duration is known, only near-exact matches survive (live/remaster guard).
+// Callers present candidates — we never silently swap sources.
+function officialScore(title: string): number {
+  return /official|audio|topic/i.test(title) ? 1 : 0;
+}
+
+export async function searchFreeEquivalent(
+  query: string,
+  durationSec?: number | null,
+): Promise<{ id: string; url: string; title: string; duration: number | null }[]> {
+  const info = await runJson(["--flat-playlist"], `ytsearch6:${query}`);
+  const entries: Info[] = (info && info.entries) || [];
+  const out: { id: string; url: string; title: string; duration: number | null }[] = [];
+  for (const e of entries) {
+    if (!e || e.id == null) continue;
+    const url = e.webpage_url || e.url;
+    if (!url) continue;
+    const dur = typeof e.duration === "number" ? e.duration : null;
+    if (durationSec && dur != null && Math.abs(dur - durationSec) > 12) continue;
+    out.push({ id: String(e.id), url: String(url), title: String(e.title || ""), duration: dur });
+  }
+  out.sort((a, b) => officialScore(b.title) - officialScore(a.title));
+  return out.slice(0, 3);
+}
+
 function isJpg(url: string): boolean {
   const path = url.split("?")[0].toLowerCase();
   return path.endsWith(".jpg") || path.endsWith(".jpeg");

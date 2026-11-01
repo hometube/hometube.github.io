@@ -55,6 +55,32 @@ async function chooseCookiesFile() {
   if (picked) setCookies("cookies_file", String(picked));
 }
 
+// For a gated music failure: search free uploads of the same recording
+// (official Topic/MV) and re-point the row at the best candidate.
+const altBusy = ref({});
+
+async function findFree(j) {
+  altBusy.value = { ...altBusy.value, [j.id]: "Searching free uploads…" };
+  try {
+    const { candidates } = await api(`/api/music/${j.item_id}/alternative`);
+    if (!candidates || !candidates.length) {
+      altBusy.value = { ...altBusy.value, [j.id]: "No free version found." };
+      return;
+    }
+    const best = candidates[0];
+    await api(`/api/music/${j.item_id}/alternative`, {
+      method: "POST",
+      body: JSON.stringify({ url: best.url, video_id: best.id }),
+    });
+    const mm = best.duration
+      ? ` (${Math.floor(best.duration / 60)}:${String(Math.round(best.duration % 60)).padStart(2, "0")})`
+      : "";
+    altBusy.value = { ...altBusy.value, [j.id]: `Switched to “${best.title}${mm}” — retrying.` };
+  } catch (e) {
+    altBusy.value = { ...altBusy.value, [j.id]: String(e) };
+  }
+}
+
 async function testCookies() {
   cookiesTesting.value = true;
   try {
@@ -306,21 +332,33 @@ onUnmounted(() => timers.forEach(clearInterval));
     <details class="sec">
       <summary>Downloads</summary>
       <template v-if="jobs.length">
-        <div v-for="j in jobs.slice(0, 12)" :key="j.id" class="job">
-          <span class="job-label">{{ j.type }} #{{ j.item_id }}</span>
-          <div class="bar">
-            <div class="fill" :class="j.status" :style="{ width: (j.status === 'done' ? 100 : j.progress || 0) + '%' }" />
+        <template v-for="j in jobs.slice(0, 12)" :key="j.id">
+          <div class="job">
+            <span class="job-label">{{ j.type }} #{{ j.item_id }}</span>
+            <div class="bar">
+              <div class="fill" :class="j.status" :style="{ width: (j.status === 'done' ? 100 : j.progress || 0) + '%' }" />
+            </div>
+            <span class="job-state" :class="j.status">
+              {{
+                j.status === "error"
+                  ? String(j.error || "error").slice(0, 48)
+                  : j.status === "running"
+                    ? (j.progress || 0) + "%"
+                    : j.status
+              }}
+            </span>
+            <button
+              v-if="j.status === 'error' && j.type === 'music'"
+              class="link-btn"
+              :disabled="!!altBusy[j.id]"
+              title="Search for a free upload of the same track (official audio / Topic)"
+              @click="findFree(j)"
+            >
+              Find free
+            </button>
           </div>
-          <span class="job-state" :class="j.status">
-            {{
-              j.status === "error"
-                ? String(j.error || "error").slice(0, 48)
-                : j.status === "running"
-                  ? (j.progress || 0) + "%"
-                  : j.status
-            }}
-          </span>
-        </div>
+          <div v-if="altBusy[j.id]" class="alt-result hint">{{ altBusy[j.id] }}</div>
+        </template>
         <p v-if="jobs.length > 12" class="hint">+{{ jobs.length - 12 }} more</p>
       </template>
       <p v-else class="hint">No download activity.</p>
@@ -431,6 +469,7 @@ dd { margin: 0; }
 .fill.done { background: #3fb950; }
 .fill.error { background: #db4d4d; }
 .job-state { width: 110px; flex: none; color: var(--muted); }
+.alt-result { margin: 0 0 6px 92px; }
 .job-state.done { color: #56d364; }
 .job-state.error { color: #ff7b72; }
 .path {
