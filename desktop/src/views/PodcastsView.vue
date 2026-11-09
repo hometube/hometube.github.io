@@ -2,11 +2,14 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { api, currentUser, healthy } from "../store";
 import { fmtLong, playList } from "../player";
+import SubscribeModal from "../components/SubscribeModal.vue";
 
 const feeds = ref([]);
 const standalone = ref([]);
 const detail = ref(null); // { subscription_id, channel_name, episodes }
 const checking = ref(false);
+const showAdd = ref(false);
+const addTab = ref("subscribe");
 let pollTimer = null;
 
 const user = computed(() => currentUser());
@@ -71,7 +74,13 @@ onUnmounted(() => clearInterval(pollTimer));
 
 <template>
   <div v-if="!detail">
-    <h2>Podcasts</h2>
+    <div class="page-head">
+      <h2>Podcasts</h2>
+      <div class="head-actions">
+        <button class="secondary" @click="addTab = 'episode'; showAdd = true">+ Add episode</button>
+        <button @click="addTab = 'subscribe'; showAdd = true">+ Subscribe</button>
+      </div>
+    </div>
 
     <div v-if="feeds.length" class="rows">
       <div v-for="f in feeds" :key="f.subscription_id" class="row-item" @click="openFeed(f)">
@@ -105,10 +114,12 @@ onUnmounted(() => clearInterval(pollTimer));
     </template>
 
     <p v-if="!feeds.length && !standalone.length" class="hint">
-      No podcasts yet. Subscribe from the mobile app or
-      <code>POST /api/podcasts/subscribe</code>; single downloads show up as
-      standalone episodes.
+      No podcasts yet. <strong>+ Subscribe</strong> follows a channel and keeps
+      its episodes up to date; <strong>+ Add episode</strong> pulls in a single
+      link as a standalone episode.
     </p>
+
+    <SubscribeModal v-if="showAdd" :initial-tab="addTab" @close="showAdd = false" @added="load" />
   </div>
 
   <div v-else>
@@ -148,6 +159,8 @@ onUnmounted(() => clearInterval(pollTimer));
 </template>
 
 <style scoped>
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.head-actions { display: flex; gap: 8px; flex: none; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .head-actions { display: flex; gap: 8px; }
 .back { flex: none; }
@@ -179,5 +192,4 @@ onUnmounted(() => clearInterval(pollTimer));
 .feed-name { font-size: 18px; margin: 0 0 12px; }
 button.danger { background: #3a2030; color: #ff9aa5; }
 button.danger:hover { background: #4a2434; filter: none; }
-code { background: var(--inset); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 </style>
