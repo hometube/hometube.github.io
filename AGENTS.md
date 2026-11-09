@@ -7,10 +7,10 @@ Instructions for AI agents working on the HomeTube project.
 ```
 hometube/
 ├── install.sh                # One-shot install: bun (if missing), server deps, ht command
-├── install.ps1               # Windows one-shot install (PowerShell equivalent, experimental)
+├── install.ps1               # Windows one-shot install (also winget-installs ffmpeg/yt-dlp/Deno)
 ├── .github/workflows/
 │   ├── deploy.yml            # GitHub Pages deploy (docs/ only — documentation site)
-│   └── desktop.yml           # Desktop builds (macOS/Windows) + desktop-v* tag releases
+│   └── desktop.yml           # Desktop builds (macOS dmg/zip + Windows nsis) + desktop-v* releases
 ├── server/                   # Bun + Hono server (the whole backend; no Python at runtime)
 │   ├── src/
 │   │   ├── index.ts          # Entry: tool PATH, schema, JWT secret, boot token, listen
@@ -18,7 +18,7 @@ hometube/
 │   │   ├── auth.ts           # HS256 JWT on WebCrypto, pairing tokens, lanIp
 │   │   ├── db.ts             # bun:sqlite; SCHEMA byte-identical to the old SQLAlchemy DDL
 │   │   ├── paths.ts          # data_dir/db/downloads resolution (env -> ~/.config/hometube/config.json -> ./data)
-│   │   ├── cli.ts            # The `ht` command (port of backend/cli.py)
+│   │   ├── cli.ts            # The `ht` command
 │   │   ├── hts.ts            # Shared .ht import core (used by HTTP route + CLI)
 │   │   ├── watchdog.ts       # HOMETUBE_WATCH_PARENT ppid poll / HOMETUBE_WATCH_STDIN EOF
 │   │   ├── routes/           # core.ts, library.ts, media.ts, podcasts.ts, files.ts, export.ts

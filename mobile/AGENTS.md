@@ -47,7 +47,7 @@ mobile/
 │   │   ├── downloadStore.ts      # Server-mode "ensure downloaded" + offline cache batching
 │   │   └── modeStore.ts          # Current mode (music/video/podcast) + switch modal
 │   ├── db/
-│   │   └── localDb.ts           # SQLite wrapper (9 tables mirroring IndexedDB stores)
+│   │   └── localDb.ts           # SQLite wrapper (9 tables mirroring the server schema)
 │   ├── services/
 │   │   ├── trackPlayerService.ts # Background audio service
 │   │   └── playerSetup.ts       # TrackPlayer registration
@@ -61,7 +61,7 @@ mobile/
 │   │   ├── LoadingSpinner.tsx
 │   │   ├── EmptyState.tsx
 │   │   └── index.ts            # Component re-exports
-│   ├── api.ts                   # Provider proxy (same pattern as frontend)
+│   ├── api.ts                   # Provider proxy
 │   └── types.ts                 # Shared TypeScript interfaces
 ├── app.json                     # Expo config (plugins, permissions, splash)
 ├── babel.config.js              # Babel config with module-resolver for @/ alias
@@ -70,7 +70,7 @@ mobile/
 
 ## Architecture
 
-The provider pattern is identical to the Vue PWA:
+All screens go through the provider proxy:
 
 ```
 Component → api.ts (Proxy) → Provider Factory
@@ -80,7 +80,7 @@ Component → api.ts (Proxy) → Provider Factory
 
 - **Server Mode**: Makes HTTP requests to the Bun server. Same REST API.
 - **Local Mode**: Uses SQLite via `expo-sqlite` for structured data and `expo-file-system` for media files.
-- **`.ht` files**: Same import/export format as the PWA (zip with `metadata.json` + media files).
+- **`.ht` files**: Portable archive (zip with `metadata.json` + media files), shared with the server's export/import.
 
 ## Video Experience (mirrors music/podcasts)
 
@@ -97,25 +97,22 @@ Component → api.ts (Proxy) → Provider Factory
 | Library | Purpose |
 |---------|---------|
 | `expo-router` | File-based routing |
-| `expo-sqlite` | Local mode database (replaces IndexedDB) |
+| `expo-sqlite` | Local mode database |
 | `expo-file-system` | File storage for media blobs |
 | `expo-video` | Video playback |
-| `react-native-track-player` | Background audio playback (solves the PWA screen-off issue) |
-| `expo-secure-store` | Token/settings storage (replaces localStorage) |
+| `react-native-track-player` | Background audio playback |
+| `expo-secure-store` | Token/settings storage |
 | `expo-document-picker` | .ht file import |
 | `expo-sharing` | .ht file export sharing |
-| `zustand` | State management (replaces Pinia) |
-| `@expo/vector-icons` | Icons (replaces Font Awesome) |
+| `zustand` | State management |
+| `@expo/vector-icons` | Icons |
 | `fflate` | Zip handling for .ht files |
 
 ## Background Audio
 
-The critical fix: `react-native-track-player` runs as a native service. Playback continues reliably even when:
-- Screen is off
-- App is in background
-- OS is managing resources
-
-This replaces the PWA's unreliable `<audio>` + Wake Lock + Media Session approach.
+`react-native-track-player` runs as a native service: playback continues
+reliably with the screen off, the app in background, and while the OS manages
+resources.
 
 ## Import Conventions
 
