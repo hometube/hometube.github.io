@@ -25,7 +25,7 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            bundles: app
+            bundles: app,dmg
             artifact: macos
           - os: windows-latest
             bundles: nsis
@@ -61,19 +61,17 @@ jobs:
           npm ci
           npm run tauri build -- --bundles ${{ matrix.bundles }}
 
-      - name: Zip the .app (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          cd desktop/src-tauri/target/release/bundle/macos
-          ditto -c -k --sequesterRsrc HomeTube.app "$GITHUB_WORKSPACE/HomeTube-macos.zip"
-
+      # The .dmg (built by tauri alongside the .app) is the shipped macOS
+      # artifact: a raw zip of the bundle unzips to its Contents/ internals
+      # for anyone not using macOS's Archive Utility, and there is nothing to
+      # "drag to Applications".
       - name: Upload bundles
         uses: actions/upload-artifact@v4
         with:
           name: hometube-desktop-${{ matrix.artifact }}
           path: |
             desktop/src-tauri/target/release/bundle/nsis/*.exe
-            HomeTube-macos.zip
+            desktop/src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
   release:
@@ -96,4 +94,4 @@ jobs:
           gh release create "$TAG" --verify-tag --title "HomeTube desktop $TAG" \
             --generate-notes || true
           shopt -s nullglob
-          gh release upload "$TAG" bundles/*.zip bundles/*.exe --clobber
+          gh release upload "$TAG" bundles/*.dmg bundles/*.exe --clobber
