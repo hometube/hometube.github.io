@@ -394,6 +394,14 @@ fn spawn_server(state: &ServerState) -> Result<(), String> {
     if let Some(dir) = &data_dir {
         cmd.env("DATA_DIR", dir);
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: the sidecar is a console binary, so without this
+        // Windows pops a terminal window that the user can only close by
+        // killing the server. Piped stdout/stderr below still capture logs.
+        cmd.creation_flags(0x0800_0000);
+    }
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
