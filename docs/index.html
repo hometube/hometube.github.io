@@ -102,7 +102,8 @@
   <h2>Quick start</h2>
   <pre><code>git clone https://github.com/hometube/hometube.github.io hometube
 cd hometube
-bash install.sh        # installs bun if needed, deps, and the ht command
+bash install.sh        # macOS/Linux: bun, deps, and the ht command
+# Windows: pwsh install.ps1  (also installs ffmpeg, yt-dlp, Deno via winget)
 
 ht init                # choose your data directory + default user
 ht serve               # serve the library on your LAN (port 8000)
@@ -117,10 +118,12 @@ ht settings set auto_download off    # disable pre-download on add</code></pre>
 
   <h2>Requirements</h2>
   <ul>
-    <li><a href="https://bun.sh">Bun</a> &mdash; installed automatically by <code>install.sh</code></li>
-    <li><a href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a> and
-        <a href="https://ffmpeg.org">ffmpeg</a> for downloads</li>
-    <li>A JavaScript runtime for yt-dlp's newer extractors (Deno recommended)</li>
+    <li><a href="https://bun.sh">Bun</a> &mdash; installed automatically by the install scripts</li>
+    <li><a href="https://github.com/yt-dlp/yt-dlp">yt-dlp</a>,
+        <a href="https://ffmpeg.org">ffmpeg</a>, and a JavaScript runtime for
+        yt-dlp's newer extractors (Deno recommended) for downloads &mdash;
+        <code>install.ps1</code> installs all three via winget; on macOS install
+        them with <code>brew</code> when the script reports them missing</li>
   </ul>
 
   <footer>

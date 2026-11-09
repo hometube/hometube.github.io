@@ -125,20 +125,23 @@
   <h2>Backup and move</h2>
   <p>Everything &mdash; database and media &mdash; lives in the one library folder you
   chose. To carry your collection to another machine, export a
-  <code>.ht</code> archive (Settings &rarr; Backup, or <code>ht export</code> from the
-  CLI) and import it there; <code>.ht</code> files also import into the mobile app's
-  offline mode.</p>
+  <code>.ht</code> archive with <code>ht export</code> from the CLI and import it
+  there; <code>.ht</code> files also import into the mobile app's offline mode.
+  To pull plain files out, use the <strong>&#8942; menu</strong> on a playlist or a
+  song &mdash; <em>Export</em> copies the actual files to any folder under their
+  real song names.</p>
 
   <h2>Troubleshooting</h2>
   <ul>
     <li><strong>Phone can't connect:</strong> both devices must be on the same network,
         and macOS may ask to allow incoming connections for HomeTube on first run
         &mdash; click <em>Allow</em>.</li>
-    <li><strong>Downloads stuck:</strong> Settings shows the server's own diagnostics
-        (tools, jobs, logs) under <em>Diagnostics</em>. yt-dlp extractors break when
-        the sites change; update from the CLI with <code>ht update</code>.</li>
-    <li><strong>Wrong library:</strong> change the data folder in
-        Settings &rarr; Preferences, or re-run first-run by resetting the app.</li>
+    <li><strong>Downloads stuck:</strong> Settings shows the server's own state &mdash;
+        tools under <em>Server</em>, running jobs under <em>Downloads</em>, and
+        <em>Logs</em> for full detail. yt-dlp extractors break when the sites change;
+        update from the CLI with <code>ht update</code>.</li>
+    <li><strong>Wrong library:</strong> pick a different folder in
+        Settings &rarr; <em>Storage</em>; the server restarts pointed at it.</li>
   </ul>
 
   <footer>
