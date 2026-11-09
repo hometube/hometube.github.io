@@ -1151,7 +1151,10 @@ function buildApk(variant: string): void {
   if (run(["npx", "expo", "prebuild", "--platform", "android"], { cwd: mobileDir }) !== 0) die("Error: expo prebuild failed", 1);
   const task = `assemble${variant[0].toUpperCase()}${variant.slice(1)}`;
   console.log(`Building Android app (${variant} variant)...`);
-  const gradlew = process.platform === "win32" ? "gradlew.bat" : "./gradlew";
+  // Absolute path: bun 1.1.15 spawnSync does not resolve a "./x" executable
+  // against the cwd option — it searches $PATH and throws "Executable not
+  // found" even when the file exists right there.
+  const gradlew = join(mobileDir, "android", process.platform === "win32" ? "gradlew.bat" : "gradlew");
   if (run([gradlew, task], { cwd: join(mobileDir, "android") }) !== 0) die("Error: build failed", 1);
   console.log(`Build complete: ${apkPath(variant)}`);
 }
