@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { API, isLocalModeAsync } from "@/api";
+import { useConnectionStore } from "@/stores/connectionStore";
 import { useUserStore } from "@/stores/userStore";
 import { usePodcastStore } from "@/stores/podcastStore";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -37,6 +38,11 @@ export default function AddPodcast() {
   const [loading, setLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [isLocal, setIsLocal] = useState(false);
+  // Global 15s ping (StatusToast drives the monitoring): a server-mode app
+  // that can't reach the backend shouldn't invite a doomed add. "checking"
+  // deliberately does not block.
+  const serverDown = useConnectionStore((s) => s.status === "offline");
+  const blocked = isLocal || serverDown;
 
   useEffect(() => {
     isLocalModeAsync().then(setIsLocal);
@@ -218,7 +224,7 @@ export default function AddPodcast() {
         renderItem={null}
         ListHeaderComponent={
           <View style={styles.form}>
-            {isLocal && (
+            {isLocal ? (
               <View style={styles.localBanner}>
                 <Ionicons name="cloud-offline" size={16} color="#e0559b" />
                 <Text style={styles.localBannerText}>
@@ -226,7 +232,16 @@ export default function AddPodcast() {
                   mode. Switch modes in Settings.
                 </Text>
               </View>
-            )}
+            ) : serverDown ? (
+              <View style={styles.localBanner}>
+                <Ionicons name="cloud-offline" size={16} color="#e0559b" />
+                <Text style={styles.localBannerText}>
+                  Can't reach the server. Check that it's running and you're
+                  on the same Wi-Fi — this clears as soon as the connection
+                  is back.
+                </Text>
+              </View>
+            ) : null}
 
             <Text style={styles.label}>Podcast URL</Text>
             <Text style={styles.urlHint}>
@@ -287,9 +302,9 @@ export default function AddPodcast() {
                 />
                 {renderPlaylistPicker(false)}
                 <TouchableOpacity
-                  style={[styles.button, (loading || isLocal) && styles.disabled]}
+                  style={[styles.button, (loading || blocked) && styles.disabled]}
                   onPress={handleSubscribe}
-                  disabled={loading || isLocal || !url.trim()}
+                  disabled={loading || blocked || !url.trim()}
                 >
                   {loading ? (
                     <ActivityIndicator color="#fff" size="small" />
@@ -302,9 +317,9 @@ export default function AddPodcast() {
               <>
                 {renderPlaylistPicker(true)}
                 <TouchableOpacity
-                  style={[styles.button, (loading || isLocal) && styles.disabled]}
+                  style={[styles.button, (loading || blocked) && styles.disabled]}
                   onPress={handleAddEpisode}
-                  disabled={loading || isLocal || !url.trim()}
+                  disabled={loading || blocked || !url.trim()}
                 >
                   {loading ? (
                     <ActivityIndicator color="#fff" size="small" />

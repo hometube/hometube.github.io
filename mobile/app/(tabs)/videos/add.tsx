@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
   ScrollView,
 } from "react-native";
 import { router } from "expo-router";
-import { API } from "@/api";
+import { API, isLocalModeAsync } from "@/api";
+import { useConnectionStore } from "@/stores/connectionStore";
 import { useUserStore } from "@/stores/userStore";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -29,6 +30,16 @@ export default function AddVideo() {
   const [formats, setFormats] = useState<Format[]>([]);
   const [selectedQuality, setSelectedQuality] = useState("");
   const [fetchingFormats, setFetchingFormats] = useState(false);
+  const [isLocal, setIsLocal] = useState(false);
+  // Global 15s ping (StatusToast drives the monitoring): a server-mode app
+  // that can't reach the backend shouldn't invite a doomed add. "checking"
+  // deliberately does not block.
+  const serverDown = useConnectionStore((s) => s.status === "offline");
+  const blocked = isLocal || serverDown;
+
+  useEffect(() => {
+    isLocalModeAsync().then(setIsLocal);
+  }, []);
 
   const handleFetchFormats = async () => {
     if (!url.trim()) return;
@@ -67,6 +78,24 @@ export default function AddVideo() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
+      {isLocal ? (
+        <View style={styles.localBanner}>
+          <Ionicons name="cloud-offline" size={16} color="#e0559b" />
+          <Text style={styles.localBannerText}>
+            Local mode — adding videos needs server mode. Switch modes in
+            Settings.
+          </Text>
+        </View>
+      ) : serverDown ? (
+        <View style={styles.localBanner}>
+          <Ionicons name="cloud-offline" size={16} color="#e0559b" />
+          <Text style={styles.localBannerText}>
+            Can't reach the server. Check that it's running and you're on the
+            same Wi-Fi — this clears as soon as the connection is back.
+          </Text>
+        </View>
+      ) : null}
+
       <Text style={styles.label}>Video URL</Text>
       <TextInput
         style={styles.input}
@@ -79,9 +108,9 @@ export default function AddVideo() {
       />
 
       <TouchableOpacity
-        style={[styles.button, styles.secondaryBtn, fetchingFormats && styles.disabled]}
+        style={[styles.button, styles.secondaryBtn, (fetchingFormats || blocked) && styles.disabled]}
         onPress={handleFetchFormats}
-        disabled={fetchingFormats || !url.trim()}
+        disabled={fetchingFormats || blocked || !url.trim()}
       >
         {fetchingFormats ? (
           <ActivityIndicator color="#fff" size="small" />
@@ -117,9 +146,9 @@ export default function AddVideo() {
       )}
 
       <TouchableOpacity
-        style={[styles.button, loading && styles.disabled]}
+        style={[styles.button, (loading || blocked) && styles.disabled]}
         onPress={handleAdd}
-        disabled={loading || !url.trim()}
+        disabled={loading || blocked || !url.trim()}
       >
         {loading ? (
           <ActivityIndicator color="#fff" size="small" />
@@ -151,6 +180,16 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: { backgroundColor: "#9b2fbf", marginTop: 0 },
   disabled: { opacity: 0.6 },
+  localBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(233,69,96,0.12)",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  localBannerText: { color: "#e0559b", fontSize: 12, flex: 1 },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   formatsSection: { marginTop: 20, marginBottom: 12 },
   sectionTitle: {

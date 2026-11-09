@@ -10,7 +10,8 @@ import {
   FlatList,
 } from "react-native";
 import { router } from "expo-router";
-import { API } from "@/api";
+import { API, isLocalModeAsync } from "@/api";
+import { useConnectionStore } from "@/stores/connectionStore";
 import { useUserStore } from "@/stores/userStore";
 import { useLibraryStore } from "@/stores/libraryStore";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -26,6 +27,16 @@ export default function AddMusic() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<number | null>(null);
   const [createNewPlaylist, setCreateNewPlaylist] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
+  const [isLocal, setIsLocal] = useState(false);
+  // Global 15s ping (StatusToast drives the monitoring): a server-mode app
+  // that can't reach the backend shouldn't invite a doomed add. "checking"
+  // deliberately does not block.
+  const serverDown = useConnectionStore((s) => s.status === "offline");
+  const blocked = isLocal || serverDown;
+
+  useEffect(() => {
+    isLocalModeAsync().then(setIsLocal);
+  }, []);
 
   useEffect(() => {
     if (user) loadPlaylists(user.id);
@@ -67,6 +78,24 @@ export default function AddMusic() {
   return (
     <View style={styles.container}>
       <View style={styles.form}>
+        {isLocal ? (
+          <View style={styles.localBanner}>
+            <Ionicons name="cloud-offline" size={16} color="#e0559b" />
+            <Text style={styles.localBannerText}>
+              Local mode — adding music needs server mode. Switch modes in
+              Settings.
+            </Text>
+          </View>
+        ) : serverDown ? (
+          <View style={styles.localBanner}>
+            <Ionicons name="cloud-offline" size={16} color="#e0559b" />
+            <Text style={styles.localBannerText}>
+              Can't reach the server. Check that it's running and you're on
+              the same Wi-Fi — this clears as soon as the connection is back.
+            </Text>
+          </View>
+        ) : null}
+
         <Text style={styles.label}>Music URL</Text>
         <TextInput
           style={styles.input}
@@ -128,9 +157,9 @@ export default function AddMusic() {
         )}
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.disabled]}
+          style={[styles.button, (loading || blocked) && styles.disabled]}
           onPress={handleAdd}
-          disabled={loading || !url.trim()}
+          disabled={loading || blocked || !url.trim()}
         >
           {loading ? (
             <ActivityIndicator color="#fff" size="small" />
@@ -174,6 +203,15 @@ const styles = StyleSheet.create({
   },
   checkRowActive: {},
   checkLabel: { color: "#ccc", fontSize: 14 },
+  localBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(233,69,96,0.12)",
+    borderRadius: 8,
+    padding: 12,
+  },
+  localBannerText: { color: "#e0559b", fontSize: 12, flex: 1 },
   button: {
     backgroundColor: "#e0559b",
     borderRadius: 8,
