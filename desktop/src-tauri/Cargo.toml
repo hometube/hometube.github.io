@@ -1,6 +1,6 @@
 [package]
 name = "hometube-desktop"
-version = "0.1.1"
+version = "0.1.2"
 description = "HomeTube desktop shell — runs the HomeTube server and pairs devices"
 edition = "2021"
 
