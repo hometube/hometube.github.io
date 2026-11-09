@@ -104,7 +104,9 @@ function resumePct(v) {
   return Math.min(100, (v.position / v.duration) * 100);
 }
 
-watch(user, () => {
+// id, not the object: periodic refreshUsers() churns the object identity
+// and would otherwise kick the player back to the feed.
+watch(() => user.value?.id, () => {
   current.value = null;
   load();
 });

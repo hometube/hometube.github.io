@@ -61,7 +61,10 @@ function playEpisodes(list, i) {
   playList(list, i);
 }
 
-watch(user, () => {
+// Watch the user id, not the object: the app re-fetches /api/users
+// periodically, so a "new" user object with the same id would otherwise
+// reset this view's navigation every poll.
+watch(() => user.value?.id, () => {
   detail.value = null;
   load();
 });

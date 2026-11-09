@@ -70,7 +70,9 @@ async function addFace() {
   adding.value = false;
 }
 
-watch(user, load);
+// id, not the object: periodic refreshUsers() churns the object identity
+// and would otherwise reload the shelves on every poll.
+watch(() => user.value?.id, load);
 onMounted(() => {
   load();
   timer = setInterval(load, 5000);

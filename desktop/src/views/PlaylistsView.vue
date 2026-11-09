@@ -217,7 +217,9 @@ async function deletePlaylist() {
   }
 }
 
-watch(user, load);
+// id, not the object: periodic refreshUsers() churns the object identity
+// and would otherwise reload the list on every poll.
+watch(() => user.value?.id, load);
 onMounted(() => {
   load();
   timer = setInterval(load, 8000);
