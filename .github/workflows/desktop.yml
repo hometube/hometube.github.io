@@ -91,7 +91,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" --verify-tag --title "HomeTube desktop $TAG" \
-            --generate-notes || true
+          # No --verify-tag: the release job has no checkout, and that flag
+          # shells out to git ("failed to run git: fatal: not a git
+          # repository" killed desktop-v0.1.0). A push-triggered run's tag
+          # exists by definition, and GH_REPO lets gh work without a repo.
+          gh release create "$TAG" --title "HomeTube desktop $TAG" --generate-notes || true
           shopt -s nullglob
           gh release upload "$TAG" bundles/*.dmg bundles/*.exe --clobber
