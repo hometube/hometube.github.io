@@ -108,6 +108,47 @@ export function removeFromOrder(pos) {
   }
 }
 
+// Add tracks to the end of the play queue (playlist/song "Add to Queue",
+// mirroring mobile). Rows already queued are skipped, so repeated clicks
+// don't double up. With nothing loaded, arms the queue at the first added
+// track without autplaying — the transport bar appears, user presses play.
+export function enqueueTracks(newItems) {
+  const items = (Array.isArray(newItems) ? newItems : [newItems]).filter(
+    (t) => t && !player.queue.some((q) => q.id === t.id)
+  );
+  if (!items.length) return 0;
+  const base = player.queue.length;
+  player.queue = player.queue.concat(items);
+  const added = items.map((_, i) => base + i);
+  if (player.order.length) {
+    player.order = player.order.concat(added);
+    persistSession();
+  } else {
+    player.order = added;
+    player.orderPos = 0;
+    loadCurrent(false);
+    player.loading = false; // armed, not playing — no fetch spinner
+  }
+  return items.length;
+}
+
+// Insert right after the current track (mobile's "Play Next"). With an
+// empty queue this becomes the first thing to play.
+export function enqueueNext(item) {
+  if (!item || player.queue.some((q) => q.id === item.id)) return false;
+  const at = player.queue.length;
+  player.queue = player.queue.concat([item]);
+  if (player.order.length) {
+    player.order.splice(Math.max(player.orderPos, 0) + 1, 0, at);
+    persistSession();
+  } else {
+    player.order = [at];
+    player.orderPos = 0;
+    loadCurrent(true);
+  }
+  return true;
+}
+
 export function next(auto = false) {
   if (!player.order.length) return;
   if (auto && player.repeat === "one") {

@@ -576,6 +576,144 @@ fn set_data_dir(state: State<ServerState>, dir: String) -> Result<StorageInfo, S
     Ok(storage_info_of())
 }
 
+// ---------------------------------------------------------------------------
+// Export: copy library files to a user-picked folder under their real names
+// ---------------------------------------------------------------------------
+
+/// One export request. Source resolution mirrors the server's file route:
+/// stored filename first, then an imported `file://` url, then a glob of the
+/// downloads dir by extractor video id (files can exist under a name the DB
+/// row never recorded). `name` is the destination file name
+/// ("Artist - Title.mp3"), built and deduped by the UI.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportItem {
+    kind: String, // downloads subdir: "music" | "videos"
+    filename: Option<String>,
+    url: Option<String>,
+    video_id: Option<String>,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct ExportSummary {
+    copied: usize,
+    failed: Vec<String>,
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(v) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn resolve_export_src(dl: &Path, item: &ExportItem) -> Option<PathBuf> {
+    if let Some(f) = item.filename.as_deref().filter(|s| !s.is_empty()) {
+        let p = dl.join(f);
+        if p.is_file() {
+            return Some(p);
+        }
+        let abs = PathBuf::from(f);
+        if abs.is_file() {
+            return Some(abs);
+        }
+    }
+    if let Some(rest) = item
+        .url
+        .as_deref()
+        .filter(|u| u.starts_with("file://"))
+        .map(|u| &u[7..])
+    {
+        for cand in [
+            dl.join(rest),
+            PathBuf::from(rest),
+            dl.join(percent_decode(rest)),
+            PathBuf::from(percent_decode(rest)),
+        ] {
+            if cand.is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    let needle = item.video_id.as_deref().filter(|s| !s.is_empty())?;
+    let rd = fs::read_dir(dl).ok()?;
+    for entry in rd.flatten() {
+        let p = entry.path();
+        if p.is_file()
+            && p.file_name()
+                .map(|n| n.to_string_lossy().contains(needle))
+                .unwrap_or(false)
+        {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Never overwrite: "Song.mp3" collides into "Song (2).mp3", "Song (3).mp3"…
+fn unique_target(dest: &Path, name: &str) -> PathBuf {
+    let first = dest.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let stem = first
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "track".into());
+    let ext = first.extension().map(|s| s.to_string_lossy().to_string());
+    for n in 2..1000 {
+        let cand = match &ext {
+            Some(e) => dest.join(format!("{stem} ({n}).{e}")),
+            None => dest.join(format!("{stem} ({n})")),
+        };
+        if !cand.exists() {
+            return cand;
+        }
+    }
+    first
+}
+
+#[tauri::command]
+fn export_items(dest_dir: String, items: Vec<ExportItem>) -> Result<ExportSummary, String> {
+    // Same source of truth the server runs on (config.json data_dir; the
+    // shell itself spawns the sidecar with DATA_DIR pointed there).
+    let data_dir = read_config()
+        .get("data_dir")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .ok_or("no data_dir configured")?;
+    let downloads = PathBuf::from(data_dir).join("downloads");
+    let dest = PathBuf::from(&dest_dir);
+    fs::create_dir_all(&dest).map_err(|e| format!("cannot create {dest_dir}: {e}"))?;
+    let mut copied = 0;
+    let mut failed = Vec::new();
+    for item in &items {
+        let kind = if item.kind == "videos" { "videos" } else { "music" };
+        let Some(src) = resolve_export_src(&downloads.join(kind), item) else {
+            failed.push(item.name.clone());
+            continue;
+        };
+        let target = unique_target(&dest, &item.name);
+        match fs::copy(&src, &target) {
+            Ok(_) => copied += 1,
+            Err(_) => failed.push(item.name.clone()),
+        }
+    }
+    Ok(ExportSummary { copied, failed })
+}
+
 fn main() {
     let state = ServerState::default();
     let setup_state = state.clone();
@@ -605,6 +743,7 @@ fn main() {
             server_stop,
             storage_info,
             set_data_dir,
+            export_items,
             autostart_get,
             autostart_set
         ])

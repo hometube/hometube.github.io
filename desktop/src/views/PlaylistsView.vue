@@ -1,13 +1,24 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { api, currentUser, healthy, state } from "../store";
-import { playList, player, toggleShuffle } from "../player";
+import { invoke } from "@tauri-apps/api/core";
+import { open as pickFolder } from "@tauri-apps/plugin-dialog";
+import { api, currentUser, healthy, refreshPlaylists, state } from "../store";
+import { enqueueNext, enqueueTracks, playList, player, toggleShuffle } from "../player";
 import AddMusicModal from "../components/AddMusicModal.vue";
+import MenuPopover from "../components/MenuPopover.vue";
+import MenuIcon from "../components/MenuIcon.vue";
+import ConfirmModal from "../components/ConfirmModal.vue";
+import RenameModal from "../components/RenameModal.vue";
 
 const playlists = ref([]);
 const musicById = ref(new Map());
 const videoById = ref(new Map());
 const showAdd = ref(false);
+const showDelete = ref(false);
+const showRename = ref(false);
+const exporting = ref(""); // set while an export runs; shows in the header hint
+const toastMsg = ref("");
+let toastTimer = null;
 const addDest = ref(0); // 0 = library, preselected playlist when opened from a detail
 let timer = null;
 
@@ -66,12 +77,155 @@ function openAdd(dest) {
   showAdd.value = true;
 }
 
+// --- toasts ---
+function toast(msg) {
+  toastMsg.value = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toastMsg.value = ""), 6000);
+}
+
+// --- queue (mirrors the mobile playlist/song menus) ---
+function addAllToQueue() {
+  const n = enqueueTracks(items.value);
+  if (n) state.queueOpen = true;
+  toast(n ? `Added ${n} item${n === 1 ? "" : "s"} to the queue.` : "Everything here is already in the queue.");
+}
+
+function shuffleAddQueue() {
+  const list = items.value.slice();
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  const n = enqueueTracks(list);
+  if (n) state.queueOpen = true;
+  toast(n ? `Added ${n} shuffled item${n === 1 ? "" : "s"} to the queue.` : "Everything here is already in the queue.");
+}
+
+function addSongToQueue(t) {
+  const n = enqueueTracks([t]);
+  if (n) state.queueOpen = true;
+  toast(n ? `Added “${t.title || "Untitled"}” to the queue.` : `“${t.title || "Untitled"}” is already in the queue.`);
+}
+
+function playNextSong(t) {
+  if (enqueueNext(t)) toast(`Playing “${t.title || "Untitled"}” next.`);
+  else toast(`“${t.title || "Untitled"}” is already in the queue.`);
+}
+
+// --- export: copy files to a folder under real song names ---
+function sanitizeName(s) {
+  const clean = String(s || "")
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\.+$/, "");
+  return clean.slice(0, 180);
+}
+
+function exportName(t, kind) {
+  // Extension from the file on disk when known, per-kind fallback otherwise.
+  const srcName =
+    t.filename ||
+    (String(t.url || "").startsWith("file://")
+      ? decodeURIComponent(String(t.url).slice(7).split(/[\\/]/).pop())
+      : "");
+  const ext =
+    /\.([A-Za-z0-9]{1,5})$/.exec(srcName || "")?.[1]?.toLowerCase() ||
+    (kind === "music" ? "mp3" : "mp4");
+  // Titles can carry the file extension themselves (imported files).
+  const stripExt = (s) => s.replace(new RegExp(`\\.${ext}$`, "i"), "");
+  const base =
+    sanitizeName(kind === "music" ? [t.artist, t.title].filter(Boolean).join(" - ") : t.title) ||
+    sanitizeName(stripExt(srcName)) ||
+    `Track ${t.id}`;
+  return `${stripExt(base)}.${ext}`;
+}
+
+function dedupeNames(names) {
+  const seen = new Set();
+  return names.map((n) => {
+    let out = n;
+    for (let i = 2; seen.has(out.toLowerCase()); i++) {
+      const dot = n.lastIndexOf(".");
+      out = dot > 0 ? `${n.slice(0, dot)} (${i})${n.slice(dot)}` : `${n} (${i})`;
+    }
+    seen.add(out.toLowerCase());
+    return out;
+  });
+}
+
+async function exportTo(list, kind) {
+  if (!list.length || exporting.value) return;
+  const dest = await pickFolder({
+    directory: true,
+    title: `Export ${list.length} ${kind === "music" ? "song" : "file"}${list.length === 1 ? "" : "s"} to…`,
+  });
+  if (!dest) return;
+  exporting.value = `Exporting ${list.length} file${list.length === 1 ? "" : "s"}…`;
+  const names = dedupeNames(list.map((t) => exportName(t, kind)));
+  const payload = list.map((t, i) => ({
+    kind,
+    filename: t.filename || null,
+    url: t.url || null,
+    videoId: t.video_id || null,
+    name: names[i],
+  }));
+  try {
+    const res = await invoke("export_items", { destDir: dest, items: payload });
+    toast(
+      res.failed.length
+        ? `Exported ${res.copied} of ${list.length} — not downloaded yet: ${res.failed.join(", ")}`
+        : `Exported ${res.copied} file${res.copied === 1 ? "" : "s"} to ${dest}`
+    );
+  } catch (e) {
+    toast(`Export failed: ${e}`);
+  } finally {
+    exporting.value = "";
+  }
+}
+
+const listKind = () => (isVideoList.value ? "videos" : "music");
+
+// --- playlist rename / delete ---
+async function renameTo(name) {
+  showRename.value = false;
+  try {
+    await api(`/api/playlists/${selected.value.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    });
+    await load();
+    refreshPlaylists();
+    toast(`Renamed to “${name}”.`);
+  } catch (e) {
+    toast(`Rename failed (${e.message}).`);
+  }
+}
+
+async function deletePlaylist() {
+  const name = selected.value?.name;
+  showDelete.value = false;
+  try {
+    await api(`/api/playlists/${selected.value.id}`, { method: "DELETE" });
+    state.openPlaylistId = null;
+    await load();
+    refreshPlaylists();
+    toast(`Deleted “${name}”. The songs are still in your library.`);
+  } catch (e) {
+    toast(`Delete failed (${e.message}).`);
+  }
+}
+
 watch(user, load);
 onMounted(() => {
   load();
   timer = setInterval(load, 8000);
 });
-onUnmounted(() => clearInterval(timer));
+onUnmounted(() => {
+  clearInterval(timer);
+  clearTimeout(toastTimer);
+});
 </script>
 
 <template>
@@ -119,15 +273,38 @@ onUnmounted(() => clearInterval(timer));
       </template>
       <div class="head-text">
         <h2 class="pl-name">{{ selected.name }}</h2>
-        <p class="hint">{{ items.length }} {{ items.length === 1 ? "item" : "items" }}</p>
+        <p class="hint">{{ exporting || `${items.length} ${items.length === 1 ? "item" : "items"}` }}</p>
       </div>
-      <button
-        v-if="!isVideoList"
-        class="secondary add-music"
-        @click="openAdd(selected.id)"
-      >
-        + Add music
-      </button>
+      <!-- Overflow menu sits at the far side of the transport buttons so its
+           popover opens leftward over the content, never behind the sidebar. -->
+      <div class="head-actions">
+        <button
+          v-if="!isVideoList"
+          class="secondary add-music"
+          @click="openAdd(selected.id)"
+        >
+          + Add music
+        </button>
+        <MenuPopover>
+          <template v-if="!isVideoList">
+            <button :disabled="!items.length || !!exporting" @click="addAllToQueue">
+              <MenuIcon name="add" /> Add to Queue
+            </button>
+            <button :disabled="!items.length || !!exporting" @click="shuffleAddQueue">
+              <MenuIcon name="shuffle" /> Shuffle and Add to Queue
+            </button>
+          </template>
+          <button :disabled="!items.length || !!exporting" @click="exportTo(items, listKind())">
+            <MenuIcon name="download" /> Export…
+          </button>
+          <button @click="showRename = true">
+            <MenuIcon name="pencil" /> Rename…
+          </button>
+          <button class="danger" @click="showDelete = true">
+            <MenuIcon name="trash" /> Delete Playlist
+          </button>
+        </MenuPopover>
+      </div>
     </div>
 
     <p v-if="isVideoList" class="hint padded">
@@ -154,9 +331,23 @@ onUnmounted(() => clearInterval(timer));
           </span>
           <span class="title" :title="t.title">{{ t.title || "Untitled" }}</span>
           <span class="artist">{{ t.artist || "—" }}</span>
-          <button class="remove" title="Remove from playlist" @click.stop="removeItem(t.id)">
-            ×
-          </button>
+          <MenuPopover class="row-menu">
+            <button @click="playAll(i)">
+              <MenuIcon name="play" /> Play Now
+            </button>
+            <button @click="playNextSong(t)">
+              <MenuIcon name="playNext" /> Play Next
+            </button>
+            <button @click="addSongToQueue(t)">
+              <MenuIcon name="add" /> Add to Queue
+            </button>
+            <button :disabled="!!exporting" @click="exportTo([t], listKind())">
+              <MenuIcon name="download" /> Export…
+            </button>
+            <button class="danger" @click="removeItem(t.id)">
+              <MenuIcon name="trash" /> Remove from Playlist
+            </button>
+          </MenuPopover>
         </div>
       </div>
     </div>
@@ -169,11 +360,33 @@ onUnmounted(() => clearInterval(timer));
     @close="showAdd = false"
     @added="load"
   />
+
+  <RenameModal
+    v-if="showRename && selected"
+    :name="selected.name"
+    @save="renameTo"
+    @close="showRename = false"
+  />
+
+  <ConfirmModal
+    v-if="showDelete && selected"
+    title="Delete playlist"
+    :message="`Delete “${selected.name}”? The songs stay in your library.`"
+    confirm-label="Delete"
+    danger
+    @confirm="deletePlaylist"
+    @close="showDelete = false"
+  />
+
+  <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
 </template>
 
 <style scoped>
 .list-head { display: flex; align-items: center; margin-bottom: 14px; }
 .add-music { margin-left: auto; flex: none; }
+/* Right-anchored group in the playlist header: Add music + overflow menu. */
+.head-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
+.head-actions .add-music { margin-left: 0; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .card {
   padding: 16px; display: flex; flex-direction: column; gap: 5px; cursor: pointer;
@@ -217,7 +430,11 @@ onUnmounted(() => clearInterval(timer));
 }
 .shuffle-btn:hover:not(:disabled) { background: none; filter: none; border-color: var(--accent); color: var(--accent); }
 .shuffle-btn.on { color: var(--accent); border-color: var(--accent); }
-.rows { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.rows { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+/* No overflow:hidden here: row popover menus must escape the list box.
+   Row corners are rounded individually instead. */
+.row-item:first-child { border-top-left-radius: 11px; border-top-right-radius: 11px; }
+.row-item:last-child { border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }
 .row-item {
   display: flex; align-items: center; gap: 12px; padding: 10px 14px;
   font-size: 14px; border-bottom: 1px solid var(--border); cursor: pointer;
@@ -240,10 +457,11 @@ onUnmounted(() => clearInterval(timer));
 .row-item.playing { color: var(--accent); }
 .row-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-item .artist { color: var(--muted); font-size: 13px; width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.remove {
-  background: none; color: var(--muted); font-size: 16px; padding: 2px 8px;
-  border-radius: 6px; opacity: 0; flex: none;
+/* Toast: clears the transport bar (bottom) and stays put while actions run. */
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 60;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 16px; font-size: 13px; color: var(--text);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); max-width: min(560px, 90vw);
 }
-.row-item:hover .remove { opacity: 1; }
-.remove:hover { color: #ff7b72; background: none; filter: none; }
 </style>
