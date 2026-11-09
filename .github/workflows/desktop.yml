@@ -97,4 +97,12 @@ jobs:
           # exists by definition, and GH_REPO lets gh work without a repo.
           gh release create "$TAG" --title "HomeTube desktop $TAG" --generate-notes || true
           shopt -s nullglob
-          gh release upload "$TAG" bundles/*.dmg bundles/*.exe --clobber
+          # download-artifact preserves the upload's workspace-relative path,
+          # so bundles/ holds bundle/dmg/*.dmg and bundle/nsis/*.exe nested —
+          # find the files instead of globbing bundles/* directly.
+          files=()
+          while IFS= read -r -d '' f; do files+=("$f"); done < <(
+            find bundles -type f \( -name '*.dmg' -o -name '*.exe' \) -print0
+          )
+          (( ${#files[@]} )) || { echo "no bundles found under bundles/"; exit 1; }
+          gh release upload "$TAG" "${files[@]}" --clobber
