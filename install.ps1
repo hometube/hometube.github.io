@@ -1,5 +1,6 @@
 # HomeTube Installer (Windows — experimental)
-# Prerequisites: bun, ffmpeg, and a JS runtime for yt-dlp (e.g. Deno).
+# Installs whatever is missing — bun, ffmpeg, yt-dlp, and a JS runtime for
+# yt-dlp (Deno) — via winget, then the server deps and the ht command.
 #
 # Usage (PowerShell):
 #   powershell -ExecutionPolicy Bypass -File install.ps1
@@ -7,29 +8,46 @@
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-function Warn-Missing([string]$name, [string]$hint) {
-    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-        Write-Host "⚠️  $name not found — $hint" -ForegroundColor Yellow
+$script:HasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
+if (-not $script:HasWinget) {
+    Write-Host "⚠️  winget not found — tools must be installed manually." -ForegroundColor Yellow
+    Write-Host "    (get 'App Installer' from the Microsoft Store)" -ForegroundColor Yellow
+    Write-Host ""
+}
+
+function Refresh-Path {
+    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
+}
+
+# Install $name via $wingetId when it is missing; warn with $hint if that fails.
+function Ensure-Tool([string]$name, [string]$wingetId, [string]$hint) {
+    if (Get-Command $name -ErrorAction SilentlyContinue) { return }
+    if ($script:HasWinget) {
+        Write-Host "📦 $name not found — installing $wingetId via winget..."
+        winget install $wingetId -e --accept-source-agreements --accept-package-agreements
+        Refresh-Path
+    }
+    if (Get-Command $name -ErrorAction SilentlyContinue) {
+        Write-Host "✅ $name installed"
+    } else {
+        Write-Host "⚠️  $name still not found — $hint" -ForegroundColor Yellow
     }
 }
 
 Write-Host "🚀 HomeTube Installer"
 Write-Host ""
 
+Ensure-Tool "bun" "Oven-sh.Bun" "install it manually: https://bun.sh"
 if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-    Write-Host "📦 bun not found — installing via winget..."
-    winget install Oven-sh.Bun -e --accept-source-agreements --accept-package-agreements
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
-    if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-        Write-Host "❌ bun install failed. Install it manually: https://bun.sh" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "❌ bun install failed. Install it manually: https://bun.sh" -ForegroundColor Red
+    exit 1
 }
 
-Warn-Missing "ffmpeg" "Needed for music conversion/embedding (winget install Gyan.FFmpeg)"
-Warn-Missing "yt-dlp" "Needed for downloads (winget install yt-dlp.yt-dlp)"
-if (-not (Get-Command deno, node -ErrorAction SilentlyContinue)) {
-    Write-Host "⚠️  No JS runtime (deno/node) found — newer yt-dlp needs one for YouTube (winget install DenoLand.Deno)" -ForegroundColor Yellow
+Ensure-Tool "ffmpeg" "Gyan.FFmpeg" "needed for music conversion/embedding (winget install Gyan.FFmpeg)"
+Ensure-Tool "yt-dlp" "yt-dlp.yt-dlp" "needed for downloads (winget install yt-dlp.yt-dlp)"
+if (-not (Get-Command deno -ErrorAction SilentlyContinue) -and
+    -not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Ensure-Tool "deno" "DenoLand.Deno" "newer yt-dlp needs a JS runtime for YouTube (winget install DenoLand.Deno)"
 }
 
 Write-Host "=== Server ==="
